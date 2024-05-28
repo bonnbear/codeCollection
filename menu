@@ -5,25 +5,32 @@
         :default-active="activeMenu"
         class="el-menu-vertical-demo"
         @select="handleSelect"
+        router
       >
         <el-menu-item-group>
           <template #title>
             <div class="custom-group-title">
               <i class="el-icon-menu"></i>
               <span>Group 1</span>
-              <hr class="custom-divider">
+              <hr class="custom-divider" />
             </div>
           </template>
-          <el-menu-item index="1-1">
+          <el-menu-item index="home">
             <template #default>
-              <i class="el-icon-s-home"></i>
-              <span>Option 1</span>
+              <i :class="menuIconClass('home')"></i>
+              <span :class="menuTextClass('home')">
+                {{ menuText('home') }}
+                <span v-if="activeMenu === 'home'" class="active-text">(active)</span>
+              </span>
             </template>
           </el-menu-item>
-          <el-menu-item index="1-2">
+          <el-menu-item index="management">
             <template #default>
-              <i class="el-icon-s-management"></i>
-              <span>Option 2</span>
+              <i :class="menuIconClass('management')"></i>
+              <span :class="menuTextClass('management')">
+                {{ menuText('management') }}
+                <span v-if="activeMenu === 'management'" class="active-text">(active)</span>
+              </span>
             </template>
           </el-menu-item>
         </el-menu-item-group>
@@ -32,59 +39,85 @@
             <div class="custom-group-title">
               <i class="el-icon-menu"></i>
               <span>Group 2</span>
-              <hr class="custom-divider">
+              <hr class="custom-divider" />
             </div>
           </template>
-          <el-menu-item index="2-1">
+          <el-menu-item index="data">
             <template #default>
-              <i class="el-icon-s-data"></i>
-              <span>Option 3</span>
+              <i :class="menuIconClass('data')"></i>
+              <span :class="menuTextClass('data')">
+                {{ menuText('data') }}
+                <span v-if="activeMenu === 'data'" class="active-text">(active)</span>
+              </span>
             </template>
           </el-menu-item>
-          <el-menu-item index="2-2">
+          <el-menu-item index="tools">
             <template #default>
-              <i class="el-icon-s-tools"></i>
-              <span>Option 4</span>
+              <i :class="menuIconClass('tools')"></i>
+              <span :class="menuTextClass('tools')">
+                {{ menuText('tools') }}
+                <span v-if="activeMenu === 'tools'" class="active-text">(active)</span>
+              </span>
             </template>
           </el-menu-item>
         </el-menu-item-group>
       </el-menu>
     </el-aside>
     <el-main>
-      <div v-if="activeMenu === '1-1'">
-        <h3>Content for Option 1</h3>
-        <p>This is the content for Option 1.</p>
+      <div v-if="activeMenu === 'home'">
+        <h3>Content for Home</h3>
+        <p>This is the content for the Home page.</p>
       </div>
-      <div v-if="activeMenu === '1-2'">
-        <h3>Content for Option 2</h3>
-        <p>This is the content for Option 2.</p>
+      <div v-if="activeMenu === 'management'">
+        <h3>Content for Management</h3>
+        <p>This is the content for the Management page.</p>
       </div>
-      <div v-if="activeMenu === '2-1'">
-        <h3>Content for Option 3</h3>
-        <p>This is the content for Option 3.</p>
+      <div v-if="activeMenu === 'data'">
+        <h3>Content for Data</h3>
+        <p>This is the content for the Data page.</p>
       </div>
-      <div v-if="activeMenu === '2-2'">
-        <h3>Content for Option 4</h3>
-        <p>This is the content for Option 4.</p>
+      <div v-if="activeMenu === 'tools'">
+        <h3>Content for Tools</h3>
+        <p>This is the content for the Tools page.</p>
       </div>
     </el-main>
   </el-container>
 </template>
 
-<script>
-export default {
-  data() {
-    return {
-      activeMenu: '1-1', // 默认选中的菜单项
-    };
-  },
-  methods: {
-    handleSelect(key, keyPath) {
-      console.log(key, keyPath);
-      this.activeMenu = key;
-    },
-  },
+<script setup>
+import { ref, computed } from 'vue';
+
+const activeMenu = ref('home');
+
+const handleSelect = (key, keyPath) => {
+  activeMenu.value = key;
 };
+
+const menuIconClass = computed(() => (index) => {
+  return {
+    'el-icon-s-home': index === 'home',
+    'el-icon-s-management': index === 'management',
+    'el-icon-s-data': index === 'data',
+    'el-icon-s-tools': index === 'tools',
+    'active-icon': activeMenu.value === index,
+  };
+});
+
+const menuTextClass = computed(() => (index) => {
+  return {
+    'active-text': activeMenu.value === index,
+  };
+});
+
+const menuText = computed(() => (index) => {
+  const texts = {
+    home: 'Home',
+    management: 'Management',
+    data: 'Data',
+    tools: 'Tools',
+  };
+  return texts[index];
+});
 </script>
 
 <style>
@@ -109,7 +142,18 @@ export default {
   margin: 0 8px;
 }
 
-.el-menu-item i {
-  margin-right: 8px;
+.active-icon {
+  color: white;
+}
+
+.active-text {
+  font-size: 16px;
+  font-weight: bold;
+  color: white;
+}
+
+.el-menu-vertical-demo .el-menu-item.is-active {
+  background-color: black;
+  color: white;
 }
 </style>
