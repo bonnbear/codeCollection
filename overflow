@@ -1,0 +1,44 @@
+<template>
+  <div ref="container" class="container">
+    <div v-for="(item, index) in items" :key="index" :ref="el => itemRefs[index] = el">
+      {{ item }}
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue';
+
+const container = ref(null);
+const itemRefs = ref([]);
+const items = ref(['Item 1', 'Item 2', 'Item 3', 'Item 4', 'Item 5', 'Item 6', 'Item 7', 'Item 8', 'Item 9', 'Item 10']);
+
+onMounted(() => {
+  const containerWidth = container.value.offsetWidth;
+  const overflowIndexes = [];
+
+  itemRefs.value.forEach((itemRef, index) => {
+    const itemRect = itemRef.getBoundingClientRect();
+    if (itemRect.right > containerWidth) {
+      overflowIndexes.push(index);
+    }
+  });
+
+  console.log('超出容器的元素索引:', overflowIndexes);
+});
+</script>
+
+<style scoped>
+.container {
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.container > div {
+  display: inline-block;
+  padding: 8px;
+  background-color: #f1f1f1;
+  margin-right: 8px;
+}
+</style>
