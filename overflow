@@ -42,3 +42,77 @@ onMounted(() => {
   margin-right: 8px;
 }
 </style>
+
+
+
+<template>
+  <div class="container" ref="containerRef">
+    <div
+      v-for="(item, index) in items"
+      :key="index"
+      class="item"
+      :ref="el => setItemRef(el, index)"
+    >
+      {{ item }}
+    </div>
+  </div>
+  <div v-if="overflowCount > 0">
+    {{ overflowCount }} items are overflowing
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, watch } from 'vue';
+
+const items = ref(['Item 1', 'Item 2', 'A much longer Item 3', 'Item 4', 'Another long Item 5', 'Item 6']);
+const containerRef = ref(null);
+const itemsRef = ref([]);
+const overflowCount = ref(0);
+
+const setItemRef = (el, index) => {
+  if (el) {
+    itemsRef.value[index] = el;
+  }
+};
+
+const checkOverflow = () => {
+  if (containerRef.value && itemsRef.value.length > 0) {
+    const containerWidth = containerRef.value.clientWidth;
+    let totalWidth = 0;
+    let count = 0;
+
+    itemsRef.value.forEach(item => {
+      totalWidth += item.clientWidth;
+      if (totalWidth > containerWidth) {
+        count++;
+      }
+    });
+
+    overflowCount.value = count;
+  }
+};
+
+onMounted(() => {
+  checkOverflow();
+});
+
+watch(items, () => {
+  checkOverflow();
+});
+</script>
+
+<style scoped>
+.container {
+  width: 100%;
+  white-space: nowrap; /* Prevent line breaks */
+  overflow: hidden; /* Hide overflow content */
+}
+
+.item {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 4px;
+  background-color: #f0f0f0;
+  border: 1px solid #d0d0d0;
+}
+</style>
