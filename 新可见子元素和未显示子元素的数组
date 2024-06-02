@@ -1,0 +1,139 @@
+<template>
+  <div class="wrapper">
+    <!-- 可滚动的容器 -->
+    <div ref="container" class="container" @scroll="updateVisibleItems">
+      <div class="scroll-content">
+        <!-- 循环渲染子元素 -->
+        <div v-for="(item, index) in items" :key="index" :ref="el => itemRefs[index] = el">
+          {{ item }}
+        </div>
+      </div>
+    </div>
+    <!-- "更多"按钮和下拉列表 -->
+    <div v-if="overflowItems.length > 0" class="more-items" @click="showOverflowList = !showOverflowList">
+      更多
+      <!-- 下拉列表,显示未显示的子元素 -->
+      <ul v-if="showOverflowList" class="overflow-list">
+        <li v-for="(item, index) in overflowItems" :key="index" @click="scrollToItem(items.indexOf(item))">
+          {{ item }}
+        </li>
+      </ul>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, watch } from 'vue';
+
+// 创建响应式变量
+const container = ref(null); // 容器元素的引用
+const itemRefs = ref([]); // 子元素的引用数组
+const showOverflowList = ref(false); // 控制下拉列表的显示/隐藏
+const items = ref(['Item 1', 'Item 2', 'Item 3', 'Item 4', 'Item 5', 'Item 6', 'Item 7', 'Item 8', 'Item 9', 'Item 10']); // 子元素的数据数组
+const visibleItems = ref([]); // 可见的子元素数组
+const overflowItems = ref([]); // 未显示的子元素数组
+
+// 更新可见子元素和未显示子元素
+const updateVisibleItems = () => {
+  const containerWidth = container.value.offsetWidth; // 容器的宽度
+  const containerScrollLeft = container.value.scrollLeft; // 容器的滚动左边距
+  let visibleStartIndex = -1; // 可见子元素的起始索引
+  let visibleEndIndex = -1; // 可见子元素的结束索引
+
+  // 遍历子元素的引用数组
+  for (let i = 0; i < itemRefs.value.length; i++) {
+    const itemRef = itemRefs.value[i];
+    const itemWidth = itemRef.offsetWidth; // 子元素的宽度
+    const itemLeft = itemRef.offsetLeft; // 子元素的左边距
+
+    // 判断子元素是否在可见区域内
+    if (itemLeft + itemWidth > containerScrollLeft && visibleStartIndex === -1) {
+      visibleStartIndex = i; // 找到第一个可见的子元素
+    }
+
+    if (itemLeft < containerScrollLeft + containerWidth) {
+      visibleEndIndex = i; // 找到最后一个可见的子元素
+    } else {
+      break; // 后面的子元素都不可见,跳出循环
+    }
+  }
+
+  // 更新可见子元素数组
+  visibleItems.value = items.value.slice(visibleStartIndex, visibleEndIndex + 1);
+  // 更新未显示子元素数组
+  overflowItems.value = [
+    ...items.value.slice(0, visibleStartIndex),
+    ...items.value.slice(visibleEndIndex + 1)
+  ];
+};
+
+// 滚动到指定的子元素
+const scrollToItem = (index) => {
+  itemRefs.value[index].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' }); // 平滑滚动到指定子元素
+  showOverflowList.value = false; // 隐藏下拉列表
+  
+  // 延迟更新可见子元素和未显示子元素
+  setTimeout(() => {
+    updateVisibleItems();
+  }, 300);
+};
+
+// 组件挂载后的生命周期钩子
+onMounted(() => {
+  itemRefs.value = itemRefs.value.slice(0, items.value.length); // 初始化子元素的引用数组
+  updateVisibleItems(); // 初始化可见子元素和未显示子元素
+});
+
+// 监听子元素数据的变化
+watch(items, () => {
+  itemRefs.value = itemRefs.value.slice(0, items.value.length); // 更新子元素的引用数组
+  updateVisibleItems(); // 更新可见子元素和未显示子元素
+});
+</script>
+
+<style scoped>
+.wrapper {
+  display: flex;
+  align-items: flex-start;
+}
+
+.container {
+  width: 500px;
+  overflow-x: auto;
+  white-space: nowrap;
+  position: relative;
+}
+
+.scroll-content {
+  display: inline-block;
+}
+
+.scroll-content > div {
+  display: inline-block;
+  padding: 8px;
+  background-color: #f1f1f1;
+  margin-right: 8px;
+}
+
+.more-items {
+  margin-left: 16px;
+  position: relative;
+  cursor: pointer;
+}
+
+.overflow-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  padding: 8px;
+  list-style: none;
+  z-index: 1;
+}
+
+.overflow-list li {
+  cursor: pointer;
+  padding: 4px;
+}
+</style>
