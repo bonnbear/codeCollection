@@ -1,0 +1,248 @@
+<template>
+  <div>
+    <!-- 表格 -->
+    <div class="table">
+      <div class="table-header">
+        <div class="table-cell" @click="toggleSortOrder('content')">
+          标题
+          <span class="sort-icon">
+            <!-- 单独升序排序图标 -->
+            <el-icon @click.stop="handleSort('content', 'asc')" :class="getSortIcon('content', 'asc')">
+              <CaretTop />
+            </el-icon>
+            <!-- 单独降序排序图标 -->
+            <el-icon @click.stop="handleSort('content', 'desc')" :class="getSortIcon('content', 'desc')">
+              <CaretBottom />
+            </el-icon>
+          </span>
+        </div>
+        <div class="table-cell" @click="toggleSortOrder('details')">
+          详细内容
+          <span class="sort-icon">
+            <el-icon @click.stop="handleSort('details', 'asc')" :class="getSortIcon('details', 'asc')">
+              <CaretTop />
+            </el-icon>
+            <el-icon @click.stop="handleSort('details', 'desc')" :class="getSortIcon('details', 'desc')">
+              <CaretBottom />
+            </el-icon>
+          </span>
+        </div>
+        <div class="table-cell" @click="toggleSortOrder('date')">
+          日期
+          <span class="sort-icon">
+            <el-icon @click.stop="handleSort('date', 'asc')" :class="getSortIcon('date', 'asc')">
+              <CaretTop />
+            </el-icon>
+            <el-icon @click.stop="handleSort('date', 'desc')" :class="getSortIcon('date', 'desc')">
+              <CaretBottom />
+            </el-icon>
+          </span>
+        </div>
+        <div class="table-cell" @click="toggleSortOrder('owner')">
+          责任人
+          <span class="sort-icon">
+            <el-icon @click.stop="handleSort('owner', 'asc')" :class="getSortIcon('owner', 'asc')">
+              <CaretTop />
+            </el-icon>
+            <el-icon @click.stop="handleSort('owner', 'desc')" :class="getSortIcon('owner', 'desc')">
+              <CaretBottom />
+            </el-icon>
+          </span>
+        </div>
+      </div>
+      <div class="table-body">
+        <div v-for="(row, rowIndex) in sortedTableData" :key="rowIndex">
+          <!-- 行点击弹出 Popover -->
+          <el-popover
+            v-if="refresh"
+            placement="top"
+            width="200"
+            trigger="click"
+            :hide-after="count"
+            @show="beforeShow"
+            :teleported="false"
+          >
+            <template #reference>
+              <div class="table-row" @click="togglePopover(rowIndex)">
+                <div class="table-cell">{{ row.content }}</div>
+                <div class="table-cell">{{ row.details }}</div>
+                <div class="table-cell">{{ row.date }}</div>
+                <div class="table-cell">{{ row.owner }}</div>
+              </div>
+            </template>
+            <div>
+              <p>这是外层 Popover 的内容。</p>
+              <el-popover
+                placement="right"
+                width="200"
+                trigger="click"
+                @hide="hidefn($event)"
+                @show="count=0"
+                :teleported="false"
+              >
+                <template #reference>
+                  <el-button @click="toggleInnerPopover(rowIndex)">
+                    点击显示内层 Popover
+                  </el-button>
+                </template>
+                <div>
+                  <p>这是内层 Popover 的内容。</p>
+                </div>
+              </el-popover>
+            </div>
+          </el-popover>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { nextTick, ref } from 'vue';
+import { ElPopover, ElButton, ElIcon, ElMessage } from 'element-plus';
+import { CaretTop, CaretBottom } from '@element-plus/icons-vue';
+
+// 弹出层相关
+const count = ref(0);
+const refresh = ref(true);
+const beforeShow = () => {};
+const hidefn = (e) => {
+  count.value = 0;
+  nextTick(() => {});
+};
+
+// 表格数据
+const tableData = ref([
+  { content: '项目会议', details: '讨论项目进展和问题', date: '2021-08-01', owner: '张三' },
+  { content: '代码审查', details: '审查最新提交的代码', date: '2021-08-02', owner: '李四' },
+  { content: '需求讨论', details: '讨论新功能需求和设计', date: '2021-08-03', owner: '王五' }
+]);
+
+// 排序后的表格数据
+const sortedTableData = ref([...tableData.value]);
+
+// Popover 显示状态
+const popoverVisible = ref(Array(tableData.value.length).fill(false));
+const innerPopoverVisible = ref(Array(tableData.value.length).fill(false));
+
+// 切换外层 Popover 显示状态
+function togglePopover(rowIndex) {
+  popoverVisible.value[rowIndex] = !popoverVisible.value[rowIndex];
+}
+
+// 切换内层 Popover 显示状态
+function toggleInnerPopover(rowIndex) {
+  innerPopoverVisible.value[rowIndex] = !innerPopoverVisible.value[rowIndex];
+}
+
+// 排序逻辑
+const sortOrder = ref({ key: '', order: '' });
+
+// 模拟的后端请求函数
+async function fetchSortedData(key, order) {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const sortedData = [...tableData.value].sort((a, b) => {
+        const sortDirection = order === 'asc' ? 1 : -1;
+        if (a[key] < b[key]) return -sortDirection;
+        if (a[key] > b[key]) return sortDirection;
+        return 0;
+      });
+      resolve(sortedData);
+    }, 500);
+  });
+}
+
+// 排序函数，向后端请求排序后的数据
+async function sortTable(key, order) {
+  sortOrder.value.key = key;
+  sortOrder.value.order = order;
+
+  try {
+    const sortedData = await fetchSortedData(key, order);
+    sortedTableData.value = sortedData;
+  } catch (error) {
+    ElMessage.error('获取排序数据失败');
+  }
+}
+
+// 表头点击切换排序顺序：升序、降序、取消排序
+function toggleSortOrder(key) {
+  if (sortOrder.value.key === key) {
+    if (sortOrder.value.order === 'asc') {
+      sortOrder.value.order = 'desc';
+    } else if (sortOrder.value.order === 'desc') {
+      sortOrder.value.key = '';
+      sortOrder.value.order = '';
+      sortedTableData.value = [...tableData.value]; // 取消排序，恢复初始数据顺序
+      return;
+    } else {
+      sortOrder.value.order = 'asc';
+    }
+  } else {
+    sortOrder.value.key = key;
+    sortOrder.value.order = 'asc';
+  }
+  sortTable(sortOrder.value.key, sortOrder.value.order);
+}
+
+// 单独点击图标进行排序
+function handleSort(key, order) {
+  if (sortOrder.value.key === key && sortOrder.value.order === order) {
+    sortOrder.value.key = '';
+    sortOrder.value.order = '';
+    sortedTableData.value = [...tableData.value]; // 取消排序，恢复初始数据顺序
+  } else {
+    sortTable(key, order);
+  }
+}
+
+// 获取排序图标的样式，激活时高亮显示
+function getSortIcon(key, order) {
+  if (sortOrder.value.key === key && sortOrder.value.order === order) {
+    return 'active-icon';
+  }
+  return '';
+}
+</script>
+
+<style scoped>
+.table {
+  display: flex;
+  flex-direction: column;
+}
+
+.table-header, .table-row {
+  display: flex;
+}
+
+.table-cell {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #ccc;
+  position: relative;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.table-header .table-cell {
+  font-weight: bold;
+  background-color: #f0f0f0;
+}
+
+.sort-icon {
+  margin-left: 5px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sort-icon .el-icon {
+  font-size: 12px;
+  color: #999;
+}
+
+.sort-icon .active-icon {
+  color: #333;
+}
+</style>
