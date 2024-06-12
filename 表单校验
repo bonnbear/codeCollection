@@ -1,0 +1,148 @@
+<template>
+  <div>
+    <!-- 表单组件，绑定表单数据和验证规则 -->
+    <el-form ref="formRef" :model="tableData" :rules="rules">
+      <!-- 表格组件，显示分页后的数据 -->
+      <el-table :data="paginatedData" style="width: 100%" header-cell-class-name="custom-header-style">
+        <!-- 日期列 -->
+        <el-table-column label="日期" width="180">
+          <template #default="{ row, $index }">
+            <el-form-item :prop="`${$index}.date`">
+              <el-input v-model="row.date" placeholder="请输入日期" @input="markAsEdited($index)"></el-input>
+            </el-form-item>
+          </template>
+        </el-table-column>
+        <!-- 姓名列 -->
+        <el-table-column label="姓名" width="180">
+          <template #default="{ row, $index }">
+            <el-form-item :prop="`${$index}.name`">
+              <el-input v-model="row.name" placeholder="请输入姓名" @input="markAsEdited($index)"></el-input>
+            </el-form-item>
+          </template>
+        </el-table-column>
+        <!-- 地址列 -->
+        <el-table-column label="地址">
+          <template #default="{ row, $index }">
+            <el-form-item :prop="`${$index}.address`">
+              <el-input v-model="row.address" placeholder="请输入地址" @input="markAsEdited($index)"></el-input>
+            </el-form-item>
+          </template>
+        </el-table-column>
+        <!-- 操作列 -->
+        <el-table-column label="操作" width="100">
+          <template #default="{ row, $index }">
+            <el-button type="danger" size="small" @click="removeRow($index)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <!-- 分页组件 -->
+      <el-pagination
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+        :current-page="currentPage"
+        :page-sizes="[5, 10, 15]"
+        :page-size="pageSize"
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="tableData.length"
+      >
+      </el-pagination>
+    </el-form>
+    <!-- 提交按钮 -->
+    <el-button type="primary" @click="handleSubmit">提交</el-button>
+    <!-- 检查更改按钮 -->
+    <el-button @click="checkChanges">检查更改</el-button>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue';
+import { ElMessage } from 'element-plus';
+
+// 初始化表格数据
+const tableData = ref([
+  { date: '2023-01-01', name: '张三', address: '北京市朝阳区', isEdited: false },
+  { date: '2023-01-02', name: '李四', address: '上海市浦东新区', isEdited: false },
+  { date: '2023-01-03', name: '王五', address: '广州市天河区', isEdited: false },
+  // 可以继续添加更多行数据...
+]);
+// 备份原始数据，用于检查更改
+const originalData = JSON.parse(JSON.stringify(tableData.value));
+
+const currentPage = ref(1); // 当前页码
+const pageSize = ref(10); // 每页显示条数
+const formRef = ref(null); // 表单引用
+
+// 表单验证规则
+const rules = computed(() => {
+  const rulesObj = {};
+  tableData.value.forEach((_, index) => {
+    rulesObj[`${index}.date`] = [{ required: true, message: `请输入日期`, trigger: 'blur' }];
+    rulesObj[`${index}.name`] = [{ required: true, message: `请输入姓名`, trigger: 'blur' }];
+    rulesObj[`${index}.address`] = [{ required: true, message: `请输入地址`, trigger: 'blur' }];
+  });
+  return rulesObj;
+});
+
+// 提交表单
+function handleSubmit() {
+  formRef.value.validate((valid) => {
+    if (valid) {
+      submitData();
+    } else {
+      ElMessage.error('请检查输入是否正确且完整！');
+      return false;
+    }
+  });
+}
+
+// 模拟提交数据
+function submitData() {
+  console.log('提交数据:', tableData.value);
+  ElMessage.success('提交成功！');
+}
+
+// 标记行数据已编辑
+function markAsEdited(index) {
+  tableData.value[index].isEdited = true;
+}
+
+// 检查未保存的更改
+function checkChanges() {
+  const changes = tableData.value.some((row, index) =>
+    row.isEdited && JSON.stringify(row) !== JSON.stringify(originalData[index])
+  );
+  if (changes) {
+    ElMessage.warning('有未保存的更改，请检查！');
+  } else {
+    ElMessage.info('所有更改均已保存。');
+  }
+}
+
+// 删除行数据
+function removeRow(index) {
+  tableData.value.splice(index, 1);
+  ElMessage.success('行已删除。');
+}
+
+// 处理分页大小变化
+function handleSizeChange(newSize) {
+  pageSize.value = newSize;
+}
+
+// 处理页码变化
+function handleCurrentChange(newPage) {
+  currentPage.value = newPage;
+}
+
+// 计算当前页显示的数据
+const paginatedData = computed(() => {
+  const startIndex = (currentPage.value - 1) * pageSize.value;
+  return tableData.value.slice(startIndex, startIndex + pageSize.value);
+});
+</script>
+
+<style>
+.custom-header-style {
+  background: black!important; /* 表格头部背景颜色 */
+}
+</style>
