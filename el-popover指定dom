@@ -1,0 +1,62 @@
+<template>
+  <div>
+    <div class="outer-container">
+      <div class="middle-container">
+        <div class="inner-container">
+          <div ref="popoverContainer" class="popover-container"></div>
+        </div>
+      </div>
+    </div>
+    
+    <el-button v-for="i in 3" :key="i">
+      按钮 {{ i }}
+      <el-popover
+        placement="top"
+        title="标题"
+        :width="200"
+        trigger="hover"
+        :content="'这是一个 Popover 的内容'"
+        :append-to="popoverContainer"
+        :teleported="true"
+      >
+        <template #reference>
+          <el-icon><InfoFilled /></el-icon>
+        </template>
+      </el-popover>
+    </el-button>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue';
+import { ElButton, ElPopover, ElIcon } from 'element-plus';
+import { InfoFilled } from '@element-plus/icons-vue';
+
+const popoverContainer = ref(null);
+</script>
+
+<style>
+.outer-container {
+  /* 添加一些样式 */
+  padding: 20px;
+  background-color: #f5f5f5;
+}
+
+.middle-container {
+  /* 添加一些样式 */
+  padding: 10px;
+  background-color: #e0e0e0;
+}
+
+.inner-container {
+  /* 添加一些样式 */
+  padding: 5px;
+  background-color: #d0d0d0;
+}
+
+.popover-container {
+  /* 需要设置一定的高度,否则挂载会失败 */
+  min-height: 50px;
+  background-color: #c0c0c0;
+}
+</style>
