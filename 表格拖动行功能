@@ -58,3 +58,68 @@ export default {
   opacity: 0.4;
 }
 </style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<template>
+  <div>
+    <el-table
+      ref="sortableTable"
+      :data="tableData"
+      style="width: 100%"
+      height="400"
+    >
+      <el-table-column prop="name" label="Name" width="180"></el-table-column>
+      <el-table-column prop="age" label="Age" width="180"></el-table-column>
+      <el-table-column prop="address" label="Address"></el-table-column>
+    </el-table>
+  </div>
+</template> <script>
+import { ref, onMounted, nextTick } from "vue";
+import { ElTable, ElTableColumn } from "element-plus";
+import Sortable from "sortablejs";
+export default {
+  name: "SortableTable",
+  components: { ElTable, ElTableColumn },
+  setup() {
+    const tableData = ref([
+      { name: "John Doe", age: 25, address: "1234 Main St" },
+      { name: "Jane Doe", age: 30, address: "5678 Maple Ave" },
+      { name: "Mike Smith", age: 35, address: "9101 Pine St" },
+      { name: "Sara Johnson", age: 40, address: "1122 Elm St" },
+    ]);
+    const sortableTable = ref(null);
+    onMounted(() => {
+      new Sortable(
+        sortableTable.value.$el.querySelector(".el-table__body-wrapper tbody"),
+        {
+          animation: 150,
+          ghostClass: "ghost",
+          onEnd(event) {
+            nextTick(()=>{
+      
+            })
+   
+          },
+        }
+      );
+    });
+    return { tableData, sortableTable };
+  },
+};
+</script> <style>
+.ghost {
+  opacity: 0.4;
+}
+</style> 
