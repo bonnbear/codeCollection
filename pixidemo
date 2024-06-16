@@ -1,0 +1,54 @@
+<template>
+  <div ref="pixiContainer" class="pixi-container"></div>
+</template>
+
+<script>
+import { onMounted, ref } from 'vue';
+import * as PIXI from 'pixi.js';
+
+export default {
+  name: 'App',
+  setup() {
+    const pixiContainer = ref(null);
+
+    onMounted(async () => {
+      if (pixiContainer.value) {
+        // 创建Pixi应用程序
+        const app = new PIXI.Application();
+
+        // 初始化Pixi应用程序
+        await app.init({
+          background: '#1099bb',
+          resizeTo: window
+        });
+
+        // 将Pixi视图（canvas）添加到DOM中
+        pixiContainer.value.appendChild(app.view);
+
+        // 创建一个图形
+        const graphics = new PIXI.Graphics();
+        graphics.beginFill(0xde3249);
+        graphics.drawRect(50, 50, 100, 100);
+        graphics.endFill();
+
+        // 将图形添加到Pixi应用的舞台上
+        app.stage.addChild(graphics);
+      } else {
+        console.error('pixiContainer is not defined.');
+      }
+    });
+
+    return {
+      pixiContainer,
+    };
+  },
+};
+</script>
+
+<style>
+.pixi-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+</style>
