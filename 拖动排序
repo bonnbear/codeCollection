@@ -1,0 +1,75 @@
+好的，我们可以用 `vue-draggable-next` 来实现一个简单的拖拽排序的示例。以下是一个完整的示例，包括 Vue 组件和相关的 HTML 代码。
+
+首先，确保你已经安装了 `vue-draggable-next`：
+
+```bash
+npm install vuedraggable@next
+
+```
+
+
+
+
+<template>
+  <div>
+    <h2>拖拽排序示例</h2>
+    <draggable v-model="items" @end="onEnd" class="list-group">
+      <template #item="{ element }">
+        <div class="list-group-item">
+          {{ element.name }}
+        </div>
+      </template>
+    </draggable>
+  </div>
+</template>
+
+<script>
+import { defineComponent, ref } from 'vue';
+import draggable from 'vuedraggable';
+
+export default defineComponent({
+  name: 'DraggableDemo',
+  components: {
+    draggable,
+  },
+  setup() {
+    const items = ref([
+      { id: 1, name: '项目 1' },
+      { id: 2, name: '项目 2' },
+      { id: 3, name: '项目 3' },
+      { id: 4, name: '项目 4' },
+    ]);
+
+    const onEnd = (event) => {
+      console.log('拖拽结束：', event);
+    };
+
+    return {
+      items,
+      onEnd,
+    };
+  },
+});
+</script>
+
+<style>
+.list-group {
+  display: flex;
+  flex-direction: column;
+  width: 200px;
+  margin: 20px;
+  padding: 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.list-group-item {
+  padding: 10px;
+  border-bottom: 1px solid #ccc;
+  background-color: #f9f9f9;
+}
+
+.list-group-item:last-child {
+  border-bottom: none;
+}
+</style>
