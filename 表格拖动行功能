@@ -108,7 +108,8 @@ export default {
           ghostClass: "ghost",
           onEnd(event) {
             nextTick(()=>{
-      
+         const movedItem = tableData.value.splice(event.newDraggableIndex, 1)[0];
+            tableData.value.splice(event.newIndex, 0, movedItem);
             })
    
           },
