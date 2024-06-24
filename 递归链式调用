@@ -1,0 +1,67 @@
+这段代码是一个Vue 3组件的setup部分，使用了组合式API。让我为您详细解释这段代码的逻辑和功能：
+
+```javascript
+// 导入Vue 3的ref函数，用于创建响应式引用
+import { ref } from 'vue';
+
+// 创建一个响应式引用，存储iframe的src属性值
+const iframeSrc = ref('http://example.com/your-preview-page');
+
+// 定义API的URL地址
+const apiURL = 'http://example.com/api/status';
+
+// 定义刷新iframe的函数
+function refreshIframe() {
+  // 通过添加一个时间戳作为查询参数来强制刷新iframe
+  // 这里使用模板字符串和Date.now()来生成唯一的URL
+  iframeSrc.value = `http://example.com/your-preview-page?time=${new Date().getTime()}`;
+}
+
+// 定义异步函数来检查状态
+async function checkStatus() {
+  try {
+    // 发送GET请求到API
+    const response = await fetch(apiURL);
+    // 解析响应的JSON数据
+    const data = await response.json();
+
+    // 检查返回的状态
+    if (data.status === 'completed') {
+      // 如果状态为"completed"，刷新iframe
+      refreshIframe();
+    } else {
+      // 如果状态不是"completed"，等待10秒后再次检查
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      // 递归调用checkStatus函数
+      await checkStatus();
+    }
+  } catch (error) {
+    // 如果发生错误，在控制台输出错误信息
+    console.error('Error fetching status:', error);
+  }
+}
+
+// 立即开始第一次状态检查
+checkStatus();
+```
+
+这段代码的主要功能和逻辑流程如下：
+
+1. 初始化：
+   - 创建一个响应式的iframeSrc，初始值为预览页面的URL。
+   - 定义API的URL地址。
+
+2. refreshIframe函数：
+   - 通过改变URL的查询参数来强制刷新iframe。
+   - 使用当前时间戳作为参数，确保每次调用都生成唯一的URL。
+
+3. checkStatus函数：
+   - 发送异步请求到API，获取状态信息。
+   - 如果状态为"completed"，则调用refreshIframe刷新iframe。
+   - 如果状态不是"completed"，等待10秒后再次调用checkStatus。
+   - 如果发生错误，在控制台输出错误信息。
+
+4. 立即执行：
+   - 组件创建时立即调用checkStatus开始第一次状态检查。
+
+这个组件的主要目的是周期性地检查某个任务的状态，并在任务完成时刷新iframe中的内容。它使用了递归调用和Promise来实现异步操作和定时重试的功能。这种方法适用于需要等待后端处理完成后更新前端显示的场景。
