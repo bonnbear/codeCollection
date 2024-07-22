@@ -1,0 +1,180 @@
+<!-- TableColumnFilter.vue -->
+<template>
+  <el-popover placement="bottom" :width="200" trigger="click">
+    <template #reference>
+      <el-button class="filter-button" size="small">
+        <el-icon><Filter /></el-icon>
+      </el-button>
+    </template>
+    <div class="filter-popover">
+      <div class="filter-header">
+        <el-button @click="selectAll" size="small">全选</el-button>
+        <el-button @click="invertSelection" size="small">反选</el-button>
+      </div>
+      <div class="filter-content">
+        <el-checkbox-group v-model="checkedOptions">
+          <el-checkbox v-for="option in options" :key="option" :label="option">
+            {{ option }}
+          </el-checkbox>
+        </el-checkbox-group>
+      </div>
+      <div class="filter-footer">
+        <el-button @click="confirmFilter" type="primary" size="small">确认</el-button>
+        <el-button @click="resetFilter" size="small">重置</el-button>
+      </div>
+    </div>
+  </el-popover>
+</template>
+
+<script>
+import { ref, computed } from 'vue'
+import { Filter } from '@element-plus/icons-vue'
+
+export default {
+  components: {
+    Filter,
+  },
+  props: {
+    options: {
+      type: Array,
+      required: true,
+    },
+  },
+  emits: ['filter'],
+  setup(props, { emit }) {
+    const checkedOptions = ref([])
+
+    const selectAll = () => {
+      checkedOptions.value = [...props.options]
+    }
+
+    const invertSelection = () => {
+      checkedOptions.value = props.options.filter(
+        option => !checkedOptions.value.includes(option)
+      )
+    }
+
+    const confirmFilter = () => {
+      emit('filter', checkedOptions.value)
+    }
+
+    const resetFilter = () => {
+      checkedOptions.value = []
+      emit('filter', [])
+    }
+
+    return {
+      checkedOptions,
+      selectAll,
+      invertSelection,
+      confirmFilter,
+      resetFilter,
+    }
+  }
+}
+</script>
+
+<style scoped>
+.filter-button {
+  margin-left: 8px;
+}
+
+.filter-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.filter-header,
+.filter-footer {
+  display: flex;
+  justify-content: space-between;
+}
+
+.filter-content {
+  max-height: 200px;
+  overflow-y: auto;
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+<!-- MainComponent.vue -->
+<template>
+  <div>
+    <el-table :data="filteredTableData" style="width: 100%">
+      <el-table-column prop="date" label="日期" width="180" />
+      <el-table-column prop="name" label="姓名" width="180" />
+      <el-table-column prop="address" label="地址">
+        <template #header>
+          <span>地址</span>
+          <TableColumnFilter
+            :options="uniqueAddresses"
+            @filter="handleAddressFilter"
+          />
+        </template>
+      </el-table-column>
+    </el-table>
+  </div>
+</template>
+
+<script>
+import { ref, computed } from 'vue'
+import TableColumnFilter from './TableColumnFilter.vue'
+
+export default {
+  components: {
+    TableColumnFilter,
+  },
+  setup() {
+    const tableData = [
+      {
+        date: '2016-05-03',
+        name: '张三',
+        address: '上海市普陀区金沙江路 1518 弄',
+      },
+      {
+        date: '2016-05-02',
+        name: '李四',
+        address: '北京市海淀区西直门北大街 42 号',
+      },
+      {
+        date: '2016-05-04',
+        name: '王五',
+        address: '上海市普陀区金沙江路 1518 弄',
+      },
+      {
+        date: '2016-05-01',
+        name: '赵六',
+        address: '广州市天河区珠江新城华夏路 10 号',
+      },
+    ]
+
+    const activeAddressFilters = ref([])
+
+    const uniqueAddresses = computed(() => [...new Set(tableData.map(item => item.address))])
+
+    const filteredTableData = computed(() => {
+      if (activeAddressFilters.value.length === 0) return tableData
+      return tableData.filter(item => activeAddressFilters.value.includes(item.address))
+    })
+
+    const handleAddressFilter = (filters) => {
+      activeAddressFilters.value = filters
+    }
+
+    return {
+      filteredTableData,
+      uniqueAddresses,
+      handleAddressFilter,
+    }
+  }
+}
+</script>
