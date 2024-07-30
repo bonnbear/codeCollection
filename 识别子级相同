@@ -1,0 +1,119 @@
+// 菜单数据
+const menuData = [
+  {
+    name: 'system_management',
+    label: '系统管理',
+    children: [
+      { name: 'user_management', label: '用户管理' },
+      { name: 'role_management', label: '角色管理' },
+      { name: 'permission_settings', label: '权限设置' },
+      { name: 'system_config', label: '系统配置' }
+    ]
+  },
+  {
+    name: 'content_management',
+    label: '内容管理',
+    children: [
+      { name: 'article_management', label: '文章管理' },
+      { name: 'category_management', label: '分类管理' },
+      { name: 'tag_management', label: '标签管理' },
+      { name: 'comment_management', label: '评论管理' }
+    ]
+  },
+  {
+    name: 'user_center',
+    label: '用户中心',
+    children: [
+      { name: 'personal_info', label: '个人信息' },
+      { name: 'message_notification', label: '消息通知' },
+      { name: 'account_settings', label: '账户设置' },
+      { name: 'permission_settings', label: '权限设置' }
+    ]
+  },
+  {
+    name: 'data_statistics',
+    label: '数据统计',
+    children: [
+      { name: 'visit_statistics', label: '访问统计' },
+      { name: 'user_growth', label: '用户增长' },
+      { name: 'content_analysis', label: '内容分析' },
+      { name: 'conversion_rate', label: '转化率' }
+    ]
+  },
+  {
+    name: 'product_management',
+    label: '商品管理',
+    children: [
+      { name: 'product_list', label: '商品列表' },
+      { name: 'add_product', label: '添加商品' },
+      { name: 'product_category', label: '商品分类' },
+      { name: 'inventory_management', label: '库存管理' }
+    ]
+  },
+  {
+    name: 'order_management',
+    label: '订单管理',
+    children: [
+      { name: 'order_list', label: '订单列表' },
+      { name: 'order_processing', label: '订单处理' },
+      { name: 'return_management', label: '退货管理' },
+      { name: 'shipping_management', label: '发货管理' }
+    ]
+  },
+  {
+    name: 'marketing_tools',
+    label: '营销工具',
+    children: [
+      { name: 'coupons', label: '优惠券' },
+      { name: 'discount_activities', label: '折扣活动' },
+      { name: 'promotion_links', label: '推广链接' },
+      { name: 'user_growth', label: '用户增长' }
+    ]
+  },
+  {
+    name: 'customer_service',
+    label: '客户服务',
+    children: [
+      { name: 'customer_management', label: '客户管理' },
+      { name: 'work_order_system', label: '工单系统' },
+      { name: 'faq_management', label: 'FAQ管理' },
+      { name: 'user_management', label: '用户管理' }
+    ]
+  }
+];
+
+// 处理函数
+function processMenuData(menuData) {
+  const nameMap = {};
+  const result = [];
+
+  function processMenuItem(item) {
+    if (item.name) {
+      if (!nameMap[item.name]) {
+        nameMap[item.name] = [];
+      }
+      nameMap[item.name].push({ name: item.name, label: item.label });
+    }
+
+    if (item.children) {
+      item.children.forEach(processMenuItem);
+    }
+  }
+
+  menuData.forEach(processMenuItem);
+
+  for (const [name, items] of Object.entries(nameMap)) {
+    if (items.length > 1) {
+      items.forEach((item, index) => {
+        const newName = index === 0 ? item.name : `${item.name}_${index}`;
+        result.push({ name: newName, label: item.label });
+      });
+    }
+  }
+
+  return result;
+}
+
+// 执行函数并打印结果
+const result = processMenuData(menuData);
+console.log(result);
