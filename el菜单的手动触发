@@ -1,0 +1,55 @@
+<template>
+  <div>
+    <el-button @click="toggleMenu('1')">切换导航一</el-button>
+    <el-button @click="toggleMenu('3')">切换导航三</el-button>
+    
+    <el-menu
+      ref="menu"
+      mode="vertical"
+    >
+      <el-sub-menu index="1">
+        <template #title>导航一</template>
+        <el-menu-item index="1-1">选项1</el-menu-item>
+        <el-menu-item index="1-2">选项2</el-menu-item>
+      </el-sub-menu>
+      <el-sub-menu index="2">
+        <template #title>导航二</template>
+        <el-menu-item index="2-1">选项1</el-menu-item>
+        <el-menu-item index="2-2">选项2</el-menu-item>
+      </el-sub-menu>
+      <el-sub-menu index="3">
+        <template #title>导航三</template>
+        <el-menu-item index="3-1">选项1</el-menu-item>
+        <el-menu-item index="3-2">选项2</el-menu-item>
+      </el-sub-menu>
+    </el-menu>
+  </div>
+</template>
+
+<script>
+import { ref } from 'vue'
+
+export default {
+  setup() {
+    const menu = ref(null)
+    const openedMenus = ref(['1']) // 用于跟踪当前打开的菜单
+
+    const toggleMenu = (index) => {
+      if (openedMenus.value.includes(index)) {
+        // 如果菜单已打开，则关闭它
+        menu.value.close(index)
+        openedMenus.value = openedMenus.value.filter(item => item !== index)
+      } else {
+        // 如果菜单未打开，则打开它
+        menu.value.open(index)
+        openedMenus.value.push(index)
+      }
+    }
+
+    return {
+      menu,
+      toggleMenu
+    }
+  }
+}
+</script>
