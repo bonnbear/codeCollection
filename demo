@@ -2,7 +2,12 @@
   <div class="calendar-container">
     <div class="month-tabs">
       <button @click="previousMonth">&lt;</button>
-      <button v-for="month in months" :key="month" @click="currentMonth = month" :class="{ active: currentMonth === month }">
+      <button 
+        v-for="month in months" 
+        :key="month" 
+        @click="currentMonth = month" 
+        :class="{ active: currentMonth === month }"
+      >
         {{ month }}月
       </button>
       <button @click="nextMonth">&gt;</button>
@@ -11,7 +16,12 @@
       <div v-for="day in weekDays" :key="day" class="week-day">{{ day }}</div>
     </div>
     <div class="dates-grid">
-      <div v-for="date in datesInMonth" :key="date.day" class="date-cell" :class="{ 'other-month': !date.currentMonth }">
+      <div 
+        v-for="date in datesInMonth" 
+        :key="`${currentYear}-${currentMonth}-${date.day}`" 
+        class="date-cell" 
+        :class="{ 'other-month': !date.currentMonth }"
+      >
         <div class="date-number">{{ date.day }}</div>
         <div v-if="getEventData(date).length > 0" class="event-container">
           <el-popover placement="top-start" :width="250" trigger="hover">
@@ -38,6 +48,11 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+
+// 启用响应式语法糖
+defineOptions({
+  reactivityTransform: true
+})
 
 const currentMonth = ref(new Date().getMonth() + 1)
 const currentYear = ref(new Date().getFullYear())
@@ -103,20 +118,20 @@ const generateRandomEvents = (year, month) => {
 // 生成当前月份的随机事项
 const events = ref(generateRandomEvents(currentYear.value, currentMonth.value))
 
-const getEventData = (date) => {
+const getEventData = computed(() => (date) => {
   return events.value.filter(event => 
     event.date.getDate() === date.day &&
     event.date.getMonth() === currentMonth.value - 1 &&
     event.date.getFullYear() === currentYear.value
   )
-}
+})
 
-const getHighestPriority = (date) => {
-  const dateEvents = getEventData(date)
+const getHighestPriority = computed(() => (date) => {
+  const dateEvents = getEventData.value(date)
   if (dateEvents.some(e => e.priority === 'high')) return 'high'
   if (dateEvents.some(e => e.priority === 'medium')) return 'medium'
   return 'low'
-}
+})
 
 const previousMonth = () => {
   if (currentMonth.value === 1) {
