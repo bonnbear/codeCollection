@@ -1,0 +1,215 @@
+<template>
+  <div class="calendar-container">
+    <div class="month-tabs">
+      <button @click="previousMonth">&lt;</button>
+      <button v-for="month in months" :key="month" @click="currentMonth = month" :class="{ active: currentMonth === month }">
+        {{ month }}月
+      </button>
+      <button @click="nextMonth">&gt;</button>
+    </div>
+    <div class="week-row">
+      <div v-for="day in weekDays" :key="day" class="week-day">{{ day }}</div>
+    </div>
+    <div class="dates-grid">
+      <div v-for="date in datesInMonth" :key="date.day" class="date-cell" :class="{ 'other-month': !date.currentMonth }">
+        <div class="date-number">{{ date.day }}</div>
+        <div v-if="getEventData(date).length > 0" class="event-container">
+          <el-popover placement="top-start" :width="250" trigger="hover">
+            <template #default>
+              <div v-for="(item, index) in getEventData(date)" :key="index" class="popover-item">
+                <div><strong>内容:</strong> {{ item.content }}</div>
+                <div><strong>处理人:</strong> {{ item.handler }}</div>
+                <div><strong>状态:</strong> {{ item.status }}</div>
+                <div><strong>优先级:</strong> {{ item.priority }}</div>
+                <hr v-if="index < getEventData(date).length - 1">
+              </div>
+            </template>
+            <template #reference>
+              <div class="event-card" :class="getHighestPriority(date)">
+                {{ getEventData(date).length }}个事项
+              </div>
+            </template>
+          </el-popover>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+
+const currentMonth = ref(new Date().getMonth() + 1)
+const currentYear = ref(new Date().getFullYear())
+
+const months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+const weekDays = ['日', '一', '二', '三', '四', '五', '六']
+
+const datesInMonth = computed(() => {
+  const firstDay = new Date(currentYear.value, currentMonth.value - 1, 1)
+  const lastDay = new Date(currentYear.value, currentMonth.value, 0)
+  const daysInMonth = lastDay.getDate()
+  const startingDayOfWeek = firstDay.getDay()
+
+  const dates = []
+
+  // 添加上个月的日期
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    const day = new Date(currentYear.value, currentMonth.value - 2, lastDay.getDate() - startingDayOfWeek + i + 1)
+    dates.push({ day: day.getDate(), currentMonth: false, date: day })
+  }
+
+  // 添加当前月的日期
+  for (let i = 1; i <= daysInMonth; i++) {
+    const day = new Date(currentYear.value, currentMonth.value - 1, i)
+    dates.push({ day: i, currentMonth: true, date: day })
+  }
+
+  // 添加下个月的日期以填满网格
+  const remainingDays = 42 - dates.length
+  for (let i = 1; i <= remainingDays; i++) {
+    const day = new Date(currentYear.value, currentMonth.value, i)
+    dates.push({ day: i, currentMonth: false, date: day })
+  }
+
+  return dates
+})
+
+// 生成随机事项的辅助函数
+const generateRandomEvents = (year, month) => {
+  const events = []
+  const eventContents = ['会议', '报告', '培训', '演讲', '项目启动', '代码审查', '团队建设', '客户拜访', '产品发布', '战略规划']
+  const handlers = ['张三', '李四', '王五', '赵六', '钱七', '孙八', '周九', '吴十']
+  const statuses = ['未开始', '进行中', '已完成', '已延期']
+  const priorities = ['low', 'medium', 'high']
+
+  const daysInMonth = new Date(year, month, 0).getDate()
+  const numEvents = Math.floor(Math.random() * 20) + 10 // 生成10到30个事项
+
+  for (let i = 0; i < numEvents; i++) {
+    const day = Math.floor(Math.random() * daysInMonth) + 1
+    events.push({
+      date: new Date(year, month - 1, day),
+      content: eventContents[Math.floor(Math.random() * eventContents.length)],
+      handler: handlers[Math.floor(Math.random() * handlers.length)],
+      status: statuses[Math.floor(Math.random() * statuses.length)],
+      priority: priorities[Math.floor(Math.random() * priorities.length)]
+    })
+  }
+
+  return events
+}
+
+// 生成当前月份的随机事项
+const events = ref(generateRandomEvents(currentYear.value, currentMonth.value))
+
+const getEventData = (date) => {
+  return events.value.filter(event => 
+    event.date.getDate() === date.day &&
+    event.date.getMonth() === currentMonth.value - 1 &&
+    event.date.getFullYear() === currentYear.value
+  )
+}
+
+const getHighestPriority = (date) => {
+  const dateEvents = getEventData(date)
+  if (dateEvents.some(e => e.priority === 'high')) return 'high'
+  if (dateEvents.some(e => e.priority === 'medium')) return 'medium'
+  return 'low'
+}
+
+const previousMonth = () => {
+  if (currentMonth.value === 1) {
+    currentMonth.value = 12
+    currentYear.value--
+  } else {
+    currentMonth.value--
+  }
+  events.value = generateRandomEvents(currentYear.value, currentMonth.value)
+}
+
+const nextMonth = () => {
+  if (currentMonth.value === 12) {
+    currentMonth.value = 1
+    currentYear.value++
+  } else {
+    currentMonth.value++
+  }
+  events.value = generateRandomEvents(currentYear.value, currentMonth.value)
+}
+</script>
+
+<style scoped>
+.calendar-container {
+  font-family: Arial, sans-serif;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.month-tabs {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.month-tabs button {
+  padding: 10px;
+  border: none;
+  background-color: #f0f0f0;
+  cursor: pointer;
+}
+
+.month-tabs button.active {
+  background-color: #007bff;
+  color: white;
+}
+
+.week-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.dates-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+
+.date-cell {
+  border: 1px solid #ddd;
+  padding: 5px;
+  min-height: 80px;
+}
+
+.date-number {
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.other-month {
+  opacity: 0.5;
+}
+
+.event-container {
+  margin-top: 5px;
+}
+
+.event-card {
+  background-color: #e0e0e0;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 0.8em;
+  cursor: pointer;
+}
+
+.event-card.high { background-color: #ffcccb; }
+.event-card.medium { background-color: #ffffcc; }
+.event-card.low { background-color: #e0e0e0; }
+
+.popover-item {
+  margin-bottom: 10px;
+}
+</style>
