@@ -1,0 +1,79 @@
+<template>
+  <div id="app">
+    <div class="toggle-group">
+      <div 
+        v-for="(option, index) in options" 
+        :key="index"
+        @click="selectOption(option)"
+        :class="{ 'active': selectedOption === option }"
+        class="toggle-item"
+      >
+        {{ option }}
+      </div>
+    </div>
+    <p>选中的选项: {{ selectedOption }}</p>
+  </div>
+</template>
+
+<script>
+import { ref } from 'vue'
+
+export default {
+  name: 'App',
+  setup() {
+    const options = ref(['选项1', '选项2', '选项3', '选项4'])
+    const selectedOption = ref('')
+
+    const selectOption = (option) => {
+      selectedOption.value = option
+    }
+
+    return {
+      options,
+      selectedOption,
+      selectOption
+    }
+  }
+}
+</script>
+
+<style>
+#app {
+  font-family: Arial, sans-serif;
+  padding: 20px;
+}
+
+.toggle-group {
+  display: flex;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  overflow: hidden;
+  width: fit-content;
+}
+
+.toggle-item {
+  padding: 10px 20px;
+  background-color: #fff;
+  border-left: 1px solid #ccc;
+  cursor: pointer;
+  transition: all 0.3s;
+  user-select: none;
+}
+
+.toggle-item:first-child {
+  border-left: none;
+}
+
+.toggle-item.active {
+  background-color: #007bff;
+  color: #fff;
+}
+
+.toggle-item:hover {
+  background-color: #f0f0f0;
+}
+
+.toggle-item.active:hover {
+  background-color: #0056b3;
+}
+</style>
