@@ -1,0 +1,83 @@
+Vue CLI 支持多入口打包配置，这在开发多页面应用时特别有用。以下是如何在 Vue CLI 项目中配置多入口打包的步骤：
+
+1. 首先，在项目根目录创建一个 `vue.config.js` 文件（如果还没有的话）。
+
+2. 在 `vue.config.js` 中，你可以使用 `pages` 选项来定义多个入口。每个入口都会生成一个单独的 HTML 文件。
+
+这里是一个 `vue.config.js` 的示例配置：
+
+```javascript
+const path = require('path');
+
+module.exports = {
+  pages: {
+    index: {
+      // 主页面入口
+      entry: 'src/pages/index/main.js',
+      template: 'public/index.html',
+      filename: 'index.html',
+      title: '主页',
+      chunks: ['chunk-vendors', 'chunk-common', 'index']
+    },
+    subpage: {
+      // 子页面入口
+      entry: 'src/pages/subpage/main.js',
+      template: 'public/subpage.html',
+      filename: 'subpage.html',
+      title: '子页面',
+      chunks: ['chunk-vendors', 'chunk-common', 'subpage']
+    }
+    // 可以继续添加更多页面...
+  },
+  configureWebpack: {
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, 'src'),
+      }
+    }
+  }
+};
+```
+
+3. 相应地，你需要在你的项目结构中创建对应的文件和目录。例如：
+
+```
+src/
+  pages/
+    index/
+      main.js
+      App.vue
+    subpage/
+      main.js
+      App.vue
+public/
+  index.html
+  subpage.html
+```
+
+4. 每个入口点（例如 `src/pages/index/main.js`）应该是一个标准的 Vue 应用入口文件，类似这样：
+
+```javascript
+import Vue from 'vue'
+import App from './App.vue'
+
+Vue.config.productionTip = false
+
+new Vue({
+  render: h => h(App),
+}).$mount('#app')
+```
+
+5. 确保你的 HTML 模板文件（如 `public/index.html` 和 `public/subpage.html`）包含正确的结构和必要的元素，比如 id 为 "app" 的根元素。
+
+6. 运行 `npm run build` 命令时，Vue CLI 会为每个入口生成单独的 HTML、JS 和 CSS 文件。
+
+注意事项：
+
+- `chunks` 选项定义了要包含在该页面中的代码块。'chunk-vendors' 包含第三方库代码，'chunk-common' 包含多个页面共享的代码，最后一个是页面特定的代码块。
+
+- 如果你的页面需要不同的 HTML 模板，你可以为每个页面指定不同的模板文件。
+
+- 你可以通过修改 `configureWebpack` 或 `chainWebpack` 选项来进一步自定义 webpack 配置。
+
+通过这种配置，你可以在一个 Vue CLI 项目中管理和构建多个独立的页面应用。每个页面都有自己的入口点、模板和输出文件，同时还能共享公共的代码和资源。
