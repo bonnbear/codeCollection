@@ -455,3 +455,50 @@ onMounted(() => {
         },
     }
 </script>
+
+
+
+
+
+<template>
+    <div>
+        <span class="text">
+            {{ text }}
+        </span>
+        <span class="remove" @click="emitRemoveItem">x</span>
+    </div>
+</template>
+
+<script setup>
+import { onMounted } from 'vue';
+
+// Props 定义
+const props = defineProps({
+    text: {
+        type: String,
+        default: "x",
+    },
+});
+
+// Emits 定义
+const emit = defineEmits(['removeItem']);
+
+// 方法定义
+const emitRemoveItem = () => {
+    emit('removeItem', props.text);
+};
+
+// 生命周期钩子
+onMounted(() => {
+    console.log("### " + props.text + " ready!");
+});
+</script>
+
+<style scoped>
+.remove {
+    position: absolute;
+    right: 2px;
+    top: 0;
+    cursor: pointer;
+}
+</style>
