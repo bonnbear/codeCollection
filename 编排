@@ -11,7 +11,7 @@
         </div>
       </div>
     </div>
-    <div id="content">
+    <div id="content" :class="{ 'view-mode': !editMode }">
       <button @click="toggleEditMode">{{ editMode ? '切换到查看模式' : '切换到编辑模式' }}</button>
       <button @click="decreaseWidth" :disabled="!editMode">减小宽度</button>
       <button @click="increaseWidth" :disabled="!editMode">增加宽度</button>
@@ -31,6 +31,7 @@
 
       <grid-layout
         ref="gridlayout"
+        :class="{ 'view-mode': !editMode }"
         :margin="[parseInt(marginX), parseInt(marginY)]"
         :layout="layout"
         :responsive-layouts="layouts"
@@ -53,6 +54,7 @@
         <grid-item
           v-for="item in layout"
           :key="item.i"
+          :class="{ 'view-mode': !editMode }"
           :static="!editMode || item.static"
           :x="item.x"
           :y="item.y"
@@ -309,7 +311,7 @@ const dragend = () => {
     mouseXY.y < parentRect.bottom
   ) {
     mouseInGrid = true;
-    }
+  }
   if (mouseInGrid === true) {
     if (gridlayout.value) {
       gridlayout.value.dragEvent('dragend', 'drop', DragPos.x, DragPos.y, 1, 1);
@@ -350,9 +352,18 @@ onMounted(() => {
   background: #eee;
 }
 
+.vue-grid-layout.view-mode {
+  background: #fff;
+}
+
 .vue-grid-item:not(.vue-grid-placeholder) {
   background: #ccc;
   border: 1px solid black;
+}
+
+.vue-grid-item.view-mode:not(.vue-grid-placeholder) {
+  background: #fff;
+  border: none;
 }
 
 .vue-grid-item .resizing {
@@ -416,8 +427,11 @@ onMounted(() => {
   -webkit-columns: 120px;
   columns: 120px;
 }
-</style>
 
+#content.view-mode {
+  background: #fff;
+}
+</style>
 
 
 
