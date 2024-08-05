@@ -1,10 +1,9 @@
-
 <template>
   <div id="app">
-    <h1 style="text-align: center">Vue Grid Layout</h1>
+    <h1 style="text-align: center">Vue 网格布局</h1>
     <div>
       <div class="layoutJSON">
-        Displayed as <code>[x, y, w, h]</code>:
+        显示为 <code>[x, y, w, h]</code>:
         <div class="columns">
           <div class="layoutItem" v-for="item in layout" :key="item.i">
             <b>{{ item.i }}</b>: [{{ item.x }}, {{ item.y }}, {{ item.w }}, {{ item.h }}]
@@ -13,21 +12,21 @@
       </div>
     </div>
     <div id="content">
-      <button @click="decreaseWidth">Decrease Width</button>
-      <button @click="increaseWidth">Increase Width</button>
-      <button @click="addItem">Add an item</button>
-      <button @click="addItemDynamically">Add an item dynamically</button>
-      <!-- <button @click="changeDirection">Change Direction</button> -->
-      <input type="checkbox" v-model="draggable" /> Draggable
-      <input type="checkbox" v-model="resizable" /> Resizable
-      <input type="checkbox" v-model="mirrored" /> Mirrored
-      <input type="checkbox" v-model="responsive" /> Responsive
-      <input type="checkbox" v-model="preventCollision" /> Prevent Collision
+      <button @click="toggleEditMode">{{ editMode ? '切换到查看模式' : '切换到编辑模式' }}</button>
+      <button @click="decreaseWidth" :disabled="!editMode">减小宽度</button>
+      <button @click="increaseWidth" :disabled="!editMode">增加宽度</button>
+      <button @click="addItem" :disabled="!editMode">添加项目</button>
+      <button @click="addItemDynamically" :disabled="!editMode">动态添加项目</button>
+      <input type="checkbox" v-model="draggable" :disabled="!editMode" /> 可拖动
+      <input type="checkbox" v-model="resizable" :disabled="!editMode" /> 可调整大小
+      <input type="checkbox" v-model="mirrored" :disabled="!editMode" /> 镜像
+      <input type="checkbox" v-model="responsive" :disabled="!editMode" /> 响应式
+      <input type="checkbox" v-model="preventCollision" :disabled="!editMode" /> 防止碰撞
       <div style="margin-top: 10px; margin-bottom: 10px;">
-        Row Height: <input type="number" v-model="rowHeight" />
-        Col nums: <input type="number" v-model="colNum" />
-        Margin x: <input type="number" v-model="marginX" />
-        Margin y: <input type="number" v-model="marginY" />
+        行高: <input type="number" v-model="rowHeight" :disabled="!editMode" />
+        列数: <input type="number" v-model="colNum" :disabled="!editMode" />
+        边距 x: <input type="number" v-model="marginX" :disabled="!editMode" />
+        边距 y: <input type="number" v-model="marginY" :disabled="!editMode" />
       </div>
 
       <grid-layout
@@ -37,8 +36,8 @@
         :responsive-layouts="layouts"
         :col-num="parseInt(colNum)"
         :row-height="rowHeight"
-        :is-draggable="draggable"
-        :is-resizable="resizable"
+        :is-draggable="draggable && editMode"
+        :is-resizable="resizable && editMode"
         :is-mirrored="mirrored"
         :prevent-collision="preventCollision"
         :vertical-compact="false"
@@ -54,7 +53,7 @@
         <grid-item
           v-for="item in layout"
           :key="item.i"
-          :static="item.static"
+          :static="!editMode || item.static"
           :x="item.x"
           :y="item.y"
           :w="item.w"
@@ -74,12 +73,12 @@
           @container-resized="containerResized"
           @moved="moved"
         >
-          <test-element :text="item.i" @removeItem="removeItem($event)"></test-element>
+          <test-element :text="item.i" @removeItem="removeItem($event)" :editMode="editMode"></test-element>
         </grid-item>
       </grid-layout>
       <hr />
-      <div @dragstart="dragstart" @drag="drag" @dragend="dragend" class="droppable-element" draggable="true" unselectable="on">
-        Droppable Element (Drag me!)
+      <div v-if="editMode" @dragstart="dragstart" @drag="drag" @dragend="dragend" class="droppable-element" draggable="true" unselectable="on">
+        可拖放元素（拖动我！）
       </div>
     </div>
   </div>
@@ -88,10 +87,8 @@
 <script setup>
 import { ref, reactive, onMounted, nextTick } from 'vue';
 import TestElement from './components/TestElement.vue';
-// import { getDocumentDir, setDocumentDir } from "./helpers/DOM";
 
 const testLayouts = {
-
   lg: [
     { "x": 0, "y": 0, "w": 2, "h": 2, "i": "0" },
     { "x": 2, "y": 0, "w": 2, "h": 4, "i": "1" },
@@ -157,30 +154,24 @@ const addItem = () => {
   let item = { "x": 0, "y": 0, "w": 2, "h": 2, "i": index.value + "", whatever: "bbb" };
   index.value++;
   layout.value.push(item);
-//   nextTick(()=>{
-//           gridlayout.value.layoutUpdate();
-//   })
 };
 
 const addItemDynamically = () => {
   let x, y;
   let found = false;
 
-  // 遍历所有可能的位置，找到一个空闲的位置
   for (let j = 0; !found && j < colNum.value * 10; j++) {
     for (let i = 0; i < colNum.value && !found; i++) {
       x = i;
       y = j;
-      // 检查当前坐标是否已有项目
       found = !layout.value.some(item => (
-        (item.x < x + 2 && item.x + item.w > x) &&  // 水平位置检查
-        (item.y < y + 2 && item.y + item.h > y)    // 垂直位置检查
+        (item.x < x + 2 && item.x + item.w > x) &&
+        (item.y < y + 2 && item.y + item.h > y)
       ));
       if (found) break;
     }
   }
 
-  // 如果找到了空闲的位置，添加新项目
   if (found) {
     let item = { x: x, y: y, w: 2, h: 2, i: index.value + "" };
     index.value++;
@@ -189,7 +180,6 @@ const addItemDynamically = () => {
       gridlayout.value.layoutUpdate();
     });
   } else {
-    // 没有找到空闲位置时，将项目添加到最后一行
     let maxY = Math.max(...layout.value.map(item => item.y + item.h));
     let item = { x: 0, y: maxY, w: 2, h: 2, i: index.value + "" };
     index.value++;
@@ -201,61 +191,49 @@ const addItemDynamically = () => {
 };
 
 const move = (i, newX, newY) => {
-  console.log("MOVE i=" + i + ", X=" + newX + ", Y=" + newY);
+  console.log("移动 i=" + i + ", X=" + newX + ", Y=" + newY);
 };
 
 const resize = (i, newH, newW, newHPx, newWPx) => {
-  console.log("RESIZE i=" + i + ", H=" + newH + ", W=" + newW + ", H(px)=" + newHPx + ", W(px)=" + newWPx);
+  console.log("调整大小 i=" + i + ", H=" + newH + ", W=" + newW + ", H(px)=" + newHPx + ", W(px)=" + newWPx);
 };
 
 const moved = (i, newX, newY) => {
-  console.log("### MOVED i=" + i + ", X=" + newX + ", Y=" + newY);
+  console.log("### 已移动 i=" + i + ", X=" + newX + ", Y=" + newY);
 };
 
 const resized = (i, newH, newW, newHPx, newWPx) => {
-  console.log("### RESIZED i=" + i + ", H=" + newH + ", W=" + newW + ", H(px)=" + newHPx + ", W(px)=" + newWPx);
+  console.log("### 已调整大小 i=" + i + ", H=" + newH + ", W=" + newW + ", H(px)=" + newHPx + ", W(px)=" + newWPx);
 };
 
 const containerResized = (i, newH, newW, newHPx, newWPx) => {
-  console.log("### CONTAINER RESIZED i=" + i + ", H=" + newH + ", W=" + newW + ", H(px)=" + newHPx + ", W(px)=" + newWPx);
+  console.log("### 容器已调整大小 i=" + i + ", H=" + newH + ", W=" + newW + ", H(px)=" + newHPx + ", W(px)=" + newWPx);
 };
 
-// const changeDirection = () => {
-//   let documentDirection = getDocumentDir();
-//   let toggle = "";
-//   if (documentDirection === "rtl") {
-//     toggle = "ltr";
-//   } else {
-//     toggle = "rtl";
-//   }
-//   setDocumentDir(toggle);
-// };
-
 const layoutCreatedEvent = (newLayout) => {
-  console.log("Created layout: ", newLayout);
+  console.log("创建布局: ", newLayout);
 };
 
 const layoutBeforeMountEvent = (newLayout) => {
-  console.log("beforeMount layout: ", newLayout);
+  console.log("挂载前布局: ", newLayout);
 };
 
 const layoutMountedEvent = (newLayout) => {
-  console.log("Mounted layout: ", newLayout);
+  console.log("已挂载布局: ", newLayout);
 };
 
 const layoutReadyEvent = (newLayout) => {
-  console.log("Ready layout: ", newLayout);
+  console.log("布局就绪: ", newLayout);
   layout.value = newLayout;
 };
 
 const layoutUpdatedEvent = (newLayout) => {
-    debugger
-  console.log("Updated layout: ", newLayout);
+  console.log("更新布局: ", newLayout);
   layout.value = newLayout;
 };
 
 const breakpointChangedEvent = (newBreakpoint, newLayout) => {
-  console.log("breakpoint changed breakpoint=", newBreakpoint, ", layout: ", newLayout);
+  console.log("断点改变 breakpoint=", newBreakpoint, ", 布局: ", newLayout);
 };
 
 const toggleEditMode = () => {
@@ -269,7 +247,7 @@ const getGridItemRef = (el, index) => {
 };
 
 const dragstart = (e) => {
-  e.dataTransfer.setData('text', 'Droppable Element');
+  e.dataTransfer.setData('text', '可拖放元素');
 };
 
 const drag = () => {
@@ -331,7 +309,7 @@ const dragend = () => {
     mouseXY.y < parentRect.bottom
   ) {
     mouseInGrid = true;
-  }
+    }
   if (mouseInGrid === true) {
     if (gridlayout.value) {
       gridlayout.value.dragEvent('dragend', 'drop', DragPos.x, DragPos.y, 1, 1);
@@ -426,8 +404,6 @@ onMounted(() => {
   cursor: pointer;
 }
 
-
-
 .layoutJSON {
   background: #ddd;
   border: 1px solid black;
@@ -441,3 +417,41 @@ onMounted(() => {
   columns: 120px;
 }
 </style>
+
+
+
+
+<template>
+    <div>
+        <span class="text">
+            {{text}}
+        </span>
+        <span class="remove" @click="$emit('removeItem', text)">x</span>
+    </div>
+</template>
+<style>
+.remove {
+    position: absolute;
+    right: 2px;
+    top: 0;
+    cursor: pointer;
+}
+</style>
+<script>
+    export default {
+        name: "TestElement",
+        props: {
+            text : {
+                type: String,
+                default: "x",
+            },
+        },
+        data: function() {
+            return {
+            }
+        },
+        mounted: function() {
+            console.log("### " + this.text + " ready!");
+        },
+    }
+</script>
