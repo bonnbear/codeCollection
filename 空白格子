@@ -1,0 +1,249 @@
+<template>
+  <div class="calendar-container">
+    <div class="header">
+      <button @click="previousMonth">&lt;</button>
+      <h1>{{ currentYear }}年{{ months[currentMonth - 1] }}</h1>
+      <button @click="nextMonth">&gt;</button>
+    </div>
+    <div class="months">
+      <button v-for="(month, index) in months" :key="index" @click="currentMonth = index + 1" :class="{ active: currentMonth === index + 1 }">
+        {{ month }}
+      </button>
+    </div>
+    <div class="weekdays">
+      <div v-for="day in weekDays" :key="day" class="weekday">{{ day }}</div>
+    </div>
+    <div class="month-overview">
+      <h2>{{ currentYear }}年{{ months[currentMonth - 1] }}总览</h2>
+      <p>本月共有 {{ monthlyEventCount }} 个事项</p>
+    </div>
+    <div class="dates-grid">
+      <div v-for="date in processedDates" :key="`${currentYear}-${currentMonth}-${date.day}`" class="date-cell" :class="{ 'other-month': !date.currentMonth }">
+        <template v-if="date.currentMonth">
+          <div class="date-number">{{ date.day }}</div>
+          <div v-if="date.events.length > 0" class="event-container">
+            <el-popover placement="top-start" :width="250" trigger="hover">
+              <template #default>
+                <div v-for="(item, index) in date.events" :key="index" class="popover-item">
+                  <div class="popover-title">{{ item.title }}</div>
+                  <div class="popover-time">{{ item.time }}</div>
+                  <div class="popover-count">数量：{{ item.count }}</div>
+                  <div class="popover-priority">优先级：{{ item.priority }}</div>
+                </div>
+              </template>
+              <template #reference>
+                <div class="event-card" :class="date.highestPriority">
+                  {{ date.events.length }}个事项
+                </div>
+              </template>
+            </el-popover>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, watch } from 'vue'
+
+const currentMonth = ref(7)
+const currentYear = ref(2023)
+
+const months = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月']
+const weekDays = ['一', '二', '三', '四', '五', '六', '日']
+
+// 示例数据
+const events = ref([
+  { date: '2023-07-15', title: '会议', time: '14:00', count: 1, priority: 'high' },
+  { date: '2023-07-20', title: '约会', time: '19:00', count: 1, priority: 'medium' },
+  { date: '2023-07-25', title: '团建', time: '全天', count: 15, priority: 'low' },
+  // ... 可以添加更多事件
+])
+
+const monthlyEventCount = computed(() => {
+  const currentMonthEvents = events.value.filter(event => {
+    const [year, month] = event.date.split('-').map(Number);
+    return year === currentYear.value && month === currentMonth.value;
+  });
+  return currentMonthEvents.reduce((total, event) => total + event.count, 0);
+});
+
+const processedDates = computed(() => {
+  const firstDay = new Date(currentYear.value, currentMonth.value - 1, 1)
+  const lastDay = new Date(currentYear.value, currentMonth.value, 0)
+  const daysInMonth = lastDay.getDate()
+  let startingDayOfWeek = firstDay.getDay() - 1 // 调整为周一为0
+  if (startingDayOfWeek === -1) startingDayOfWeek = 6 // 如果是周日，设为6
+
+  const dates = []
+
+  // 添加上个月的日期
+  const prevMonth = currentMonth.value === 1 ? 12 : currentMonth.value - 1
+  const prevYear = currentMonth.value === 1 ? currentYear.value - 1 : currentYear.value
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    const day = new Date(prevYear, prevMonth - 1, lastDay.getDate() - startingDayOfWeek + i + 1)
+    dates.push(createDateObject(day, false))
+  }
+
+  // 添加当前月的日期
+  for (let i = 1; i <= daysInMonth; i++) {
+    const day = new Date(currentYear.value, currentMonth.value - 1, i)
+    dates.push(createDateObject(day, true))
+  }
+
+  // 添加下个月的日期以填满网格
+  const nextMonth = currentMonth.value === 12 ? 1 : currentMonth.value + 1
+  const nextYear = currentMonth.value === 12 ? currentYear.value + 1 : currentYear.value
+  const remainingDays = 42 - dates.length
+  for (let i = 1; i <= remainingDays; i++) {
+    const day = new Date(nextYear, nextMonth - 1, i)
+    dates.push(createDateObject(day, false))
+  }
+
+  return dates
+})
+
+const createDateObject = (day, currentMonth) => {
+  const dateString = formatDate(day)
+  const dateEvents = events.value.filter(event => event.date === dateString)
+  return {
+    day: day.getDate(),
+    currentMonth,
+    date: dateString,
+    events: dateEvents,
+    highestPriority: getHighestPriority(dateEvents)
+  }
+}
+
+const formatDate = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const getHighestPriority = (dateEvents) => {
+  if (dateEvents.some(e => e.priority === 'high')) return 'high'
+  if (dateEvents.some(e => e.priority === 'medium')) return 'medium'
+  return 'low'
+}
+
+const previousMonth = () => {
+  if (currentMonth.value === 1) {
+    currentMonth.value = 12
+    currentYear.value--
+  } else {
+    currentMonth.value--
+  }
+}
+
+const nextMonth = () => {
+  if (currentMonth.value === 12) {
+    currentMonth.value = 1
+    currentYear.value++
+  } else {
+    currentMonth.value++
+  }
+}
+
+watch(events, () => {
+  // 当事件数据变化时，processedDates 会自动重新计算
+}, { deep: true })
+
+</script>
+
+<style scoped>
+.calendar-container {
+  font-family: Arial, sans-serif;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.months {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.months button {
+  padding: 5px 10px;
+  background-color: #f0f0f0;
+  border: none;
+  cursor: pointer;
+}
+
+.months button.active {
+  background-color: #007bff;
+  color: white;
+}
+
+.weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.dates-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+
+.date-cell {
+  border: 1px solid #ddd;
+  padding: 5px;
+  min-height: 100px;
+}
+
+.other-month {
+  background-color: #f9f9f9;
+}
+
+.date-number {
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.event-card {
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 0.8em;
+  cursor: pointer;
+}
+
+.event-card.high {
+  background-color: #ffcccb;
+}
+
+.event-card.medium {
+  background-color: #ffffcc;
+}
+
+.event-card.low {
+  background-color: #ccffcc;
+}
+
+.popover-item {
+  margin-bottom: 10px;
+}
+
+.popover-title {
+  font-weight: bold;
+}
+
+.popover-time, .popover-count, .popover-priority {
+  font-size: 0.9em;
+  color: #666;
+}
+</style>
