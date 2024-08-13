@@ -1,0 +1,674 @@
+<template>
+  <div id="app">
+    <h1 style="text-align: center">Vue 网格布局</h1>
+    
+    <div id="content" :class="{ 'edit-mode': editMode }">
+      <div>
+        <div class="layoutJSON">
+          显示为 <code>[x, y, w, h]</code>:
+          <div class="columns">
+            <div class="layoutItem" v-for="item in layout" :key="item.i">
+              <b>{{ item.i }}</b>: [{{ item.x }}, {{ item.y }}, {{ item.w }}, {{ item.h }}]
+            </div>
+          </div>
+        </div>
+      </div>
+      <button @click="toggleEditMode">
+        {{ editMode ? "切换到查看模式" : "切换到编辑模式" }}
+      </button>
+      <button @click="decreaseWidth" :disabled="!editMode">减小宽度</button>
+      <button @click="increaseWidth" :disabled="!editMode">增加宽度</button>
+      <button @click="addItemDynamically" :disabled="!editMode">
+        动态添加项目
+      </button>
+      <input type="checkbox" v-model="draggable" :disabled="!editMode" /> 可拖动
+      <input type="checkbox" v-model="resizable" :disabled="!editMode" /> 可调整大小
+      <input type="checkbox" v-model="mirrored" :disabled="!editMode" /> 镜像
+      <input type="checkbox" v-model="responsive" :disabled="!editMode" /> 响应式
+      <input type="checkbox" v-model="preventCollision" :disabled="!editMode" /> 防止碰撞
+      <div style="margin-top: 10px; margin-bottom: 10px">
+        行高:
+        <input type="number" v-model="rowHeight" :disabled="!editMode" /> 列数:
+        <input type="number" v-model="colNum" :disabled="!editMode" /> 边距 x:
+        <input type="number" v-model="marginX" :disabled="!editMode" /> 边距 y:
+        <input type="number" v-model="marginY" :disabled="!editMode" />
+      </div>
+      <grid-layout
+        ref="gridlayout"
+        :class="{ 'view-mode': !editMode }"
+        :margin="[parseInt(marginX), parseInt(marginY)]"
+        :layout="layout"
+        :responsive-layouts="layouts"
+        :col-num="parseInt(colNum)"
+        :row-height="rowHeight"
+        :is-draggable="draggable && editMode"
+        :is-resizable="resizable && editMode"
+        :is-mirrored="mirrored"
+        :prevent-collision="preventCollision"
+        :vertical-compact="false"
+        :use-css-transforms="true"
+        :responsive="false"
+        @layout-created="layoutCreatedEvent"
+        @layout-before-mount="layoutBeforeMountEvent"
+        @layout-mounted="layoutMountedEvent"
+        @layout-ready="layoutReadyEvent"
+        @layout-updated="layoutUpdatedEvent"
+        @breakpoint-changed="breakpointChangedEvent"
+      >
+        <grid-item
+          v-for="item in layout"
+          :key="item.i"
+          :class="{ 'view-mode': !editMode }"
+          :static="!editMode || item.static"
+          :x="item.x"
+          :y="item.y"
+          :w="item.w"
+          :h="item.h"
+          :i="item.i"
+          :max-h="item.maxH"
+          :min-w="item.minW"
+          :max-w="item.maxW"
+          :min-x="item.minX"
+          :max-x="item.maxX"
+          :min-y="item.minY"
+          :max-y="item.maxY"
+          :preserve-aspect-ratio="item.preserveAspectRatio"
+          ref="gridItemRefs"
+          @resize="resize"
+          @move="move"
+          @resized="resized"
+          @container-resized="containerResized"
+          @moved="moved"
+        >
+          <component
+            class="container"
+            :is="item.component"
+            :data="item"
+            @removeItem="removeItem($event)"
+            @expandItem="expandItem"
+            :editMode="editMode"
+          ></component>
+        </grid-item>
+      </grid-layout>
+      <hr />
+      <div
+        v-if="editMode"
+        @dragstart="dragstart"
+        @drag="drag"
+        @dragend="dragend"
+        class="droppable-element"
+        draggable="true"
+        unselectable="on"
+      >
+        可拖放元素（拖动我！）
+      </div>
+    </div>
+
+    <!-- 编辑模式遮罩和顶部按钮 -->
+   <div v-if="editMode" class="edit-overlay">
+      <div class="top-buttons">
+        <button @click="saveLayout" class="save-button">保存</button>
+        <button @click="addItem" class="add-button">添加</button>
+      </div>
+      <!-- 这里可以添加一个占位符 div 来保持内容的位置 -->
+      <div class="top-buttons-placeholder"></div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import {
+  ref,
+  reactive,
+  onMounted,
+  nextTick,
+  markRaw,
+  defineAsyncComponent,
+} from "vue";
+import IframeComponent from './components/IframeComponent.vue';
+
+// 模拟API调用获取数据
+const fetchLayoutData = () => {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve([
+        {
+          x: 0,
+          y: 0,
+          w: 2,
+          h: 2,
+          i: "0",
+          componentName: "TestElement",
+          data: { text: "项目 0" },
+        },
+        {
+          x: 2,
+          y: 0,
+          w: 2,
+          h: 4,
+          i: "1",
+          componentName: "AnotherComponent",
+          data: { content: "项目 1" },
+        },
+        {
+          x: 4,
+          y: 0,
+          w: 2,
+          h: 5,
+          i: "2",
+          componentName: "TestElement",
+          data: { text: "项目 2" },
+        },
+        {
+          x: 6,
+          y: 0,
+          w: 4,
+          h: 4,
+          i: "3",
+          componentName: "https://example.com",
+          data: { url: "https://example.com" },
+        },
+        // 其他初始数据...
+      ]);
+    }, 500);
+  });
+};
+
+// 模拟API调用保存数据
+const saveLayoutData = (layout) => {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      console.log("保存布局数据:", layout);
+      resolve();
+    }, 500);
+  });
+};
+
+const layouts = reactive({ lg: [] });
+const layout = ref(layouts["lg"]);
+const draggable = ref(true);
+const resizable = ref(true);
+const mirrored = ref(false);
+const responsive = ref(true);
+const preventCollision = ref(false);
+const rowHeight = ref(40);
+const colNum = ref(24);
+const index = ref(0);
+const marginX = ref(10);
+const marginY = ref(10);
+const mouseXY = reactive({ x: null, y: null });
+const DragPos = reactive({ x: null, y: null, w: 1, h: 1, i: null });
+const gridItemRefs = ref([]);
+const editMode = ref(true);
+const gridlayout = ref(null);
+
+const expandItem = ({ i, w, h }) => {
+  const index = layout.value.findIndex(item => item.i === i);
+  if (index !== -1) {
+    layout.value[index].w = w;
+    layout.value[index].h = h;
+    
+    // 触发布局更新
+    nextTick(() => {
+      if (gridlayout.value) {
+        gridlayout.value.layoutUpdate();
+      }
+    });
+  }
+};
+
+const importComponent = (componentName) => {
+  if (componentName.startsWith('http://') || componentName.startsWith('https://')) {
+    return markRaw(IframeComponent);
+  } else {
+    return defineAsyncComponent(() =>
+      import(`./components/${componentName}.vue`)
+    );
+  }
+};
+
+onMounted(async () => {
+  // 获取初始布局数据
+  const initialData = await fetchLayoutData();
+  layout.value = await Promise.all(
+    initialData.map(async (item) => {
+      const component = await importComponent(item.componentName);
+      return {
+        ...item,
+        component: markRaw(component),
+      };
+    })
+  );
+  index.value = layout.value.length;
+
+  // 添加拖动事件监听
+  document.addEventListener(
+    "dragover",
+    (e) => {
+      mouseXY.x = e.clientX;
+      mouseXY.y = e.clientY;
+    },
+    false
+  );
+});
+
+const increaseWidth = () => {
+  let width = document.getElementById("content").offsetWidth;
+  width += 20;
+  document.getElementById("content").style.width = width + "px";
+};
+
+const decreaseWidth = () => {
+  let width = document.getElementById("content").offsetWidth;
+  width -= 20;
+  document.getElementById("content").style.width = width + "px";
+};
+
+const removeItem = (i) => {
+  const index = layout.value.map((item) => item.i).indexOf(i);
+  layout.value.splice(index, 1);
+};
+
+const addItem = () => {
+  let item = {
+    x: 0,
+    y: 0,
+    w: 2,
+    h: 2,
+    i: index.value + "",
+    componentName: "TestElement",
+    data: { text: "新项目" },
+  };
+  index.value++;
+  importComponent(item.componentName).then((component) => {
+    item.component = markRaw(component);
+    layout.value.push(item);
+  });
+};
+
+const addItemDynamically = () => {
+  let x, y;
+  let found = false;
+  for (let j = 0; !found && j < colNum.value * 10; j++) {
+    for (let i = 0; i < colNum.value && !found; i++) {
+      x = i;
+      y = j;
+      found = !layout.value.some(
+        (item) =>
+          item.x < x + 2 &&
+          item.x + item.w > x &&
+          item.y < y + 2 &&
+          item.y + item.h > y
+      );
+      if (found) break;
+    }
+  }
+  if (found) {
+    let item = {
+      x: x,
+      y: y,
+      w: 2,
+      h: 2,
+      i: index.value + "",
+      componentName: "TestElement",
+      data: { text: "动态添加项目" },
+    };
+    index.value++;
+    importComponent(item.componentName).then((component) => {
+      item.component = markRaw(component);
+      layout.value.push(item);
+      nextTick(() => {
+        gridlayout.value.layoutUpdate();
+      });
+    });
+  } else {
+    let maxY = Math.max(...layout.value.map((item) => item.y + item.h));
+    let item = {
+      x: 0,
+      y: maxY,
+      w: 2,
+      h: 2,
+      i: index.value + "",
+      componentName: "TestElement",
+      data: { text: "动态添加项目" },
+    };
+    index.value++;
+    importComponent(item.componentName).then((component) => {
+      item.component = markRaw(component);
+      layout.value.push(item);
+      nextTick(() => {
+        gridlayout.value.layoutUpdate();
+      });
+    });
+  }
+};
+
+const move = (i, newX, newY) => {
+  console.log("移动 i=" + i + ", X=" + newX + ", Y=" + newY);
+};
+
+const resize = (i, newH, newW, newHPx, newWPx) => {
+  console.log(
+    "调整大小 i=" +
+      i +
+      ", H=" +
+      newH +
+      ", W=" +
+      newW +
+      ", H(px)=" +
+      newHPx +
+      ", W(px)=" +
+      newWPx
+  );
+};
+
+const moved = (i, newX, newY) => {
+  console.log("### 已移动 i=" + i + ", X=" + newX + ", Y=" + newY);
+};
+
+const resized = (i, newH, newW, newHPx, newWPx) => {
+  console.log(
+    "### 已调整大小 i=" +
+      i +
+      ", H=" +
+      newH +
+      ", W=" +
+      newW +
+      ", H(px)=" +
+      newHPx +
+      ", W(px)=" +
+      newWPx
+  );
+};
+
+const containerResized = (i, newH, newW, newHPx, newWPx) => {
+  console.log(
+    "### 容器已调整大小 i=" +
+      i +
+      ", H=" +
+      newH +
+      ", W=" +
+      newW +
+      ", H(px)=" +
+      newHPx +
+      ", W(px)=" +
+      newWPx
+  );
+};
+
+const layoutCreatedEvent = (newLayout) => {
+  console.log("创建布局: ", newLayout);
+};
+
+const layoutBeforeMountEvent = (newLayout) => {
+  console.log("挂载前布局: ", newLayout);
+};
+
+const layoutMountedEvent = (newLayout) => {
+  console.log("已挂载布局: ", newLayout);
+};
+
+const layoutReadyEvent = (newLayout) => {
+  console.log("布局就绪: ", newLayout);
+  layout.value = newLayout;
+};
+
+const layoutUpdatedEvent = async (newLayout) => {
+  console.log("更新布局: ", newLayout);
+  layout.value = newLayout;
+  // 保存布局数据
+  await saveLayoutData(layout.value);
+};
+
+const breakpointChangedEvent = (newBreakpoint, newLayout) => {
+  console.log("断点改变 breakpoint=", newBreakpoint, ", 布局: ", newLayout);
+};
+
+const toggleEditMode = () => {
+  editMode.value = !editMode.value;
+};
+
+const getGridItemRef = (el, index) => {
+  if (el) {
+    gridItemRefs.value[index] = el;
+  }
+};
+
+const dragstart = (e) => {
+  e.dataTransfer.setData("text", "可拖放元素");
+};
+
+const drag = () => {
+  const layoutUnref = layout.value;
+  let parentRect = document.getElementById("content").getBoundingClientRect();
+  let mouseInGrid = false;
+  if (
+    mouseXY.x > parentRect.left &&
+    mouseXY.x < parentRect.right &&
+    mouseXY.y > parentRect.top &&
+    mouseXY.y < parentRect.bottom
+  ) {
+    mouseInGrid = true;
+  }
+  if (
+    mouseInGrid === true &&
+    layoutUnref.findIndex((item) => item.i === "drop") === -1
+  ) {
+    layoutUnref.push({
+      x: (layoutUnref.length * 2) % (colNum.value || 12),
+      y: Math.floor(layoutUnref.length / (colNum.value || 12)),
+      w: 2,
+      h: 2,
+      i: "drop",
+    });
+  }
+  let index = layoutUnref.findIndex((item) => item.i === "drop");
+  if (index !== -1) {
+    try {
+      gridItemRefs.value.style.display = "none";
+    } catch {}
+    let el = gridItemRefs.value[index];
+    if (mouseInGrid === true && el) {
+      el.dragging = {
+        top: mouseXY.y - parentRect.top,
+        left: mouseXY.x - parentRect.left,
+      };
+      let new_pos = el.calcXY(
+        mouseXY.y - parentRect.top,
+        mouseXY.x - parentRect.left
+      );
+      if (gridlayout.value) {
+        gridlayout.value.dragEvent(
+          "dragstart",
+          "drop",
+          new_pos.x,
+          new_pos.y,
+          2,
+          2
+        );
+      }
+      DragPos.i = String(index);
+      DragPos.x = layoutUnref[index].x;
+      DragPos.y = layoutUnref[index].y;
+    }
+    if (mouseInGrid === false) {
+      if (gridlayout.value) {
+        gridlayout.value.dragEvent("dragend", "drop", 1, 1, 1, 1);
+      }
+      layout.value = layoutUnref.filter((obj) => obj.i !== "drop");
+    }
+  }
+};
+
+const dragend = () => {
+  const layoutUnref = layout.value;
+  let parentRect = document.getElementById("content").getBoundingClientRect();
+  let mouseInGrid = false;
+  if (
+    mouseXY.x > parentRect.left &&
+    mouseXY.x < parentRect.right &&
+    mouseXY.y > parentRect.top &&
+    mouseXY.y < parentRect.bottom
+  ) {
+    mouseInGrid = true;
+  }
+  if (mouseInGrid === true) {
+    if (gridlayout.value) {
+      gridlayout.value.dragEvent("dragend", "drop", DragPos.x, DragPos.y, 1, 1);
+    }
+    layout.value = layoutUnref.filter((obj) => obj.i !== "drop");
+    layout.value.push({
+      x: DragPos.x,
+      y: DragPos.y,
+      w: 2,
+      h: 2,
+      i: `new-${index.value}`,
+      component: markRaw(importComponent("TestElement")),
+      data: { text: "新项目" },
+    });
+    index.value++;
+    console.log(layout.value);
+  }
+};
+
+const saveLayout = async () => {
+  console.log('保存布局');
+  await saveLayoutData(layout.value);
+  // 这里可以添加保存成功的提示
+};
+</script>
+
+<style scoped>
+.droppable-element {
+  width: 150px;
+  text-align: center;
+  background: #fdd;
+  border: 1px solid black;
+  margin: 10px 0;
+  padding: 10px;
+}
+.vue-grid-layout {
+  background: #eee;
+}
+.vue-grid-layout.view-mode {
+  background: #fff;
+}
+.vue-grid-item:not(.vue-grid-placeholder) {
+  background: #ccc;
+  border: 1px solid black;
+}
+.vue-grid-item {
+  overflow: hidden;
+}
+.vue-grid-item .container {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  top: 0px;
+  left: 0px;
+  bottom: 0px;
+  right: 0px;
+}
+.vue-grid-item.view-mode:not(.vue-grid-placeholder) {
+  background: #fff;
+  border: none;
+}
+.vue-grid-item .resizing {
+  opacity: 0.9;
+}
+.vue-grid-item .static {
+  background: #cce;
+}
+.vue-grid-item .text {
+  font-size: 24px;
+  text-align: center;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin: auto;
+  height: 100%;
+  width: 100%;
+}
+.vue-grid-item .no-drag {
+  height: 100%;
+  width: 100%;
+}
+.vue-grid-item .minMax {
+  font-size: 12px;
+}
+.vue-grid-item .add {
+  cursor: pointer;
+}
+.vue-draggable-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  top: 0;
+  left: 0;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><circle cx='5' cy='5' r='5' fill='#999999'/></svg>")
+    no-repeat;
+  background-position: bottom right;
+  padding: 0 8px 8px 0;
+  background-repeat: no-repeat;
+  background-origin: content-box;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.layoutJSON {
+  background: #ddd;
+  border: 1px solid black;
+  margin-top: 10px;
+  padding: 10px;
+}
+.columns {
+  -moz-columns: 120px;
+  -webkit-columns: 120px;
+  columns: 120px;
+}
+
+/* 新添加的样式 */
+#app {
+  position: relative;
+  height: 100vh;
+  overflow: auto;
+}
+
+#content {
+  position: relative;
+  z-index: 1;
+}
+
+.edit-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  overflow-y: auto; /* 允许遮罩层滚动 */
+  pointer-events: none; /* 允许点击穿透到下层元素 */
+}
+
+.top-buttons {
+  position: relative; /* 改为相对定位 */
+  background-color: #333;
+  padding: 10px;
+  text-align: right;
+  pointer-events: auto; /* 确保按钮可以点击 */
+}
+
+.top-buttons-placeholder {
+  height: 50px; /* 与 top-buttons 高度相同 */
+}
+
+.save-button {
+  background-color: #4CAF50; /* 绿色 */
+}
+
+.add-button {
+  background-color: #2196F3; /* 蓝色 */
+}
+</style>
