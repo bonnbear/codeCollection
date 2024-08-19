@@ -102,9 +102,18 @@ export default {
       const taskStartDay = start.getDate();
       const taskDuration = end.getDate() - start.getDate() + 1;
       
-      const marginLeft = `${((taskStartDay - 1) / daysInMonth) * 100}%`;
-      const width = `${(taskDuration / daysInMonth) * 100}%`;
+      let marginLeft = `${((taskStartDay - 1) / daysInMonth) * 100}%`;
+      let width = `${(taskDuration / daysInMonth) * 100}%`;
       
+      // 处理跨月份的情况
+      if (task.start.slice(0, 7) < monthKey) {
+        marginLeft = '-2px';
+        width = `calc(${width} + 2px)`;
+      }
+      if (task.end.slice(0, 7) > monthKey) {
+        width = `calc(${width} + 2px)`;
+      }
+
       return {
         marginLeft,
         width,
@@ -116,9 +125,13 @@ export default {
       const classes = [];
       if (task.start.slice(0, 7) === monthKey) {
         classes.push('task-start');
+      } else if (task.start.slice(0, 7) < monthKey) {
+        classes.push('task-continue-start');
       }
       if (task.end.slice(0, 7) === monthKey) {
         classes.push('task-end');
+      } else if (task.end.slice(0, 7) > monthKey) {
+        classes.push('task-continue-end');
       }
       return classes;
     };
@@ -205,6 +218,7 @@ export default {
   border-right: 1px solid #ccc;
   border-bottom: 1px solid #ccc;
   position: relative;
+  overflow: visible;
 }
 
 .task {
@@ -219,7 +233,7 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  z-index: 999;
+  z-index: 1;
 }
 
 .task-start {
@@ -230,5 +244,13 @@ export default {
 .task-end {
   border-top-right-radius: 3px;
   border-bottom-right-radius: 3px;
+}
+
+.task-continue-start {
+  border-left: none;
+}
+
+.task-continue-end {
+  border-right: none;
 }
 </style>
