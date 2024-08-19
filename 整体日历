@@ -17,10 +17,10 @@
             v-for="(task, index) in getTasksForMonth(type, month.key)"
             :key="task.id"
             class="task"
+            :class="getTaskClasses(task, month.key)"
             :style="getTaskStyle(task, month.key)"
             :title="task.name"
           >
-            <!-- 只在任务的第一个出现的月份中显示名称 -->
             <span v-if="isTaskStartingInMonth(task, month.key)">
               {{ task.name }}
             </span>
@@ -48,7 +48,7 @@ export default {
       let currentDate = new Date(startDate.value);
       while (currentDate <= endDate.value) {
         monthArray.push({
-          key: currentDate.toISOString().slice(0, 7), // 格式：YYYY-MM
+          key: currentDate.toISOString().slice(0, 7),
           label: formatMonth(currentDate),
         });
         currentDate.setMonth(currentDate.getMonth() + 1);
@@ -87,41 +87,41 @@ export default {
       return task.start.slice(0, 7) === monthKey;
     };
 
-const getTaskStyle = (task, monthKey) => {
-  const taskStart = new Date(task.start);
-  const taskEnd = new Date(task.end);
-  const monthStart = new Date(monthKey + "-01");
-  const monthEnd = new Date(
-    monthStart.getFullYear(),
-    monthStart.getMonth() + 1,
-    0
-  );
-  const start = taskStart < monthStart ? monthStart : taskStart;
-  const end = taskEnd > monthEnd ? monthEnd : taskEnd;
-  const daysInMonth = monthEnd.getDate();
-  const taskStartDay = start.getDate();
-  
-  // 修改这里的计算方法
-  const taskDuration = end.getDate() - start.getDate() + 1;
-  
-  const marginLeft = `${((taskStartDay - 1) / daysInMonth) * 100}%`;
-  const width = `${(taskDuration / daysInMonth) * 100}%`;
-  
-  // 如果任务覆盖整个月，直接设置宽度为 100%
-  if (start.getTime() === monthStart.getTime() && end.getTime() === monthEnd.getTime()) {
-    return {
-      marginLeft: "0%",
-      width: "100%",
-      backgroundColor: getTaskColor(task.type),
+    const getTaskStyle = (task, monthKey) => {
+      const taskStart = new Date(task.start);
+      const taskEnd = new Date(task.end);
+      const monthStart = new Date(monthKey + "-01");
+      const monthEnd = new Date(
+        monthStart.getFullYear(),
+        monthStart.getMonth() + 1,
+        0
+      );
+      const start = taskStart < monthStart ? monthStart : taskStart;
+      const end = taskEnd > monthEnd ? monthEnd : taskEnd;
+      const daysInMonth = monthEnd.getDate();
+      const taskStartDay = start.getDate();
+      const taskDuration = end.getDate() - start.getDate() + 1;
+      
+      const marginLeft = `${((taskStartDay - 1) / daysInMonth) * 100}%`;
+      const width = `${(taskDuration / daysInMonth) * 100}%`;
+      
+      return {
+        marginLeft,
+        width,
+        backgroundColor: getTaskColor(task.type),
+      };
     };
-  }
-  
-  return {
-    marginLeft,
-    width,
-    backgroundColor: getTaskColor(task.type),
-  };
-};
+
+    const getTaskClasses = (task, monthKey) => {
+      const classes = [];
+      if (task.start.slice(0, 7) === monthKey) {
+        classes.push('task-start');
+      }
+      if (task.end.slice(0, 7) === monthKey) {
+        classes.push('task-end');
+      }
+      return classes;
+    };
 
     const getTaskColor = (type) => {
       const colors = {
@@ -147,6 +147,7 @@ const getTaskStyle = (task, monthKey) => {
       months,
       getTasksForMonth,
       getTaskStyle,
+      getTaskClasses,
       isTaskStartingInMonth,
       calendar,
     };
@@ -210,7 +211,7 @@ const getTaskStyle = (task, monthKey) => {
   position: absolute;
   top: 5px;
   height: 40px;
-  border-radius: 3px;
+  border-radius: 0;
   color: white;
   padding: 2px 5px;
   font-size: 12px;
@@ -218,6 +219,16 @@ const getTaskStyle = (task, monthKey) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  z-index: 1;
+  z-index: 999;
+}
+
+.task-start {
+  border-top-left-radius: 3px;
+  border-bottom-left-radius: 3px;
+}
+
+.task-end {
+  border-top-right-radius: 3px;
+  border-bottom-right-radius: 3px;
 }
 </style>
