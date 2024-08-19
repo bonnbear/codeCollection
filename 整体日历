@@ -87,31 +87,41 @@ export default {
       return task.start.slice(0, 7) === monthKey;
     };
 
-    const getTaskStyle = (task, monthKey) => {
-      const taskStart = new Date(task.start);
-      const taskEnd = new Date(task.end);
-      const monthStart = new Date(monthKey + "-01");
-      const monthEnd = new Date(
-        monthStart.getFullYear(),
-        monthStart.getMonth() + 1,
-        0
-      );
-
-      const start = taskStart < monthStart ? monthStart : taskStart;
-      const end = taskEnd > monthEnd ? monthEnd : taskEnd;
-      const daysInMonth = monthEnd.getDate();
-      const taskStartDay = start.getDate();
-      const taskDuration = (end - start) / (1000 * 60 * 60 * 24) + 1;
-
-      const marginLeft = `${((taskStartDay - 1) / daysInMonth) * 100}%`;
-      const width = `${(taskDuration / daysInMonth) * 100}%`;
-
-      return {
-        marginLeft,
-        width,
-        backgroundColor: getTaskColor(task.type),
-      };
+const getTaskStyle = (task, monthKey) => {
+  const taskStart = new Date(task.start);
+  const taskEnd = new Date(task.end);
+  const monthStart = new Date(monthKey + "-01");
+  const monthEnd = new Date(
+    monthStart.getFullYear(),
+    monthStart.getMonth() + 1,
+    0
+  );
+  const start = taskStart < monthStart ? monthStart : taskStart;
+  const end = taskEnd > monthEnd ? monthEnd : taskEnd;
+  const daysInMonth = monthEnd.getDate();
+  const taskStartDay = start.getDate();
+  
+  // 修改这里的计算方法
+  const taskDuration = end.getDate() - start.getDate() + 1;
+  
+  const marginLeft = `${((taskStartDay - 1) / daysInMonth) * 100}%`;
+  const width = `${(taskDuration / daysInMonth) * 100}%`;
+  
+  // 如果任务覆盖整个月，直接设置宽度为 100%
+  if (start.getTime() === monthStart.getTime() && end.getTime() === monthEnd.getTime()) {
+    return {
+      marginLeft: "0%",
+      width: "100%",
+      backgroundColor: getTaskColor(task.type),
     };
+  }
+  
+  return {
+    marginLeft,
+    width,
+    backgroundColor: getTaskColor(task.type),
+  };
+};
 
     const getTaskColor = (type) => {
       const colors = {
@@ -204,6 +214,7 @@ export default {
   color: white;
   padding: 2px 5px;
   font-size: 12px;
+  box-sizing: border-box;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
