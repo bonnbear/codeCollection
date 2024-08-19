@@ -1,0 +1,217 @@
+<template>
+  <div class="gantt-chart-container">
+    <canvas ref="canvas" @mousedown="startDrag" @mousemove="drag" @mouseup="endDrag" @wheel="zoom"></canvas>
+    <div class="controls">
+      <button @click="resetView">重置视图</button>
+      <span>缩放: {{ Math.round(scale * 100) }}%</span>
+    </div>
+  </div>
+</template>
+
+<script>
+import { ref, onMounted, watch } from 'vue';
+
+export default {
+  name: 'GanttChart',
+  setup() {
+    const canvas = ref(null);
+    const ctx = ref(null);
+    const scale = ref(1);
+    const offsetX = ref(0);
+    const offsetY = ref(0);
+    const isDragging = ref(false);
+    const lastX = ref(0);
+    const lastY = ref(0);
+
+    const taskTypes = ["开发", "设计", "测试", "部署"];
+    const startDate = new Date("2023-01-01");
+    const endDate = new Date("2023-12-31");
+
+    const tasks = [
+      { id: 1, name: "需求分析", type: "开发", start: "2023-01-01", end: "2023-02-15" },
+      { id: 2, name: "UI设计", type: "设计", start: "2023-02-16", end: "2023-03-31" },
+      { id: 3, name: "前端开发", type: "开发", start: "2023-04-01", end: "2023-05-31" },
+      { id: 4, name: "后端开发", type: "开发", start: "2023-06-01", end: "2023-07-31" },
+      { id: 5, name: "单元测试", type: "测试", start: "2023-08-01", end: "2023-09-15" },
+      { id: 6, name: "集成测试", type: "测试", start: "2023-09-16", end: "2023-10-14" },
+      { id: 7, name: "部署准备", type: "部署", start: "2023-11-01", end: "2023-11-30" },
+      { id: 8, name: "正式上线", type: "部署", start: "2023-12-01", end: "2023-12-31" },
+    ];
+
+    const months = [];
+    let currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
+      months.push({
+        key: currentDate.toISOString().slice(0, 7),
+        label: currentDate.toLocaleDateString("zh-CN", { year: "numeric", month: "short" }),
+      });
+      currentDate.setMonth(currentDate.getMonth() + 1);
+    }
+
+    const getTaskColor = (type) => {
+      const colors = {
+        开发: "#4CAF50",
+        设计: "#2196F3",
+        测试: "#FFC107",
+        部署: "#9C27B0",
+      };
+      return colors[type] || "#757575";
+    };
+
+    const draw = () => {
+      if (!ctx.value) return;
+
+      const canvasWidth = canvas.value.width;
+      const canvasHeight = canvas.value.height;
+      ctx.value.clearRect(0, 0, canvasWidth, canvasHeight);
+
+      ctx.value.save();
+      ctx.value.scale(scale.value, scale.value);
+      ctx.value.translate(offsetX.value, offsetY.value);
+
+      const cellWidth = canvasWidth / months.length;
+      const cellHeight = 50;
+      const typeColumnWidth = 100;
+
+      // Draw task types
+      ctx.value.fillStyle = "#f0f0f0";
+      ctx.value.fillRect(0, cellHeight, typeColumnWidth, canvasHeight);
+      ctx.value.strokeStyle = "#ccc";
+      ctx.value.strokeRect(0, cellHeight, typeColumnWidth, canvasHeight);
+
+      taskTypes.forEach((type, index) => {
+        ctx.value.fillStyle = "#000";
+        ctx.value.font = "bold 12px Arial";
+        ctx.value.textAlign = "left";
+        ctx.value.textBaseline = "middle";
+        ctx.value.fillText(type, 10, cellHeight * (index + 1.5));
+      });
+
+      // Draw months
+      ctx.value.fillStyle = "#e0e0e0";
+      ctx.value.fillRect(typeColumnWidth, 0, canvasWidth, cellHeight);
+      months.forEach((month, index) => {
+        ctx.value.strokeStyle = "#ccc";
+        ctx.value.strokeRect(typeColumnWidth + index * cellWidth, 0, cellWidth, cellHeight);
+        ctx.value.fillStyle = "#000";
+        ctx.value.font = "bold 12px Arial";
+        ctx.value.textAlign = "center";
+        ctx.value.textBaseline = "middle";
+        ctx.value.fillText(month.label, typeColumnWidth + (index + 0.5) * cellWidth, cellHeight / 2);
+      });
+
+      // Draw tasks
+      tasks.forEach((task) => {
+        const taskStart = new Date(task.start);
+        const taskEnd = new Date(task.end);
+        const startMonth = months.findIndex(m => m.key === task.start.slice(0, 7));
+        const endMonth = months.findIndex(m => m.key === task.end.slice(0, 7));
+        const typeIndex = taskTypes.indexOf(task.type);
+
+        if (startMonth !== -1 && endMonth !== -1 && typeIndex !== -1) {
+          const x = typeColumnWidth + startMonth * cellWidth;
+          const y = cellHeight * (typeIndex + 1);
+          const width = (endMonth - startMonth + 1) * cellWidth;
+
+          ctx.value.fillStyle = getTaskColor(task.type);
+          ctx.value.fillRect(x, y + 5, width, cellHeight - 10);
+
+          ctx.value.fillStyle = "#fff";
+          ctx.value.font = "12px Arial";
+          ctx.value.textAlign = "left";
+          ctx.value.textBaseline = "middle";
+          ctx.value.fillText(task.name, x + 5, y + cellHeight / 2);
+        }
+      });
+
+      ctx.value.restore();
+    };
+
+    const startDrag = (event) => {
+      isDragging.value = true;
+      lastX.value = event.clientX;
+      lastY.value = event.clientY;
+    };
+
+    const drag = (event) => {
+      if (!isDragging.value) return;
+      const dx = event.clientX - lastX.value;
+      const dy = event.clientY - lastY.value;
+      offsetX.value += dx / scale.value;
+      offsetY.value += dy / scale.value;
+      lastX.value = event.clientX;
+      lastY.value = event.clientY;
+      draw();
+    };
+
+    const endDrag = () => {
+      isDragging.value = false;
+    };
+
+    const zoom = (event) => {
+      event.preventDefault();
+      const zoomIntensity = 0.1;
+      const wheel = event.deltaY < 0 ? 1 : -1;
+      const zoom = Math.exp(wheel * zoomIntensity);
+      scale.value *= zoom;
+      scale.value = Math.max(0.1, Math.min(scale.value, 5)); // Limit zoom between 10% and 500%
+      draw();
+    };
+
+    const resetView = () => {
+      scale.value = 1;
+      offsetX.value = 0;
+      offsetY.value = 0;
+      draw();
+    };
+
+    onMounted(() => {
+      canvas.value.width = canvas.value.offsetWidth;
+      canvas.value.height = canvas.value.offsetHeight;
+      ctx.value = canvas.value.getContext('2d');
+      draw();
+    });
+
+    watch([scale, offsetX, offsetY], () => {
+      draw();
+    });
+
+    return {
+      canvas,
+      scale,
+      startDrag,
+      drag,
+      endDrag,
+      zoom,
+      resetView,
+    };
+  },
+};
+</script>
+
+<style scoped>
+.gantt-chart-container {
+  width: 100%;
+  height: 400px;
+  position: relative;
+}
+
+canvas {
+  width: 100%;
+  height: 100%;
+  cursor: move;
+}
+
+.controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 5px;
+  border-radius: 5px;
+}
+
+button {
+  margin-right: 10px;
+}
+</style>
