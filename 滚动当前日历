@@ -1,0 +1,398 @@
+<template>
+  <div class="calendar-card">
+    <div class="calendar-container" ref="calendarContainer">
+      <div class="month-tabs" ref="monthTabs">
+        <button @click="previousMonth">&lt;</button>
+        <button 
+          v-for="month in months" 
+          :key="month" 
+          @click="setCurrentMonth(month)" 
+          :class="{ active: currentMonth === month }"
+          :ref="el => { if (el) monthRefs[month] = el }"
+        >
+          {{ month }}月
+        </button>
+        <button @click="nextMonth">&gt;</button>
+      </div>
+      <div class="week-row">
+        <div v-for="day in weekDays" :key="day" class="week-day">{{ day }}</div>
+      </div>
+      <div class="scrollable-content">
+        <div class="fixed-width-content">
+          <div class="dates-grid">
+            <div 
+              v-for="date in datesInMonth" 
+              :key="`${currentYear}-${currentMonth}-${date.day}`"
+              class="date-cell" 
+              :class="{ 'other-month': !date.currentMonth }"
+            >
+              <div class="date-number">{{ date.day }}</div>
+              <div v-if="getEventData(date).length > 0" class="event-container">
+                <el-popover placement="top-start" :width="250" trigger="hover">
+                  <template #default>
+                    <div v-for="(item, index) in getEventData(date)" :key="index" class="popover-item">
+                      <div><strong>内容:</strong> {{ item.content }}</div>
+                      <div><strong>处理人:</strong> {{ item.handler }}</div>
+                      <div><strong>状态:</strong> {{ item.status }}</div>
+                      <div><strong>优先级:</strong> {{ item.priority }}</div>
+                      <hr v-if="index < getEventData(date).length - 1">
+                    </div>
+                  </template>
+                  <template #reference>
+                    <div class="event-card" :class="getHighestPriority(date)">
+                      {{ getEventData(date).length }}个事项
+                    </div>
+                  </template>
+                </el-popover>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button class="expand-button" @click="dialogVisible = true">放大</button>
+
+    <teleport to="body">
+      <el-dialog v-model="dialogVisible" title="完整日历" width="80%" fullscreen>
+        <div class="full-calendar-container">
+          <div class="month-tabs">
+            <button @click="previousMonth">&lt;</button>
+            <button 
+              v-for="month in months" 
+              :key="month" 
+              @click="setCurrentMonth(month)" 
+              :class="{ active: currentMonth === month }"
+              :ref="el => { if (el) monthRefs[month] = el }"
+            >
+              {{ month }}月
+            </button>
+            <button @click="nextMonth">&gt;</button>
+          </div>
+          <div class="week-row">
+            <div v-for="day in weekDays" :key="day" class="week-day">{{ day }}</div>
+          </div>
+          <div class="dates-grid">
+            <div 
+              v-for="date in datesInMonth" 
+              :key="`${currentYear}-${currentMonth}-${date.day}`"
+              class="date-cell" 
+              :class="{ 'other-month': !date.currentMonth }"
+            >
+              <div class="date-number">{{ date.day }}</div>
+              <div v-if="getEventData(date).length > 0" class="event-container">
+                <el-popover placement="top-start" :width="250" trigger="hover">
+                  <template #default>
+                    <div v-for="(item, index) in getEventData(date)" :key="index" class="popover-item">
+                      <div><strong>内容:</strong> {{ item.content }}</div>
+                      <div><strong>处理人:</strong> {{ item.handler }}</div>
+                      <div><strong>状态:</strong> {{ item.status }}</div>
+                      <div><strong>优先级:</strong> {{ item.priority }}</div>
+                      <hr v-if="index < getEventData(date).length - 1">
+                    </div>
+                  </template>
+                  <template #reference>
+                    <div class="event-card" :class="getHighestPriority(date)">
+                      {{ getEventData(date).length }}个事项
+                    </div>
+                  </template>
+                </el-popover>
+              </div>
+            </div>
+          </div>
+        </div>
+      </el-dialog>
+    </teleport>
+  </div>
+</template>
+
+<script setup>
+import { ref, watch, onMounted, nextTick } from 'vue';
+import { ElDialog } from 'element-plus';
+import 'element-plus/dist/index.css';
+
+const currentMonth = ref(new Date().getMonth() + 1);
+const currentYear = ref(new Date().getFullYear());
+
+const months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+const weekDays = ['一', '二', '三', '四', '五', '六', '日'];
+
+const datesInMonth = ref([]);
+const dialogVisible = ref(false);
+const calendarContainer = ref(null);
+const monthTabs = ref(null);
+const monthRefs = ref({});
+
+const events = ref([
+  { date: '2023-07-05', content: '项目启动会议', handler: '张三', status: '未开始', priority: 'high' },
+  { date: '2023-07-10', content: '代码审查', handler: '李四', status: '进行中', priority: 'medium' },
+  { date: '2023-07-15', content: '团队建设活动', handler: '王五', status: '已完成', priority: 'low' },
+  { date: '2023-07-20', content: '客户演示', handler: '赵六', status: '未开始', priority: 'high' },
+  { date: '2023-07-25', content: '月度总结会议', handler: '张三', status: '未开始', priority: 'medium' },
+]);
+
+const updateDatesInMonth = () => {
+  const firstDay = new Date(currentYear.value, currentMonth.value - 1, 1);
+  const lastDay = new Date(currentYear.value, currentMonth.value, 0);
+  const daysInMonth = lastDay.getDate();
+  let startingDayOfWeek = firstDay.getDay() - 1;
+  if (startingDayOfWeek === -1) startingDayOfWeek = 6;
+
+  const dates = [];
+
+  const prevMonth = currentMonth.value === 1 ? 12 : currentMonth.value - 1;
+  const prevYear = currentMonth.value === 1 ? currentYear.value - 1 : currentYear.value;
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    const day = new Date(prevYear, prevMonth - 1, lastDay.getDate() - startingDayOfWeek + i + 1);
+    dates.push({ 
+      day: day.getDate(), 
+      currentMonth: false, 
+      date: formatDate(day)
+    });
+  }
+
+  for (let i = 1; i <= daysInMonth; i++) {
+    const day = new Date(currentYear.value, currentMonth.value - 1, i);
+    dates.push({ 
+      day: i, 
+      currentMonth: true, 
+      date: formatDate(day)
+    });
+  }
+
+  const nextMonth = currentMonth.value === 12 ? 1 : currentMonth.value + 1;
+  const nextYear = currentMonth.value === 12 ? currentYear.value + 1 : currentYear.value;
+  const remainingDays = 42 - dates.length;
+  for (let i = 1; i <= remainingDays; i++) {
+    const day = new Date(nextYear, nextMonth - 1, i);
+    dates.push({ 
+      day: i, 
+      currentMonth: false, 
+      date: formatDate(day)
+    });
+  }
+
+  datesInMonth.value = dates;
+};
+
+const formatDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getEventData = (date) => {
+  return events.value.filter(event => event.date === date.date);
+};
+
+const getHighestPriority = (date) => {
+  const dateEvents = getEventData(date);
+  if (dateEvents.some(e => e.priority === 'high')) return 'high';
+  if (dateEvents.some(e => e.priority === 'medium')) return 'medium';
+  return 'low';
+};
+
+const previousMonth = () => {
+  if (currentMonth.value === 1) {
+    currentMonth.value = 12;
+    currentYear.value--;
+  } else {
+    currentMonth.value--;
+  }
+  updateDatesInMonth();
+};
+
+const nextMonth = () => {
+  if (currentMonth.value === 12) {
+    currentMonth.value = 1;
+    currentYear.value++;
+  } else {
+    currentMonth.value++;
+  }
+  updateDatesInMonth();
+};
+
+const setCurrentMonth = (month) => {
+  currentMonth.value = month;
+  updateDatesInMonth();
+};
+
+const scrollToCurrentMonth = () => {
+  nextTick(() => {
+    if (monthRefs.value[currentMonth.value]) {
+      const tabsContainer = monthTabs.value;
+      const activeTab = monthRefs.value[currentMonth.value];
+      
+      if (tabsContainer && activeTab) {
+        const containerWidth = tabsContainer.offsetWidth;
+        const tabLeft = activeTab.offsetLeft;
+        const tabWidth = activeTab.offsetWidth;
+        
+        const scrollLeft = tabLeft - (containerWidth / 2) + (tabWidth / 2);
+        
+        tabsContainer.scrollTo({
+          left: scrollLeft,
+          behavior: 'smooth'
+        });
+      }
+    }
+  });
+};
+
+watch(events, () => {
+  updateDatesInMonth();
+}, { deep: true });
+
+watch([currentMonth, currentYear], () => {
+  updateDatesInMonth();
+  scrollToCurrentMonth();
+});
+
+onMounted(() => {
+  updateDatesInMonth();
+  scrollToCurrentMonth();
+});
+</script>
+
+<style scoped>
+.calendar-card {
+  font-family: Arial, sans-serif;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.calendar-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: auto;
+}
+
+.scrollable-content {
+  flex-grow: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  width: 100%;
+}
+
+.fixed-width-content {
+  width: 600px;
+  min-width: 100%;
+}
+
+.month-tabs {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.month-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.month-tabs button {
+  padding: 5px;
+  border: none;
+  background-color: #f0f0f0;
+  cursor: pointer;
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+
+.month-tabs button.active {
+  background-color: #007bff;
+  color: white;
+}
+
+.week-row {
+  display: flex;
+  justify-content: space-between;
+  text-align: center;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.week-day {
+  flex: 1;
+  font-size: 0.8em;
+}
+
+.dates-grid {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.date-cell {
+  flex-basis: calc(100% / 7 - 4px);
+  border: 1px solid #ddd;
+  padding: 2px;
+  height: 80px;
+  margin: 1px;
+  box-sizing: border-box;
+  font-size: 0.8em;
+  overflow-y: auto;
+}
+
+.date-number {
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+
+.other-month {
+  opacity: 0.5;
+}
+
+.event-container {
+  margin-top: 2px;
+}
+
+.event-card {
+  background-color: #e0e0e0;
+  padding: 1px 3px;
+  border-radius: 2px;
+  font-size: 0.7em;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+
+.event-card.high { background-color: #ffcccb; }
+.event-card.medium { background-color: #ffffcc; }
+.event-card.low { background-color: #e0e0e0; }
+
+.popover-item {
+  margin-bottom: 5px;
+  font-size: 0.8em;
+}
+
+.expand-button {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  padding: 5px 10px;
+  font-size: 0.8em;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.full-calendar-container {
+  max-height: 80vh;
+  overflow-y: auto;
+}
+</style>
