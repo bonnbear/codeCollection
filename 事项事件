@@ -6,10 +6,10 @@
         {{ month }}
       </div>
     </div>
-    <div v-for="category in categories" :key="category" class="row">
-      <div class="column fixed-column">{{ getCategoryName(category) }}</div>
+    <div v-for="category in categories" :key="category.key" class="row">
+      <div class="column fixed-column">{{ category.name }}</div>
       <div v-for="month in months" :key="month" class="column month-column">
-        <div v-for="item in getDataForCategoryAndMonth(category, month)" :key="item.id" class="item-card">
+        <div v-for="item in processedData[category.key][month]" :key="item.id" class="item-card">
           <el-popover placement="top-start" :width="250" trigger="hover">
             <template #default>
               <div v-for="(value, key) in item" :key="key">
@@ -17,7 +17,7 @@
               </div>
             </template>
             <template #reference>
-              <div class="item-title">{{ getItemTitle(item) }}</div>
+              <div class="item-title">{{ item.displayTitle }}</div>
             </template>
           </el-popover>
         </div>
@@ -27,12 +27,11 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, watch } from 'vue'
 import { ElPopover } from 'element-plus'
 import 'element-plus/dist/index.css'
 
-// 为数据添加日期字段
-const dataObj = {
+const dataObj = ref({
   employees: [
     { id: 1, name: 'John Doe', position: 'Manager', salary: 80000, date: '2023-06-15' },
     { id: 2, name: 'Jane Smith', position: 'Developer', salary: 75000, date: '2023-07-01' },
@@ -49,38 +48,43 @@ const dataObj = {
     { id: 3, title: 'Task 3', assignee: 'Mike Johnson', dueDate: '2023-08-01' },
     { id: 4, title: 'Task 4', assignee: 'John Doe', dueDate: '2023-07-10' }
   ]
-}
+})
 
 const months = [
   '一月', '二月', '三月', '四月', '五月', '六月',
   '七月', '八月', '九月', '十月', '十一月', '十二月'
 ]
 
-const categories = ['employees', 'projects', 'tasks']
+const categories = [
+  { key: 'employees', name: '员工' },
+  { key: 'projects', name: '项目' },
+  { key: 'tasks', name: '任务' }
+]
 
-const getCategoryName = (category) => {
-  const names = {
-    employees: '员工',
-    projects: '项目',
-    tasks: '任务'
-  }
-  return names[category] || category
-}
+const processedData = ref({})
 
-const getItemTitle = (item) => {
-  if (item.name) return item.name
-  if (item.title) return item.title
-  return `ID: ${item.id}`
-}
-
-const getDataForCategoryAndMonth = (category, month) => {
-  const monthIndex = months.indexOf(month)
-  return dataObj[category].filter(item => {
-    const itemDate = new Date(category === 'tasks' ? item.dueDate : item.date)
-    return itemDate.getMonth() === monthIndex
+const processData = () => {
+  const result = {}
+  categories.forEach(category => {
+    result[category.key] = months.reduce((acc, month) => {
+      acc[month] = []
+      return acc
+    }, {})
   })
+
+  Object.entries(dataObj.value).forEach(([key, items]) => {
+    items.forEach(item => {
+      const date = new Date(key === 'tasks' ? item.dueDate : item.date)
+      const month = months[date.getMonth()]
+      const displayTitle = item.name || item.title || `ID: ${item.id}`
+      result[key][month].push({ ...item, displayTitle })
+    })
+  })
+
+  processedData.value = result
 }
 
+watch(dataObj, processData, { immediate: true, deep: true })
 </script>
 
 <style scoped>
