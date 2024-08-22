@@ -1,0 +1,138 @@
+<template>
+  <div class="calendar-container">
+    <div class="row header-row">
+      <div class="column fixed-column">事项类别</div>
+      <div v-for="month in months" :key="month" class="column month-column">
+        {{ month }}
+      </div>
+    </div>
+    <div v-for="category in categories" :key="category" class="row">
+      <div class="column fixed-column">{{ getCategoryName(category) }}</div>
+      <div v-for="month in months" :key="month" class="column month-column">
+        <div v-for="item in getDataForCategoryAndMonth(category, month)" :key="item.id" class="item-card">
+          <el-popover placement="top-start" :width="250" trigger="hover">
+            <template #default>
+              <div v-for="(value, key) in item" :key="key">
+                <strong>{{ key }}:</strong> {{ value }}
+              </div>
+            </template>
+            <template #reference>
+              <div class="item-title">{{ getItemTitle(item) }}</div>
+            </template>
+          </el-popover>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+import { ElPopover } from 'element-plus'
+import 'element-plus/dist/index.css'
+
+// 为数据添加日期字段
+const dataObj = {
+  employees: [
+    { id: 1, name: 'John Doe', position: 'Manager', salary: 80000, date: '2023-06-15' },
+    { id: 2, name: 'Jane Smith', position: 'Developer', salary: 75000, date: '2023-07-01' },
+    { id: 3, name: 'Mike Johnson', position: 'Designer', salary: 60000, date: '2023-08-10' }
+  ],
+  projects: [
+    { id: 1, name: 'Project A', status: 'In Progress', budget: 100000, date: '2023-06-20' },
+    { id: 2, name: 'Project B', status: 'Completed', budget: 150000, date: '2023-07-15' },
+    { id: 3, name: 'Project C', status: 'Planning', budget: 200000, date: '2023-08-05' }
+  ],
+  tasks: [
+    { id: 1, title: 'Task 1', assignee: 'John Doe', dueDate: '2023-06-30' },
+    { id: 2, title: 'Task 2', assignee: 'Jane Smith', dueDate: '2023-07-15' },
+    { id: 3, title: 'Task 3', assignee: 'Mike Johnson', dueDate: '2023-08-01' },
+    { id: 4, title: 'Task 4', assignee: 'John Doe', dueDate: '2023-07-10' }
+  ]
+}
+
+const months = [
+  '一月', '二月', '三月', '四月', '五月', '六月',
+  '七月', '八月', '九月', '十月', '十一月', '十二月'
+]
+
+const categories = ['employees', 'projects', 'tasks']
+
+const getCategoryName = (category) => {
+  const names = {
+    employees: '员工',
+    projects: '项目',
+    tasks: '任务'
+  }
+  return names[category] || category
+}
+
+const getItemTitle = (item) => {
+  if (item.name) return item.name
+  if (item.title) return item.title
+  return `ID: ${item.id}`
+}
+
+const getDataForCategoryAndMonth = (category, month) => {
+  const monthIndex = months.indexOf(month)
+  return dataObj[category].filter(item => {
+    const itemDate = new Date(category === 'tasks' ? item.dueDate : item.date)
+    return itemDate.getMonth() === monthIndex
+  })
+}
+
+</script>
+
+<style scoped>
+.calendar-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  font-family: Arial, sans-serif;
+}
+
+.row {
+  display: flex;
+  width: 100%;
+}
+
+.header-row {
+  font-weight: bold;
+  background-color: #f0f0f0;
+}
+
+.column {
+  border: 1px solid #eaeaea;
+  padding: 10px;
+  flex-grow: 1;
+  overflow: hidden;
+}
+
+.fixed-column {
+  width: 120px;
+  flex-shrink: 0;
+  text-align: center;
+  font-weight: bold;
+  background-color: #f0f0f0;
+}
+
+.month-column {
+  width: 200px;
+  text-align: center;
+}
+
+.item-card {
+  margin: 5px 0;
+  padding: 5px;
+  background-color: #e6f7ff;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.item-title {
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+</style>
