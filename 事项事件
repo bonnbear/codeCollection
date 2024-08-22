@@ -12,8 +12,22 @@
         <div v-for="item in processedData[category.key][monthIndex]" :key="item.id" class="item-card">
           <el-popover placement="top-start" :width="250" trigger="hover">
             <template #default>
-              <div v-for="(value, key) in item" :key="key">
-                <strong>{{ key }}:</strong> {{ value }}
+              <div v-if="category.key === 'employees'">
+                <div><strong>姓名:</strong> {{ item.name }}</div>
+                <div><strong>职位:</strong> {{ item.position }}</div>
+                <div><strong>薪资:</strong> ${{ item.salary }}</div>
+                <div><strong>入职日期:</strong> {{ item.date }}</div>
+              </div>
+              <div v-else-if="category.key === 'projects'">
+                <div><strong>项目名称:</strong> {{ item.name }}</div>
+                <div><strong>状态:</strong> {{ item.status }}</div>
+                <div><strong>预算:</strong> ${{ item.budget }}</div>
+                <div><strong>开始日期:</strong> {{ item.date }}</div>
+              </div>
+              <div v-else-if="category.key === 'tasks'">
+                <div><strong>任务:</strong> {{ item.title }}</div>
+                <div><strong>负责人:</strong> {{ item.assignee }}</div>
+                <div><strong>截止日期:</strong> {{ item.dueDate }}</div>
               </div>
             </template>
             <template #reference>
