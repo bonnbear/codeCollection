@@ -2,14 +2,14 @@
   <div class="calendar-container">
     <div class="row header-row">
       <div class="column fixed-column">事项类别</div>
-      <div v-for="month in months" :key="month" class="column month-column">
+      <div v-for="month in monthNames" :key="month" class="column month-column">
         {{ month }}
       </div>
     </div>
     <div v-for="category in categories" :key="category.key" class="row">
       <div class="column fixed-column">{{ category.name }}</div>
-      <div v-for="month in months" :key="month" class="column month-column">
-        <div v-for="item in processedData[category.key][month]" :key="item.id" class="item-card">
+      <div v-for="monthIndex in 12" :key="monthIndex" class="column month-column">
+        <div v-for="item in processedData[category.key][monthIndex]" :key="item.id" class="item-card">
           <el-popover placement="top-start" :width="250" trigger="hover">
             <template #default>
               <div v-for="(value, key) in item" :key="key">
@@ -50,7 +50,7 @@ const dataObj = ref({
   ]
 })
 
-const months = [
+const monthNames = [
   '一月', '二月', '三月', '四月', '五月', '六月',
   '七月', '八月', '九月', '十月', '十一月', '十二月'
 ]
@@ -66,8 +66,8 @@ const processedData = ref({})
 const processData = () => {
   const result = {}
   categories.forEach(category => {
-    result[category.key] = months.reduce((acc, month) => {
-      acc[month] = []
+    result[category.key] = Array(12).fill().reduce((acc, _, index) => {
+      acc[index + 1] = []
       return acc
     }, {})
   })
@@ -75,9 +75,9 @@ const processData = () => {
   Object.entries(dataObj.value).forEach(([key, items]) => {
     items.forEach(item => {
       const date = new Date(key === 'tasks' ? item.dueDate : item.date)
-      const month = months[date.getMonth()]
+      const monthIndex = date.getMonth() + 1 // 将0-11转换为1-12
       const displayTitle = item.name || item.title || `ID: ${item.id}`
-      result[key][month].push({ ...item, displayTitle })
+      result[key][monthIndex].push({ ...item, displayTitle })
     })
   })
 
