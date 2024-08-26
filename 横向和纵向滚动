@@ -3,7 +3,7 @@
     <div class="fixed-header" :style="fixedHeaderStyle">
       <div class="fixed-corner">事项类别</div>
       <div class="header-row">
-        <div v-for="month in monthNames" :key="month" class="month-column">
+        <div v-for="(month, index) in monthNames" :key="index" class="month-column">
           {{ month }}
         </div>
       </div>
@@ -16,15 +16,15 @@
     <div class="scrollable-content" @scroll="handleScroll" ref="scrollableContent">
       <div class="content-wrapper">
         <div class="header-row placeholder-header">
-          <div v-for="month in monthNames" :key="month" class="month-column">
+          <div v-for="(month, index) in monthNames" :key="index" class="month-column">
             {{ month }}
           </div>
         </div>
         <div class="body-content">
           <div v-for="category in categories" :key="category.key" class="row">
             <div class="category-cell placeholder-category">{{ category.name }}</div>
-            <div v-for="monthIndex in 12" :key="monthIndex" class="month-column">
-              <div v-for="item in processedData[category.key][monthIndex]" :key="item.id" class="item-card">
+            <div v-for="monthIndex in 12" :key="monthIndex - 1" class="month-column">
+              <div v-for="item in processedData[category.key][monthIndex - 1]" :key="item.id" class="item-card">
                 <el-popover placement="top-start" :width="250" trigger="hover">
                   <template #default>
                     <div v-if="category.key === 'employees'">
@@ -120,16 +120,13 @@ export default {
     const processData = () => {
       const result = {}
       categories.forEach(category => {
-        result[category.key] = Array(12).fill().reduce((acc, _, index) => {
-          acc[index + 1] = []
-          return acc
-        }, {})
+        result[category.key] = Array(12).fill().map(() => [])
       })
 
       Object.entries(dataObj.value).forEach(([key, items]) => {
         items.forEach(item => {
           const date = new Date(key === 'tasks' ? item.dueDate : item.date)
-          const monthIndex = date.getMonth() + 1
+          const monthIndex = date.getMonth()
           const displayTitle = item.name || item.title || `ID: ${item.id}`
           result[key][monthIndex].push({ ...item, displayTitle })
         })
@@ -149,7 +146,6 @@ export default {
 
     const fixedHeaderStyle = computed(() => ({
       transform: `translateX(-${scrollLeft.value}px)`,
-      width: calendarContainer.value ? `${calendarContainer.value.clientWidth}px` : '100%',
       height: `${headerHeight.value}px`
     }))
 
