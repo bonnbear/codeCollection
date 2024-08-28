@@ -1,0 +1,206 @@
+我理解您想要更接近 Gridstack 的自动补满效果。我们可以进一步优化代码来实现这一点。让我们修改之前的实现，使其更接近 Gridstack 的行为。
+
+
+
+```vue
+<template>
+  <div class="swappable-grid-layout">
+    <grid-layout
+      :layout="layout"
+      :col-num="12"
+      :row-height="30"
+      :is-draggable="true"
+      :is-resizable="true"
+      :vertical-compact="false"
+      :use-css-transforms="true"
+      @layout-updated="onLayoutUpdated"
+      @drag-start="onDragStart"
+      @drag="onDrag"
+      @drag-end="onDragEnd"
+    >
+      <grid-item
+        v- for="item in layout"
+        :key="item.i"
+        :x="item.x"
+        :y="item.y"
+        :w="item.w"
+        :h="item.h"
+        :i="item.i"
+      >
+        <div class="grid-item-content">
+          <span class="item-label">{{ item.i }}</span>
+        </div>
+      </grid-item>
+    </grid-layout>
+  </div>
+</template>
+
+<script>
+import { GridLayout, GridItem } from 'vue-grid-layout';
+
+export default {
+  name: 'SwappableGridLayout',
+  components: {
+    GridLayout,
+    GridItem,
+  },
+  data() {
+    return {
+      layout: [
+        { x: 0, y: 0, w: 2, h: 2, i: '1' },
+        { x: 2, y: 0, w: 2, h: 4, i: '2' },
+        { x: 4, y: 0, w: 2, h: 5, i: '3' },
+        { x: 6, y: 0, w: 2, h: 3, i: '4' },
+        { x: 8, y: 0, w: 2, h: 3, i: '5' },
+        { x: 10, y: 0, w: 2, h: 3, i: '6' },
+        { x: 0, y: 5, w: 2, h: 5, i: '7' },
+        { x: 2, y: 5, w: 2, h: 5, i: '8' },
+        { x: 4, y: 5, w: 2, h: 5, i: '9' },
+      ],
+      draggedItem: null,
+    };
+  },
+  methods: {
+    onDragStart(item) {
+      this.draggedItem = item;
+    },
+    onDrag(item, newX, newY) {
+      const itemToSwap = this.findItemToSwap(newX, newY);
+      if (itemToSwap) {
+        this.swapItems(item, itemToSwap);
+      }
+    },
+    onDragEnd() {
+      this.draggedItem = null;
+      this.compactLayout();
+    },
+    findItemToSwap(x, y) {
+      return this.layout.find(layoutItem => 
+        layoutItem.i !== this.draggedItem.i &&
+        x >= layoutItem.x && x < layoutItem.x + layoutItem.w &&
+        y >= layoutItem.y && y < layoutItem.y + layoutItem.h
+      );
+    },
+    swapItems(item1, item2) {
+      const index1 = this.layout.findIndex(i => i.i === item1.i);
+      const index2 = this.layout.findIndex(i => i.i === item2.i);
+
+      const tempX = this.layout[index1].x;
+      const tempY = this.layout[index1].y;
+
+      this.layout[index1].x = this.layout[index2].x;
+      this.layout[index1].y = this.layout[index2].y;
+      this.layout[index2].x = tempX;
+      this.layout[index2].y = tempY;
+
+      this.$nextTick(() => {
+        this.$emit('layout-updated', this.layout);
+      });
+    },
+    onLayoutUpdated(newLayout) {
+      this.layout = newLayout;
+    },
+    compactLayout() {
+      const gridColumns = 12; // Assuming a 12-column grid
+      const sortedLayout = [...this.layout].sort((a, b) => a.y - b.y || a.x - b.x);
+      const compactedLayout = [];
+
+      for (let y = 0; y < 1000; y++) { // Arbitrary large number for max rows
+        let availableSpace = gridColumns;
+        const rowItems = sortedLayout.filter(item => item.y === y);
+
+        rowItems.sort((a, b) => a.x - b.x);
+
+        for (const item of rowItems) {
+          if (availableSpace >= item.w) {
+            compactedLayout.push({ ...item, y });
+            availableSpace -= item.w;
+          } else {
+            // Move to next row if no space
+            sortedLayout.push({ ...item, y: y + 1 });
+          }
+        }
+
+        // Check for items that can be moved up
+        for (const item of sortedLayout) {
+          if (item.y > y && item.w <= availableSpace) {
+            compactedLayout.push({ ...item, y, x: gridColumns - availableSpace });
+            availableSpace -= item.w;
+            sortedLayout = sortedLayout.filter(i => i !== item);
+          }
+        }
+
+        // Break if all items are placed
+        if (sortedLayout.length === compactedLayout.length) break;
+      }
+
+      this.layout = compactedLayout;
+      this.$nextTick(() => {
+        this.$emit('layout-updated', this.layout);
+      });
+    },
+  },
+  mounted() {
+    this.compactLayout(); // Initial compaction
+  },
+};
+</script>
+
+<style scoped>
+.swappable-grid-layout {
+  background-color: #f0f0f0;
+  padding: 20px;
+}
+
+.grid-item-content {
+  width: 100%;
+  height: 100%;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 24px;
+  font-weight: bold;
+  color: #333;
+  cursor: move;
+}
+
+.item-label {
+  user-select: none;
+}
+</style>
+
+```
+
+
+这个更新后的组件实现了更接近 Gridstack 的自动补满功能。以下是主要的变更和改进：
+
+1. 重写了 `compactLayout` 方法，使其更接近 Gridstack 的行为：
+   - 它现在按行处理布局，尝试在每一行中尽可能多地放置项目。
+   - 如果一个项目在当前行放不下，它会被移到下一行。
+   - 它还会尝试将下面行的项目移到当前行的空余空间中，如果有足够的空间的话。
+
+2. 保留了之前的拖拽和交换功能。
+
+3. 在拖拽结束后和组件挂载时调用 `compactLayout`，确保布局始终保持紧凑。
+
+这个新的 `compactLayout` 方法的工作原理如下：
+
+1. 首先，它按 y 坐标（主要）和 x 坐标（次要）对布局项目进行排序。
+2. 然后，它逐行处理布局：
+   - 对于每一行，它首先尝试放置原本就在该行的项目。
+   - 如果一行还有剩余空间，它会尝试将下面行的项目移上来填满这个空间。
+3. 这个过程会一直持续到所有项目都被放置为止。
+
+使用这个更新后的组件，您应该能看到以下效果：
+
+- 项目可以像之前一样通过拖动来交换位置。
+- 拖动结束后，布局会自动调整以填补任何横向的空隙，更接近 Gridstack 的行为。
+- 初始布局也会自动进行紧凑排列。
+- 空隙会被下方的项目自动填充，尽可能保持布局的紧凑性。
+
+这个实现现在应该更接近 Gridstack 的自动填充行为。但是，请注意，由于 vue-grid-layout 和 Gridstack 的基础实现不同，可能还是会有一些细微的差异。
+
+如果您在使用过程中发现任何问题，或者需要进一步的调整和优化，请随时告诉我。我们可以继续改进这个组件，使其更好地满足您的需求！​​​​​​​​​​​​​​​​
