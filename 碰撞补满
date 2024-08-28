@@ -1,24 +1,35 @@
+理解您的需求。您想要实现类似 Gridstack 的自动补满功能，即当有空隙时，其他元素会自动移动以填满横向的空间。这确实是一个很有用的功能，可以让布局更加紧凑和美观。让我们来修改之前的代码以实现这个功能。
+
+
+
+```vue
+
 <template>
-  <div id="app">
-    <h1>Swappable Auto-filling Grid Layout Example</h1>
+  <div class="swappable-grid-layout">
     <grid-layout
       :layout="layout"
       :col-num="12"
       :row-height="30"
       :is-draggable="true"
       :is-resizable="true"
-      :vertical-compact="true"
+      :vertical-compact="false"
       :use-css-transforms="true"
       @layout-updated="onLayoutUpdated"
       @drag-start="onDragStart"
       @drag="onDrag"
       @drag-end="onDragEnd"
     >
-      <grid-item v-for="item in layout" :key="item.i"
-        :x="item.x" :y="item.y" :w="item.w" :h="item.h" :i="item.i"
+      <grid-item
+        v-for="item in layout"
+        :key="item.i"
+        :x="item.x"
+        :y="item.y"
+        :w="item.w"
+        :h="item.h"
+        :i="item.i"
       >
         <div class="grid-item-content">
-          Item {{ item.i }}
+          <span class="item-label">{{ item.i }}</span>
         </div>
       </grid-item>
     </grid-layout>
@@ -26,129 +37,177 @@
 </template>
 
 <script>
-import { ref } from 'vue';
 import { GridLayout, GridItem } from 'vue-grid-layout';
 
 export default {
-  name: 'App',
+  name: 'SwappableGridLayout',
   components: {
     GridLayout,
-    GridItem
+    GridItem,
   },
-  setup() {
-    const layout = ref([
-      { x: 0, y: 0, w: 2, h: 2, i: '0' },
-      { x: 2, y: 0, w: 2, h: 4, i: '1' },
-      { x: 4, y: 0, w: 2, h: 5, i: '2' },
-      { x: 6, y: 0, w: 2, h: 3, i: '3' },
-      { x: 8, y: 0, w: 2, h: 3, i: '4' }
-    ]);
-
-    let draggedItem = null;
-
-    const onDragStart = (item) => {
-      draggedItem = item;
+  data() {
+    return {
+      layout: [
+        { x: 0, y: 0, w: 2, h: 2, i: '1' },
+        { x: 2, y: 0, w: 2, h: 4, i: '2' },
+        { x: 4, y: 0, w: 2, h: 5, i: '3' },
+        { x: 6, y: 0, w: 2, h: 3, i: '4' },
+        { x: 8, y: 0, w: 2, h: 3, i: '5' },
+        { x: 10, y: 0, w: 2, h: 3, i: '6' },
+        { x: 0, y: 5, w: 2, h: 5, i: '7' },
+        { x: 2, y: 5, w: 2, h: 5, i: '8' },
+        { x: 4, y: 5, w: 2, h: 5, i: '9' },
+      ],
+      draggedItem: null,
     };
-
-    const onDrag = (item, newX, newY) => {
-      const itemToSwap = findItemToSwap(newX, newY);
+  },
+  methods: {
+    onDragStart(item) {
+      this.draggedItem = item;
+    },
+    onDrag(item, newX, newY) {
+      const itemToSwap = this.findItemToSwap(newX, newY);
       if (itemToSwap) {
-        swapItems(item, itemToSwap);
+        this.swapItems(item, itemToSwap);
       }
-    };
-
-    const onDragEnd = () => {
-      draggedItem = null;
-      fillHorizontalGaps();
-    };
-
-    const findItemToSwap = (x, y) => {
-      return layout.value.find(layoutItem => 
-        layoutItem.i !== draggedItem.i &&
+    },
+    onDragEnd() {
+      this.draggedItem = null;
+      this.compactLayout();
+    },
+    findItemToSwap(x, y) {
+      return this.layout.find(layoutItem => 
+        layoutItem.i !== this.draggedItem.i &&
         x >= layoutItem.x && x < layoutItem.x + layoutItem.w &&
         y >= layoutItem.y && y < layoutItem.y + layoutItem.h
       );
-    };
+    },
+    swapItems(item1, item2) {
+      const index1 = this.layout.findIndex(i => i.i === item1.i);
+      const index2 = this.layout.findIndex(i => i.i === item2.i);
 
-    const swapItems = (item1, item2) => {
-      const index1 = layout.value.findIndex(i => i.i === item1.i);
-      const index2 = layout.value.findIndex(i => i.i === item2.i);
+      const tempX = this.layout[index1].x;
+      const tempY = this.layout[index1].y;
 
-      const tempX = layout.value[index1].x;
-      const tempY = layout.value[index1].y;
+      this.layout[index1].x = this.layout[index2].x;
+      this.layout[index1].y = this.layout[index2].y;
+      this.layout[index2].x = tempX;
+      this.layout[index2].y = tempY;
 
-      layout.value[index1].x = layout.value[index2].x;
-      layout.value[index1].y = layout.value[index2].y;
-      layout.value[index2].x = tempX;
-      layout.value[index2].y = tempY;
-
-      // 强制更新布局
-      layout.value = [...layout.value];
-    };
-
-    const fillHorizontalGaps = () => {
-      // 按 y 坐标（行）对项目进行分组
-      const rowGroups = {};
-      layout.value.forEach(item => {
-        if (!rowGroups[item.y]) {
-          rowGroups[item.y] = [];
-        }
-        rowGroups[item.y].push(item);
+      this.$nextTick(() => {
+        this.$emit('layout-updated', this.layout);
+      });
+    },
+    onLayoutUpdated(newLayout) {
+      this.layout = newLayout;
+    },
+    compactLayout() {
+      const sortedLayout = [...this.layout].sort((a, b) => {
+        return a.y - b.y || a.x - b.x;
       });
 
-      // 处理每一行
-      Object.values(rowGroups).forEach(row => {
-        // 按 x 坐标排序
-        row.sort((a, b) => a.x - b.x);
+      const compactedLayout = [];
+      const gridColumns = 12; // Assuming a 12-column grid
 
-        let currentX = 0;
-        row.forEach(item => {
-          if (item.x > currentX) {
-            // 找到空隙，移动项目
-            item.x = currentX;
+      sortedLayout.forEach(item => {
+        let newX = 0;
+        let newY = item.y;
+
+        while (newX + item.w <= gridColumns) {
+          const overlapping = compactedLayout.some(placedItem => 
+            this.itemsOverlap(
+              { x: newX, y: newY, w: item.w, h: item.h },
+              placedItem
+            )
+          );
+
+          if (!overlapping) {
+            break;
           }
-          currentX = item.x + item.w;
-        });
+
+          newX++;
+          if (newX + item.w > gridColumns) {
+            newX = 0;
+            newY++;
+          }
+        }
+
+        compactedLayout.push({ ...item, x: newX, y: newY });
       });
 
-      // 强制更新布局
-      layout.value = [...layout.value];
-    };
-
-    const onLayoutUpdated = (newLayout) => {
-      layout.value = newLayout;
-      console.log('Layout updated:', newLayout);
-    };
-
-    return {
-      layout,
-      onDragStart,
-      onDrag,
-      onDragEnd,
-      onLayoutUpdated
-    };
-  }
+      this.layout = compactedLayout;
+      this.$nextTick(() => {
+        this.$emit('layout-updated', this.layout);
+      });
+    },
+    itemsOverlap(item1, item2) {
+      return !(
+        item1.x + item1.w <= item2.x ||
+        item2.x + item2.w <= item1.x ||
+        item1.y + item1.h <= item2.y ||
+        item2.y + item2.h <= item1.y
+      );
+    },
+  },
+  mounted() {
+    this.compactLayout(); // Initial compaction
+  },
 };
 </script>
 
-<style>
-#app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: #2c3e50;
-  margin-top: 60px;
+<style scoped>
+.swappable-grid-layout {
+  background-color: #f0f0f0;
+  padding: 20px;
 }
 
 .grid-item-content {
+  width: 100%;
+  height: 100%;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
   display: flex;
   justify-content: center;
   align-items: center;
-  width: 100%;
-  height: 100%;
-  background-color: #f0f0f0;
-  border: 1px solid #999;
-  border-radius: 4px;
+  font-size: 24px;
+  font-weight: bold;
+  color: #333;
+  cursor: move;
+}
+
+.item-label {
+  user-select: none;
 }
 </style>
+
+```
+
+这个更新后的组件实现了自动补满横向空隙的功能。以下是主要的变更和新增功能：
+
+1. 新增了 `compactLayout` 方法，它会在拖动结束后被调用，用于重新排列布局以填补空隙。
+
+2. 在 `onDragEnd` 方法中调用 `compactLayout`，确保每次拖动结束后都会重新整理布局。
+
+3. 添加了 `itemsOverlap` 辅助方法来检测两个项目是否重叠。
+
+4. 在组件挂载时调用 `compactLayout`，确保初始布局也是紧凑的。
+
+5. 将 GridLayout 的 `vertical-compact` 属性设置为 `false`，这样我们就可以完全控制布局的紧凑逻辑。
+
+`compactLayout` 方法的工作原理如下：
+
+1. 首先，它根据 y 坐标（主要）和 x 坐标（次要）对布局项目进行排序。
+2. 然后，它逐个遍历排序后的项目，尝试将每个项目放置在网格的最左侧和最上方可能的位置。
+3. 如果在当前行找不到合适的位置，它会移动到下一行继续尝试。
+4. 这个过程会持续到所有项目都被放置为止。
+
+使用这个更新后的组件，您应该能看到以下效果：
+
+- 项目可以像之前一样通过拖动来交换位置。
+- 拖动结束后，布局会自动调整以填补任何横向的空隙。
+- 初始布局也会自动进行紧凑排列。
+
+这个实现模仿了 Gridstack 的自动填充行为，但请注意，它可能不会完全相同。根据您的具体需求，您可能需要进一步调整 `compactLayout` 方法的逻辑。
+
+如果您在使用过程中遇到任何问题，或者需要进一步的修改和优化，请随时告诉我。我很乐意继续帮助您完善这个组件！​​​​​​​​​​​​​​​​
