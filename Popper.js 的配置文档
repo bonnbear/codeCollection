@@ -1,0 +1,125 @@
+const completeAnnotatedPopperOptions = {
+  // 设置 Popover 的默认放置位置
+  // 可选值: 'auto', 'auto-start', 'auto-end', 'top', 'top-start', 'top-end', 'bottom', 'bottom-start', 'bottom-end', 
+  //         'right', 'right-start', 'right-end', 'left', 'left-start', 'left-end'
+  // 效果: 决定 Popover 相对于参考元素的初始位置
+  placement: 'bottom',
+
+  // modifiers 数组包含一系列修改 Popover 行为的配置项
+  modifiers: [
+    {
+      name: 'offset',
+      options: {
+        // 设置 Popover 相对于其参考元素的偏移
+        // 格式: [水平偏移, 垂直偏移]（以像素为单位）
+        // 效果: 微调 Popover 的最终位置
+        offset: [0, 8],
+      },
+    },
+    {
+      name: 'flip',
+      // 是否启用自动翻转功能
+      // 可选值: true, false
+      // 效果: 当设为 true 时，如果默认位置放不下，Popover 会自动翻转到对面
+      enabled: true,
+      options: {
+        // 当默认位置不可用时，尝试的其他位置
+        // 可选值: placement 中的任意值的数组
+        // 效果: 定义了 Popover 尝试定位的顺序
+        fallbackPlacements: ['top', 'right', 'left'],
+        
+        // 翻转时与视口边缘的最小距离（像素）
+        // 效果: 防止 Popover 在翻转后太靠近视口边缘
+        padding: 5,
+        
+        // 用于检测溢出的边界元素
+        // 可选值: 'clippingParents', 'viewport', 'window', 或者一个具体的 DOM 元素
+        // 效果: 决定在哪个范围内考虑是否需要翻转
+        boundary: 'clippingParents',
+      },
+    },
+    {
+      name: 'preventOverflow',
+      options: {
+        // 用于检测溢出的边界
+        // 可选值: 'clippingParents', 'viewport', 'window', 或者一个具体的 DOM 元素
+        // 效果: 决定在防止溢出时参考的边界
+        boundary: 'viewport',
+        
+        // 是否保持与参考元素的连接
+        // 可选值: true, false
+        // 效果: 当设为 true 时，即使发生溢出，Popover 也会尽量保持与参考元素的连接
+        tether: true,
+        
+        // 是否在另一个轴上也进行溢出预防
+        // 可选值: true, false
+        // 效果: 当设为 true 时，会在主轴和交叉轴上都进行溢出检查
+        altAxis: false,
+        
+        // 与边界的最小距离（像素）
+        // 效果: 保证 Popover 和边界之间有一定的安全距离
+        padding: 5,
+      },
+    },
+    {
+      name: 'arrow',
+      options: {
+        // 指定箭头元素的选择器
+        // 可选值: CSS 选择器字符串
+        // 效果: 定位和调整指向参考元素的箭头
+        element: '[data-popper-arrow]',
+        
+        // 箭头与 Popover 边缘的距离（像素）
+        // 效果: 微调箭头的位置，防止它太靠近 Popover 的边缘
+        padding: 5,
+      },
+    },
+    {
+      name: 'hide',
+      // 是否在完全溢出时隐藏 Popover
+      // 可选值: true, false
+      // 效果: 当设为 true 时，如果 Popover 完全溢出可见区域，它会被隐藏
+      enabled: true,
+    },
+    {
+      name: 'computeStyles',
+      options: {
+        // 是否使用 GPU 加速
+        // 可选值: true, false
+        // 效果: 启用 GPU 加速可能提高性能，但在某些情况下可能导致模糊
+        gpuAcceleration: true,
+        
+        // 是否使用自适应定位
+        // 可选值: true, false
+        // 效果: 当设为 true 时，Popper 会根据可用空间动态调整其位置策略
+        adaptive: true,
+      },
+    },
+    {
+      name: 'eventListeners',
+      options: {
+        // 是否在滚动时更新位置
+        // 可选值: true, false
+        // 效果: 当设为 true 时，页面滚动会触发 Popover 位置更新
+        scroll: true,
+        
+        // 是否在调整窗口大小时更新位置
+        // 可选值: true, false
+        // 效果: 当设为 true 时，改变窗口大小会触发 Popover 位置更新
+        resize: true,
+      },
+    },
+  ],
+
+  // 定位策略
+  // 可选值: 'absolute', 'fixed'
+  // 效果: 'absolute' 相对于最近的定位祖先元素定位，'fixed' 相对于视口定位
+  // 注意: 'fixed' 在某些情况下可能更稳定，但可能影响性能
+  strategy: 'absolute',
+
+  // 首次更新 Popover 位置时的回调函数
+  // 效果: 允许在 Popover 首次定位后执行自定义逻辑
+  onFirstUpdate: (state) => {
+    console.log('First update:', state);
+  },
+};
