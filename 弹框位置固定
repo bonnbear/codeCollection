@@ -1,0 +1,75 @@
+<template>
+  <div class="container">
+    <h2>Popover Position Demo</h2>
+    
+    <div class="popover-container">
+      <h3>1. Default Popover (May Change Position)</h3>
+      <el-popover
+        placement="bottom"
+        trigger="click"
+        :width="200"
+      >
+        <template #reference>
+          <el-button>Click me (Default)</el-button>
+        </template>
+        <div>This popover may change position if there's not enough space at the bottom.</div>
+      </el-popover>
+    </div>
+
+    <div class="popover-container">
+      <h3>2. Fixed Position Popover</h3>
+      <el-popover
+        placement="bottom"
+        trigger="click"
+        :width="200"
+        :fallback-placements="[]"
+        :popper-options="fixedPopperOptions"
+      >
+        <template #reference>
+          <el-button>Click me (Fixed)</el-button>
+        </template>
+        <div>This popover will try to stay at the bottom, even if it gets cut off.</div>
+      </el-popover>
+    </div>
+  </div>
+</template>
+
+<script>
+import { defineComponent } from 'vue'
+
+export default defineComponent({
+  name: 'PopoverPositionDemo',
+  data() {
+    return {
+      fixedPopperOptions: {
+        modifiers: [
+          {
+            name: 'flip',
+            enabled: false  // 禁用翻转
+          },
+          {
+            name: 'preventOverflow',
+            options: {
+              boundariesElement: 'viewport',
+              tether: false,  // 允许完全分离
+            }
+          }
+        ]
+      }
+    }
+  }
+})
+</script>
+
+<style scoped>
+.container {
+  padding: 20px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+.popover-container {
+  margin-bottom: 30px;
+  border: 1px solid #ddd;
+  padding: 15px;
+}
+</style>
