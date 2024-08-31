@@ -1,0 +1,244 @@
+<template>
+  <div class="wrapper">
+    <div ref="contentRef" class="content">
+      <header>
+        <h1>仪表板示例</h1>
+        <nav>
+          <a href="#" class="nav-item">首页</a>
+          <a href="#" class="nav-item">报告</a>
+          <a href="#" class="nav-item">设置</a>
+          <a href="#" class="nav-item">帮助</a>
+        </nav>
+      </header>
+      <main>
+        <div class="card large-card">
+          <h2>销售总览</h2>
+          <div class="chart-placeholder">销售图表 (固定尺寸: 600x300)</div>
+          <p>本月销售额: ¥1,234,567</p>
+        </div>
+        <div class="card">
+          <h2>用户增长</h2>
+          <div class="chart-placeholder small">用户增长图表 (固定尺寸: 200x150)</div>
+          <p>新增用户: 1,234</p>
+        </div>
+        <div class="card">
+          <h2>库存状态</h2>
+          <ul>
+            <li>产品A: 500件</li>
+            <li>产品B: 350件</li>
+            <li>产品C: 720件</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h2>最新订单</h2>
+          <table>
+            <tr>
+              <th>订单ID</th>
+              <th>客户</th>
+              <th>金额</th>
+            </tr>
+            <tr>
+              <td>#12345</td>
+              <td>张三</td>
+              <td>¥1,000</td>
+            </tr>
+            <tr>
+              <td>#12346</td>
+              <td>李四</td>
+              <td>¥1,500</td>
+            </tr>
+          </table>
+        </div>
+        <div class="card">
+          <h2>客户反馈</h2>
+          <div class="feedback-item">
+            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='50' height='50'%3E%3Ccircle cx='25' cy='25' r='20' fill='%23ddd'/%3E%3C/svg%3E" alt="用户头像" class="avatar">
+            <p>"非常满意的购物体验！" - 王五</p>
+          </div>
+          <div class="feedback-item">
+            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='50' height='50'%3E%3Ccircle cx='25' cy='25' r='20' fill='%23ddd'/%3E%3C/svg%3E" alt="用户头像" class="avatar">
+            <p>"快递速度很快，商品质量好。" - 赵六</p>
+          </div>
+        </div>
+        <div class="card">
+          <h2>热门产品</h2>
+          <div class="product-grid">
+            <div class="product-item">产品1 (固定尺寸: 100x100)</div>
+            <div class="product-item">产品2 (固定尺寸: 100x100)</div>
+            <div class="product-item">产品3 (固定尺寸: 100x100)</div>
+            <div class="product-item">产品4 (固定尺寸: 100x100)</div>
+          </div>
+        </div>
+      </main>
+      <footer>
+        <p>&copy; 2024 仪表板示例公司. 保留所有权利。</p>
+      </footer>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+
+const contentRef = ref(null)
+
+const setWindowSize = () => {
+  const content = contentRef.value
+  if (!content) return
+
+  const wrapper = content.parentElement
+  const wrapperWidth = wrapper.clientWidth
+  const wrapperHeight = wrapper.clientHeight
+
+  const scaleX = wrapperWidth / 1920
+  const scaleY = wrapperHeight / 1080
+  const scale = Math.max(scaleX, scaleY)
+
+  content.style.transform = `scale(${scale})`
+
+  const scaledWidth = 1920 * scale
+  const scaledHeight = 1080 * scale
+  const translateX = (wrapperWidth - scaledWidth) / 2
+  const translateY = (wrapperHeight - scaledHeight) / 2
+
+  content.style.left = `${translateX}px`
+  content.style.top = `${translateY}px`
+}
+
+onMounted(() => {
+  setWindowSize()
+  window.addEventListener('resize', setWindowSize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', setWindowSize)
+})
+</script>
+
+<style>
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.wrapper {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.content {
+  width: 1920px;
+  height: 1080px;
+  background-color: #f0f0f0;
+  position: absolute;
+  transform-origin: top left;
+  font-family: Arial, sans-serif;
+}
+
+header {
+  background-color: #333;
+  color: white;
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+nav {
+  display: flex;
+  gap: 20px;
+}
+
+.nav-item {
+  color: white;
+  text-decoration: none;
+}
+
+main {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  padding: 20px;
+}
+
+.card {
+  background-color: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.large-card {
+  grid-column: span 2;
+}
+
+.chart-placeholder {
+  background-color: #ddd;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.chart-placeholder:not(.small) {
+  width: 600px;
+  height: 300px;
+}
+
+.chart-placeholder.small {
+  width: 200px;
+  height: 150px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+.feedback-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.avatar {
+  width: 50px;
+  height: 50px;
+  margin-right: 10px;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.product-item {
+  width: 100px;
+  height: 100px;
+  background-color: #ddd;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+footer {
+  background-color: #333;
+  color: white;
+  text-align: center;
+  padding: 10px;
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+}
+</style>
