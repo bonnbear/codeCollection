@@ -1,0 +1,159 @@
+<template>
+  <div ref="wrapperRef" class="wrapper">
+    <div ref="contentRef" class="content">
+      <header>
+        <h1>全屏自适应仪表板演示</h1>
+      </header>
+      <main>
+        <div class="card">
+          <h2>销售统计</h2>
+          <div class="chart-placeholder">销售图表</div>
+        </div>
+        <div class="card">
+          <h2>用户增长</h2>
+          <div class="chart-placeholder">用户增长图表</div>
+        </div>
+        <div class="card">
+          <h2>库存状态</h2>
+          <ul>
+            <li>产品A: 500件</li>
+            <li>产品B: 350件</li>
+            <li>产品C: 720件</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h2>最新订单</h2>
+          <table>
+            <tr>
+              <th>订单ID</th>
+              <th>客户</th>
+              <th>金额</th>
+            </tr>
+            <tr>
+              <td>#12345</td>
+              <td>张三</td>
+              <td>¥1,000</td>
+            </tr>
+            <tr>
+              <td>#12346</td>
+              <td>李四</td>
+              <td>¥1,500</td>
+            </tr>
+          </table>
+        </div>
+      </main>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+
+const contentRef = ref(null)
+const wrapperRef = ref(null)
+
+const setWindowSize = () => {
+  const content = contentRef.value
+  const wrapper = wrapperRef.value
+  if (!content || !wrapper) return
+
+  const wrapperWidth = wrapper.clientWidth
+  const wrapperHeight = wrapper.clientHeight
+
+  let scale
+
+  // 计算缩放比例
+  if (wrapperWidth / wrapperHeight > 16 / 9) {
+    // 如果容器较宽，以宽度为基准
+    scale = wrapperWidth / 1920
+  } else {
+    // 如果容器较窄，以高度为基准
+    scale = wrapperHeight / 1080
+  }
+
+  // 设置内容尺寸
+  content.style.width = `${wrapperWidth / scale}px`
+  content.style.height = `${wrapperHeight / scale}px`
+
+  // 应用缩放
+  content.style.transform = `scale(${scale})`
+  content.style.transformOrigin = 'top left'
+}
+
+onMounted(() => {
+  setWindowSize()
+  window.addEventListener('resize', setWindowSize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', setWindowSize)
+})
+</script>
+
+<style scoped>
+.wrapper {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+.content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-color: #f0f0f0;
+  font-family: Arial, sans-serif;
+}
+
+header {
+  background-color: #333;
+  color: white;
+  padding: 20px;
+  text-align: center;
+}
+
+main {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  padding: 20px;
+}
+
+.card {
+  background-color: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.chart-placeholder {
+  background-color: #ddd;
+  height: 200px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 10px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+h1 {
+  margin: 0;
+}
+
+h2 {
+  margin-top: 0;
+}
+</style>
