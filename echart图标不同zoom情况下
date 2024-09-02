@@ -233,3 +233,148 @@ export default {
   overflow: hidden;
 }
 </style>
+
+
+
+
+
+//////////////////////
+
+
+<template>
+  <div class="outer-wrapper" :style="{ zoom: zoomLevel }">
+    <div class="middle-wrapper">
+      <div class="inner-wrapper">
+        <div class="chart-wrapper" @mousemove="handleMouseMove" @mouseleave="handleMouseLeave">
+          <div ref="chartContainer" style="width: 600px; height: 400px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import { ref, onMounted, onUnmounted } from 'vue'
+import * as echarts from 'echarts'
+
+export default {
+  name: 'EChartsDemo',
+  setup() {
+    const chartContainer = ref(null)
+    let chart = null
+    const zoomLevel = ref(5) // 初始缩放级别为3，可以根据需要调整
+
+    const handleMouseMove = (event) => {
+      if (chart) {
+        const rect = event.currentTarget.getBoundingClientRect()
+        const x = (event.clientX - rect.left) / zoomLevel.value
+        const y = (event.clientY - rect.top) / zoomLevel.value
+
+        chart.dispatchAction({
+          type: 'showTip',
+          x: x,
+          y: y
+        })
+      }
+    }
+
+    const handleMouseLeave = () => {
+      if (chart) {
+        chart.dispatchAction({
+          type: 'hideTip'
+        })
+      }
+    }
+
+    onMounted(() => {
+      if (chartContainer.value) {
+        chart = echarts.init(chartContainer.value)
+
+        const option = {
+          tooltip: {
+            trigger: 'axis',
+            position: function (point) {
+              // 跟随鼠标位置，并稍微偏移以避免被鼠标遮挡
+              return [point[0] + 10, point[1] + 10];
+            }
+          },
+          xAxis: {
+            type: 'category',
+            data: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+          },
+          yAxis: {
+            type: 'value'
+          },
+          series: [{
+            data: [820, 932, 901, 934, 1290, 1330, 1320],
+            type: 'line'
+          }]
+        }
+
+        chart.setOption(option)
+
+        // 启用 ECharts 内置的 tooltip 触发
+        chart.getZr().on('mousemove', (event) => {
+          const pointInPixel = [event.offsetX, event.offsetY]
+          const pointInGrid = chart.convertFromPixel('grid', pointInPixel)
+
+          if (chart.containPixel('grid', pointInPixel)) {
+            chart.dispatchAction({
+              type: 'showTip',
+              seriesIndex: 0,
+              dataIndex: Math.round(pointInGrid[0])
+            })
+          } else {
+            chart.dispatchAction({
+              type: 'hideTip'
+            })
+          }
+        })
+
+        chart.getZr().on('globalout', () => {
+          chart.dispatchAction({
+            type: 'hideTip'
+          })
+        })
+
+        // 监听窗口大小变化，调整图表大小
+        window.addEventListener('resize', () => {
+          chart.resize()
+        })
+      }
+    })
+
+    onUnmounted(() => {
+      if (chart) {
+        chart.dispose()
+      }
+      // 移除事件监听
+      window.removeEventListener('resize', chart.resize)
+    })
+
+    return {
+      chartContainer,
+      zoomLevel,
+      handleMouseMove,
+      handleMouseLeave
+    }
+  }
+}
+</script>
+
+<style scoped>
+.outer-wrapper {
+  /* 最外层应用zoom */
+}
+.middle-wrapper {
+  /* 中间层样式 */
+}
+.inner-wrapper {
+  /* 内层样式 */
+}
+.chart-wrapper {
+  width: 600px;
+  height: 400px;
+  overflow: hidden;
+}
+</style>
