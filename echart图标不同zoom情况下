@@ -1,0 +1,102 @@
+<template>
+  <div class="chart-wrapper" :style="{ zoom: zoomLevel }" @mousemove="handleMouseMove" @mouseleave="handleMouseLeave">
+    <div ref="chartContainer" style="width: 600px; height: 400px;"></div>
+  </div>
+</template>
+
+<script>
+import { ref, onMounted, onUnmounted } from 'vue'
+import * as echarts from 'echarts'
+
+export default {
+  name: 'EChartsDemo',
+  setup() {
+    const chartContainer = ref(null)
+    let chart = null
+    const zoomLevel = ref(4) // 初始缩放级别为2，可以根据需要调整
+
+    const handleMouseMove = (event) => {
+      if (chart) {
+        const rect = chartContainer.value.getBoundingClientRect()
+        const x = (event.clientX - rect.left) / zoomLevel.value
+        const y = (event.clientY - rect.top) / zoomLevel.value
+        
+        chart.dispatchAction({
+          type: 'showTip',
+          x: x,
+          y: y
+        })
+      }
+    }
+
+    const handleMouseLeave = () => {
+      if (chart) {
+        chart.dispatchAction({
+          type: 'hideTip'
+        })
+      }
+    }
+
+    onMounted(() => {
+      if (chartContainer.value) {
+        chart = echarts.init(chartContainer.value)
+        
+        const option = {
+          tooltip: {
+            trigger: 'axis',
+            position: function (point, params, dom, rect, size) {
+              // 固定在右上角
+              return [size.viewSize[0] - 100, 0];
+            }
+          },
+          xAxis: {
+            type: 'category',
+            data: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+          },
+          yAxis: {
+            type: 'value'
+          },
+          series: [{
+            data: [820, 932, 901, 934, 1290, 1330, 1320],
+            type: 'line'
+          }]
+        }
+
+        chart.setOption(option)
+
+        // 禁用 ECharts 内置的 tooltip 触发
+        chart.getZr().off('mousemove')
+        chart.getZr().off('globalout')
+
+        // 监听窗口大小变化，调整图表大小
+        window.addEventListener('resize', () => {
+          chart.resize()
+        })
+      }
+    })
+
+    onUnmounted(() => {
+      if (chart) {
+        chart.dispose()
+      }
+      // 移除事件监听
+      window.removeEventListener('resize', chart.resize)
+    })
+
+    return {
+      chartContainer,
+      zoomLevel,
+      handleMouseMove,
+      handleMouseLeave
+    }
+  }
+}
+</script>
+
+<style scoped>
+.chart-wrapper {
+  width: 600px;
+  height: 400px;
+  overflow: hidden;
+}
+</style>
