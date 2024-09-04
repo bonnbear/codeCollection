@@ -1,0 +1,69 @@
+<template>
+  <el-select
+    v-model="selectedMonths"
+    multiple
+    placeholder="请选择月份"
+    clearable
+    @visible-change="handleDropdownToggle"
+  >
+    <el-option
+      v-for="month in monthOptions"
+      :key="month.value"
+      :label="month.label"
+      :value="month.value"
+    >
+      <el-checkbox
+        v-model="month.checked"
+        :label="month.label"
+        @change="handleCheckboxChange(month)"
+      >
+        {{ month.label }}
+      </el-checkbox>
+    </el-option>
+  </el-select>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+import { ElSelect, ElOption, ElCheckbox } from 'element-plus'
+
+const selectedMonths = ref([])
+
+const monthOptions = computed(() => {
+  const currentDate = new Date()
+  const currentYear = currentDate.getFullYear()
+  const currentMonth = currentDate.getMonth() + 1
+
+  const options = []
+  for (let month = currentMonth; month >= 1; month--) {
+    const monthString = month.toString().padStart(2, '0')
+    options.push({
+      value: `${currentYear}-${monthString}`,
+      label: `${currentYear}年${monthString}月`,
+      checked: false
+    })
+  }
+
+  return options
+})
+
+const handleCheckboxChange = (month) => {
+  if (month.checked) {
+    selectedMonths.value.push(month.value)
+  } else {
+    const index = selectedMonths.value.indexOf(month.value)
+    if (index !== -1) {
+      selectedMonths.value.splice(index, 1)
+    }
+  }
+}
+
+const handleDropdownToggle = (visible) => {
+  if (visible) {
+    // Update checkbox states when dropdown opens
+    monthOptions.value.forEach(month => {
+      month.checked = selectedMonths.value.includes(month.value)
+    })
+  }
+}
+</script>
