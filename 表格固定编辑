@@ -19,65 +19,66 @@
       </el-table-column>
     </el-table>
 
-    <!-- Add/Edit Dialog -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Edit User：' : 'Add User：'" width="80%">
-      <el-form :model="formData" :rules="rules" ref="formRef">
-        <div class="form-columns">
-          <div class="form-column">
-            <div 
-              v-for="col in columns.slice(0, Math.ceil(columns.length / 2))" 
-              :key="col.prop" 
-              class="form-item-wrapper"
-            >
-              <span class="form-label" :class="{ 'required': isFieldRequired(col.prop) }">{{ col.label }}：</span>
-              <el-form-item :prop="col.prop">
-                <el-input v-if="!specialInputTypes.includes(col.prop)" v-model="formData[col.prop]"></el-input>
-                <el-input-number v-else-if="col.prop === 'age'" v-model="formData[col.prop]" :min="0" :max="150"></el-input-number>
-                <el-date-picker v-else-if="col.prop === 'date' || col.prop === 'hireDate'" v-model="formData[col.prop]" type="date"></el-date-picker>
-                <el-select v-else-if="col.prop === 'status'" v-model="formData[col.prop]">
-                  <el-option label="Active" value="Active"></el-option>
-                  <el-option label="Inactive" value="Inactive"></el-option>
-                </el-select>
-                <el-input v-else-if="col.prop === 'notes' || col.prop === 'projects' || col.prop === 'skills'" 
-                          v-model="formData[col.prop]" 
-                          type="textarea" 
-                          :rows="4">
-                </el-input>
-              </el-form-item>
+    <!-- Native Modal -->
+    <div v-if="dialogVisible" class="modal-overlay">
+      <div class="modal-content">
+        <h3>{{ isEdit ? 'Edit User：' : 'Add User：' }}</h3>
+        <el-form :model="formData" :rules="rules" ref="formRef">
+          <div class="form-columns">
+            <div class="form-column">
+              <div 
+                v-for="col in columns.slice(0, Math.ceil(columns.length / 2))" 
+                :key="col.prop" 
+                class="form-item-wrapper"
+              >
+                <span class="form-label" :class="{ 'required': isFieldRequired(col.prop) }">{{ col.label }}：</span>
+                <el-form-item :prop="col.prop">
+                  <el-input v-if="!specialInputTypes.includes(col.prop)" v-model="formData[col.prop]"></el-input>
+                  <el-input-number v-else-if="col.prop === 'age'" v-model="formData[col.prop]" :min="0" :max="150"></el-input-number>
+                  <el-date-picker v-else-if="col.prop === 'date' || col.prop === 'hireDate'" v-model="formData[col.prop]" type="date"></el-date-picker>
+                  <el-select v-else-if="col.prop === 'status'" v-model="formData[col.prop]">
+                    <el-option label="Active" value="Active"></el-option>
+                    <el-option label="Inactive" value="Inactive"></el-option>
+                  </el-select>
+                  <el-input v-else-if="col.prop === 'notes' || col.prop === 'projects' || col.prop === 'skills'" 
+                            v-model="formData[col.prop]" 
+                            type="textarea" 
+                            :rows="4">
+                  </el-input>
+                </el-form-item>
+              </div>
+            </div>
+            <div class="form-column">
+              <div 
+                v-for="col in columns.slice(Math.ceil(columns.length / 2))" 
+                :key="col.prop" 
+                class="form-item-wrapper"
+              >
+                <span class="form-label" :class="{ 'required': isFieldRequired(col.prop) }">{{ col.label }}：</span>
+                <el-form-item :prop="col.prop">
+                  <el-input v-if="!specialInputTypes.includes(col.prop)" v-model="formData[col.prop]"></el-input>
+                  <el-input-number v-else-if="col.prop === 'age'" v-model="formData[col.prop]" :min="0" :max="150"></el-input-number>
+                  <el-date-picker v-else-if="col.prop === 'date' || col.prop === 'hireDate'" v-model="formData[col.prop]" type="date"></el-date-picker>
+                  <el-select v-else-if="col.prop === 'status'" v-model="formData[col.prop]">
+                    <el-option label="Active" value="Active"></el-option>
+                    <el-option label="Inactive" value="Inactive"></el-option>
+                  </el-select>
+                  <el-input v-else-if="col.prop === 'notes' || col.prop === 'projects' || col.prop === 'skills'" 
+                            v-model="formData[col.prop]" 
+                            type="textarea" 
+                            :rows="4">
+                  </el-input>
+                </el-form-item>
+              </div>
             </div>
           </div>
-          <div class="form-column">
-            <div 
-              v-for="col in columns.slice(Math.ceil(columns.length / 2))" 
-              :key="col.prop" 
-              class="form-item-wrapper"
-            >
-              <span class="form-label" :class="{ 'required': isFieldRequired(col.prop) }">{{ col.label }}：</span>
-              <el-form-item :prop="col.prop">
-                <el-input v-if="!specialInputTypes.includes(col.prop)" v-model="formData[col.prop]"></el-input>
-                <el-input-number v-else-if="col.prop === 'age'" v-model="formData[col.prop]" :min="0" :max="150"></el-input-number>
-                <el-date-picker v-else-if="col.prop === 'date' || col.prop === 'hireDate'" v-model="formData[col.prop]" type="date"></el-date-picker>
-                <el-select v-else-if="col.prop === 'status'" v-model="formData[col.prop]">
-                  <el-option label="Active" value="Active"></el-option>
-                  <el-option label="Inactive" value="Inactive"></el-option>
-                </el-select>
-                <el-input v-else-if="col.prop === 'notes' || col.prop === 'projects' || col.prop === 'skills'" 
-                          v-model="formData[col.prop]" 
-                          type="textarea" 
-                          :rows="4">
-                </el-input>
-              </el-form-item>
-            </div>
-          </div>
-        </div>
-      </el-form>
-      <template #footer>
-        <span class="dialog-footer">
+        </el-form>
+        <div class="modal-footer">
           <el-button @click="dialogVisible = false">Cancel</el-button>
           <el-button type="primary" @click="submitForm">Confirm</el-button>
-        </span>
-      </template>
-    </el-dialog>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -236,27 +237,60 @@ const submitForm = () => {
 h2 {
   margin-bottom: 20px;
 }
-.dialog-footer button:first-child {
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+.modal-content {
+  background-color: white;
+  padding: 30px;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 1200px;
+  height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.modal-content h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+.modal-footer {
+  margin-top: 20px;
+  text-align: right;
+}
+.modal-footer button:first-child {
   margin-right: 10px;
 }
 .form-columns {
   display: flex;
   flex-wrap: wrap;
-  gap: 20px;
+  gap: 30px;
+  flex-grow: 1;
+  overflow-y: auto;
 }
 .form-column {
   flex: 1;
-  min-width: 300px;
+  min-width: 400px;
 }
 .form-item-wrapper {
   display: flex;
-  align-items: center; /* 默认居中对齐 */
+  align-items: center;
   margin-bottom: 20px;
 }
 .form-label {
-  width: 120px;
+  width: 150px;
   text-align: right;
-  margin-right: 12px;
+  margin-right: 15px;
   flex-shrink: 0;
 }
 .form-label.required::before {
@@ -268,22 +302,15 @@ h2 {
   margin-bottom: 0;
   flex-grow: 1;
 }
-
-/* 对于多行输入（textarea）的表单项，设置顶部对齐 */
 .form-item-wrapper:has(.el-textarea) {
   align-items: flex-start;
 }
-
-/* 确保 textarea 占满高度 */
 :deep(.el-textarea) {
   height: 100%;
 }
-
 :deep(.el-textarea .el-textarea__inner) {
   height: 100% !important;
 }
-
-/* 为包含 textarea 的 form-label 添加顶部内边距 */
 .form-item-wrapper:has(.el-textarea) .form-label {
   padding-top: 8px;
 }
