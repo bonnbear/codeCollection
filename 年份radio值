@@ -1,0 +1,64 @@
+<template>
+  <div>
+    <el-select v-model="selectedYear" placeholder="请选择年份" @change="handleYearChange">
+      <el-option
+        v-for="year in years"
+        :key="year"
+        :label="year"
+        :value="year"
+      />
+    </el-select>
+
+    <div v-if="selectedYear">
+      <el-radio-group v-model="selectedRadioYear">
+        <el-radio label="all">全部</el-radio>
+        <el-radio :label="selectedYear">{{ selectedYear }}</el-radio>
+        <el-radio :label="selectedYear + 1">{{ selectedYear + 1 }}</el-radio>
+      </el-radio-group>
+    </div>
+
+    <div v-if="selectedRadioYear" class="selected-value">
+      选中的值: {{ displaySelectedValue }}
+    </div>
+  </div>
+</template>
+
+<script>
+import { ref, computed } from 'vue'
+
+export default {
+  setup() {
+    const years = [2023, 2024, 2025]
+    const selectedYear = ref(null)
+    const selectedRadioYear = ref(null)
+
+    const handleYearChange = (year) => {
+      selectedRadioYear.value = year
+    }
+
+    const displaySelectedValue = computed(() => {
+      if (selectedRadioYear.value === 'all') {
+        return '全部'
+      } else {
+        return selectedRadioYear.value
+      }
+    })
+
+    return {
+      years,
+      selectedYear,
+      selectedRadioYear,
+      handleYearChange,
+      displaySelectedValue
+    }
+  }
+}
+</script>
+
+<style scoped>
+.selected-value {
+  margin-top: 10px;
+  font-size: 14px;
+  color: #606266;
+}
+</style>
