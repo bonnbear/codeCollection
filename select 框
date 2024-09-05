@@ -1,0 +1,106 @@
+<template>
+  <div class="month-select-container">
+    <el-select
+      v-model="selectedMonths"
+      multiple
+      :multiple-limit="12"
+      placeholder="请选择月份"
+      clearable
+      value-key="value"
+      :reserve-keyword="false"
+    >
+      <template #prefix>
+        <span>{{ selectedMonthsText }}</span>
+      </template>
+      <el-option
+        v-for="month in monthOptions"
+        :key="month.value"
+        :label="month.label"
+        :value="month"
+      >
+        <el-checkbox v-model="month.checked" @change="() => handleCheckboxChange(month)">
+          {{ month.label }}
+        </el-checkbox>
+      </el-option>
+    </el-select>
+  </div>
+</template>
+
+<script>
+import { ref, computed } from 'vue'
+
+export default {
+  setup() {
+    const selectedMonths = ref([])
+
+    const monthOptions = computed(() => {
+      const currentMonth = new Date().getMonth() + 1
+      const months = []
+      for (let i = currentMonth; i >= 1; i--) {
+        months.push({
+          value: i,
+          label: `${i}月`,
+          checked: false
+        })
+      }
+      return months
+    })
+
+    const selectedMonthsText = computed(() => {
+      return selectedMonths.value.map(month => month.label).join(', ')
+    })
+
+    const handleCheckboxChange = (month) => {
+      if (month.checked) {
+        if (!selectedMonths.value.some(m => m.value === month.value)) {
+          selectedMonths.value.push(month)
+        }
+      } else {
+        selectedMonths.value = selectedMonths.value.filter(m => m.value !== month.value)
+      }
+    }
+
+    return {
+      selectedMonths,
+      selectedMonthsText,
+      monthOptions,
+      handleCheckboxChange
+    }
+  }
+}
+</script>
+
+<style scoped>
+.month-select-container {
+  width: 300px;
+}
+.month-select-container .el-select {
+  width: 100%;
+}
+:deep(.el-select__tags) {
+  display: none !important;
+}
+:deep(.el-input__prefix) {
+  position: absolute;
+  left: 0;
+  right: 30px; /* 为清除按钮留出空间 */
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+:deep(.el-input__prefix-inner) {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:deep(.el-select .el-input__inner) {
+  padding-left: 15px !important;
+  cursor: pointer;
+}
+:deep(.el-select .el-input__suffix) {
+  cursor: pointer;
+}
+</style>
