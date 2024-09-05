@@ -11,8 +11,9 @@
         :width="col.width"
         :fixed="col.fixed"
       />
-      <el-table-column label="Operations" width="180" fixed="right">
+      <el-table-column label="Operations" width="240" fixed="right">
         <template #default="scope">
+          <el-button size="small" @click="handleView(scope.$index, scope.row)">View</el-button>
           <el-button size="small" @click="handleEdit(scope.$index, scope.row)">Edit</el-button>
           <el-button size="small" type="danger" @click="handleDelete(scope.$index, scope.row)">Delete</el-button>
         </template>
@@ -22,7 +23,7 @@
     <!-- Native Modal -->
     <div v-if="dialogVisible" class="modal-overlay">
       <div class="modal-content">
-        <h3>{{ isEdit ? 'Edit User：' : 'Add User：' }}</h3>
+        <h3>{{ getModalTitle() }}</h3>
         <el-form :model="formData" :rules="rules" ref="formRef">
           <div class="form-columns">
             <div class="form-column">
@@ -33,18 +34,23 @@
               >
                 <span class="form-label" :class="{ 'required': isFieldRequired(col.prop) }">{{ col.label }}：</span>
                 <el-form-item :prop="col.prop">
-                  <el-input v-if="!specialInputTypes.includes(col.prop)" v-model="formData[col.prop]"></el-input>
-                  <el-input-number v-else-if="col.prop === 'age'" v-model="formData[col.prop]" :min="0" :max="150"></el-input-number>
-                  <el-date-picker v-else-if="col.prop === 'date' || col.prop === 'hireDate'" v-model="formData[col.prop]" type="date"></el-date-picker>
-                  <el-select v-else-if="col.prop === 'status'" v-model="formData[col.prop]">
-                    <el-option label="Active" value="Active"></el-option>
-                    <el-option label="Inactive" value="Inactive"></el-option>
-                  </el-select>
-                  <el-input v-else-if="col.prop === 'notes' || col.prop === 'projects' || col.prop === 'skills'" 
-                            v-model="formData[col.prop]" 
-                            type="textarea" 
-                            :rows="4">
-                  </el-input>
+                  <template v-if="currentMode === 'view'">
+                    <span>{{ formData[col.prop] }}</span>
+                  </template>
+                  <template v-else>
+                    <el-input v-if="!specialInputTypes.includes(col.prop)" v-model="formData[col.prop]"></el-input>
+                    <el-input-number v-else-if="col.prop === 'age'" v-model="formData[col.prop]" :min="0" :max="150"></el-input-number>
+                    <el-date-picker v-else-if="col.prop === 'date' || col.prop === 'hireDate'" v-model="formData[col.prop]" type="date"></el-date-picker>
+                    <el-select v-else-if="col.prop === 'status'" v-model="formData[col.prop]">
+                      <el-option label="Active" value="Active"></el-option>
+                      <el-option label="Inactive" value="Inactive"></el-option>
+                    </el-select>
+                    <el-input v-else-if="col.prop === 'notes' || col.prop === 'projects' || col.prop === 'skills'" 
+                              v-model="formData[col.prop]" 
+                              type="textarea" 
+                              :rows="4">
+                    </el-input>
+                  </template>
                 </el-form-item>
               </div>
             </div>
@@ -56,26 +62,32 @@
               >
                 <span class="form-label" :class="{ 'required': isFieldRequired(col.prop) }">{{ col.label }}：</span>
                 <el-form-item :prop="col.prop">
-                  <el-input v-if="!specialInputTypes.includes(col.prop)" v-model="formData[col.prop]"></el-input>
-                  <el-input-number v-else-if="col.prop === 'age'" v-model="formData[col.prop]" :min="0" :max="150"></el-input-number>
-                  <el-date-picker v-else-if="col.prop === 'date' || col.prop === 'hireDate'" v-model="formData[col.prop]" type="date"></el-date-picker>
-                  <el-select v-else-if="col.prop === 'status'" v-model="formData[col.prop]">
-                    <el-option label="Active" value="Active"></el-option>
-                    <el-option label="Inactive" value="Inactive"></el-option>
-                  </el-select>
-                  <el-input v-else-if="col.prop === 'notes' || col.prop === 'projects' || col.prop === 'skills'" 
-                            v-model="formData[col.prop]" 
-                            type="textarea" 
-                            :rows="4">
-                  </el-input>
+                  <template v-if="currentMode === 'view'">
+                    <span>{{ formData[col.prop] }}</span>
+                  </template>
+                  <template v-else>
+                    <el-input v-if="!specialInputTypes.includes(col.prop)" v-model="formData[col.prop]"></el-input>
+                    <el-input-number v-else-if="col.prop === 'age'" v-model="formData[col.prop]" :min="0" :max="150"></el-input-number>
+                    <el-date-picker v-else-if="col.prop === 'date' || col.prop === 'hireDate'" v-model="formData[col.prop]" type="date"></el-date-picker>
+                    <el-select v-else-if="col.prop === 'status'" v-model="formData[col.prop]">
+                      <el-option label="Active" value="Active"></el-option>
+                      <el-option label="Inactive" value="Inactive"></el-option>
+                    </el-select>
+                    <el-input v-else-if="col.prop === 'notes' || col.prop === 'projects' || col.prop === 'skills'" 
+                              v-model="formData[col.prop]" 
+                              type="textarea" 
+                              :rows="4">
+                    </el-input>
+                  </template>
                 </el-form-item>
               </div>
             </div>
           </div>
         </el-form>
         <div class="modal-footer">
-          <el-button @click="dialogVisible = false">Cancel</el-button>
-          <el-button type="primary" @click="submitForm">Confirm</el-button>
+          <el-button @click="dialogVisible = false">Close</el-button>
+          <el-button v-if="currentMode === 'view'" type="primary" @click="switchToEditMode">Edit</el-button>
+          <el-button v-if="currentMode !== 'view'" type="primary" @click="submitForm">Confirm</el-button>
         </div>
       </div>
     </div>
@@ -159,7 +171,7 @@ const dialogVisible = ref(false)
 const formData = reactive({})
 const formRef = ref(null)
 const editIndex = ref(-1)
-const isEdit = ref(false)
+const currentMode = ref('add') // 'add', 'edit', or 'view'
 
 const specialInputTypes = ['age', 'date', 'hireDate', 'status', 'notes', 'projects', 'skills']
 
@@ -188,14 +200,20 @@ const isFieldRequired = (prop) => {
 }
 
 const handleAdd = () => {
-  isEdit.value = false
+  currentMode.value = 'add'
   Object.keys(formData).forEach(key => formData[key] = '')
   dialogVisible.value = true
 }
 
 const handleEdit = (index, row) => {
-  isEdit.value = true
+  currentMode.value = 'edit'
   editIndex.value = index
+  Object.assign(formData, row)
+  dialogVisible.value = true
+}
+
+const handleView = (index, row) => {
+  currentMode.value = 'view'
   Object.assign(formData, row)
   dialogVisible.value = true
 }
@@ -214,9 +232,14 @@ const handleDelete = (index, row) => {
 }
 
 const submitForm = () => {
+  if (currentMode.value === 'view') {
+    dialogVisible.value = false
+    return
+  }
+
   formRef.value.validate((valid) => {
     if (valid) {
-      if (isEdit.value) {
+      if (currentMode.value === 'edit') {
         Object.assign(tableData.value[editIndex.value], formData)
         ElMessage.success('Edit completed')
       } else {
@@ -230,6 +253,23 @@ const submitForm = () => {
       return false
     }
   })
+}
+
+const switchToEditMode = () => {
+  currentMode.value = 'edit'
+}
+
+const getModalTitle = () => {
+  switch (currentMode.value) {
+    case 'add':
+      return 'Add User:'
+    case 'edit':
+      return 'Edit User:'
+    case 'view':
+      return 'View User:'
+    default:
+      return 'User Details:'
+  }
 }
 </script>
 
@@ -268,7 +308,7 @@ h2 {
   margin-top: 20px;
   text-align: right;
 }
-.modal-footer button:first-child {
+.modal-footer button:not(:last-child) {
   margin-right: 10px;
 }
 .form-columns {
