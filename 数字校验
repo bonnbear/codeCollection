@@ -1,0 +1,14 @@
+  planning: [
+    { required: true, message: 'Planning is required', trigger: 'blur' },
+    { validator: (rule, value, callback) => {
+        const numValue = parseFloat(value);
+        if (isNaN(numValue)) {
+          callback(new Error('Please input a valid number'));
+        } else if (numValue < 0 || numValue > 100) {
+          callback(new Error('Planning should be between 0 and 100'));
+        } else {
+          callback();
+        }
+      }, trigger: 'blur' 
+    }
+  ],
