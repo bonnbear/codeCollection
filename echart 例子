@@ -214,5 +214,135 @@ export default {
 </script>
 
 
+//// 环形图·
+<template>
+  <div ref="chartContainer" style="width: 100%; height: 400px;"></div>
+</template>
+
+<script>
+import { ref, onMounted, onUnmounted, computed } from 'vue'
+import * as echarts from 'echarts'
+
+export default {
+  setup() {
+    const chartContainer = ref(null)
+    let chart = null
+    let resizeObserver = null
+
+    const originalData = [
+      { value: 1048, name: '搜索引擎' },
+      { value: 735, name: '直接访问' },
+      { value: 580, name: '邮件营销' },
+      { value: 484, name: '联盟广告' },
+      { value: 300, name: '视频广告' }
+    ]
+
+    const sortedData = computed(() => {
+      return [...originalData].sort((a, b) => b.value - a.value)
+    })
+
+    const total = computed(() => {
+      return originalData.reduce((sum, item) => sum + item.value, 0)
+    })
+
+    const initChart = () => {
+      if (chartContainer.value) {
+        chart = echarts.init(chartContainer.value)
+        const option = {
+          tooltip: {
+            trigger: 'item',
+            formatter: '{a} <br/>{b}: {c} ({d}%)'
+          },
+          legend: {
+            top: '5%',
+            left: 'center',
+            orient: 'horizontal',
+            itemWidth: 25,
+            itemHeight: 14
+          },
+          series: [
+            {
+              name: '访问来源',
+              type: 'pie',
+              radius: ['40%', '70%'],
+              avoidLabelOverlap: false,
+              itemStyle: {
+                borderRadius: 10,
+                borderColor: '#fff',
+                borderWidth: 2
+              },
+              label: {
+                show: true,
+                position: 'outside',
+                formatter: '{b}: {c}',
+                fontSize: 14
+              },
+              labelLine: {
+                show: true,
+                length: 15,
+                length2: 10
+              },
+              data: sortedData.value
+            },
+            {
+              name: '总计',
+              type: 'pie',
+              radius: ['0%', '30%'],
+              label: {
+                show: true,
+                position: 'center',
+                formatter: `{c}\n总计`,
+                fontSize: 20,
+                fontWeight: 'bold'
+              },
+              data: [{
+                value: total.value,
+                name: '总计',
+                itemStyle: {
+                  color: 'transparent'
+                }
+              }]
+            }
+          ]
+        }
+        chart.setOption(option)
+      }
+    }
+
+    const handleResize = () => {
+      if (chart) {
+        chart.resize()
+      }
+    }
+
+    onMounted(() => {
+      initChart()
+
+      // 创建 ResizeObserver 来监听容器大小变化
+      resizeObserver = new ResizeObserver(handleResize)
+      if (chartContainer.value) {
+        resizeObserver.observe(chartContainer.value)
+      }
+
+      // 监听窗口 resize 事件
+      window.addEventListener('resize', handleResize)
+    })
+
+    onUnmounted(() => {
+      if (chart) {
+        chart.dispose()
+      }
+      if (resizeObserver) {
+        resizeObserver.disconnect()
+      }
+      window.removeEventListener('resize', handleResize)
+    })
+
+    return {
+      chartContainer
+    }
+  }
+}
+</script>
 
 
