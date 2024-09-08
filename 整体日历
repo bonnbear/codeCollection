@@ -1,6 +1,14 @@
+
+
+
+
+
+
+
 <template>
   <div class="gantt-chart">
     <div class="task-types">
+      <div class="task-type-header"></div>
       <div v-for="type in taskTypes" :key="type" class="task-type">
         {{ type }}
       </div>
@@ -14,7 +22,7 @@
       <div v-for="type in taskTypes" :key="type" class="calendar-row">
         <div v-for="month in months" :key="month.key" class="calendar-cell">
           <div
-            v-for="(task, index) in getTasksForMonth(type, month.key)"
+            v-for="task in getTasksForMonth(type, month.key)"
             :key="task.id"
             class="task"
             :class="getTaskClasses(task, month.key)"
@@ -107,11 +115,11 @@ export default {
       
       // 处理跨月份的情况
       if (task.start.slice(0, 7) < monthKey) {
-        marginLeft = '-2px';
-        width = `calc(${width} + 2px)`;
+        marginLeft = '0';
+        width = `calc(${width} + 1px)`;
       }
       if (task.end.slice(0, 7) > monthKey) {
-        width = `calc(${width} + 2px)`;
+        width = `calc(${width} + 1px)`;
       }
 
       return {
@@ -181,6 +189,11 @@ export default {
   background-color: #f0f0f0;
 }
 
+.task-type-header {
+  height: 50px; /* 调整为与月份标题相同的高度 */
+  border-bottom: 1px solid #ccc;
+}
+
 .task-type {
   height: 50px;
   display: flex;
@@ -206,6 +219,11 @@ export default {
   border-right: 1px solid #ccc;
   border-bottom: 1px solid #ccc;
   font-weight: bold;
+  height: 50px; /* 确保月份标题的高度与任务类型头部一致 */
+  box-sizing: border-box; /* 确保padding不会增加总高度 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .calendar-row {
