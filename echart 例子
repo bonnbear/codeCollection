@@ -1,0 +1,109 @@
+堆叠柱状图
+<template>
+  <div class="chart-container">
+    <div ref="chart" class="chart"></div>
+  </div>
+</template>
+
+<script>
+import { ref, onMounted } from 'vue';
+import * as echarts from 'echarts';
+
+export default {
+  name: 'StackedBarChart',
+  setup() {
+    const chart = ref(null);
+
+    const initChart = () => {
+      const myChart = echarts.init(chart.value);
+
+      const option = {
+        title: {
+          text: '堆叠柱状图（每个横轴项只有一个柱状体）',
+        },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: {
+            type: 'shadow',
+          },
+        },
+        legend: {
+          data: ['销售额', '利润'],
+        },
+        grid: {
+          left: '3%',
+          right: '4%',
+          bottom: '3%',
+          containLabel: true,
+        },
+        xAxis: {
+          type: 'category',
+          data: ['产品A', '产品B', '产品C', '产品D', '产品E'],
+        },
+        yAxis: {
+          type: 'value',
+        },
+        series: [
+          {
+            name: '销售额',
+            type: 'bar',
+            stack: '总量', // 堆叠在一起
+            label: {
+              show: true,
+              position: 'inside', // 在柱子内部显示数值
+            },
+            emphasis: {
+              focus: 'series',
+            },
+            data: [320, 302, 301, 334, 390], // 销售额数据
+          },
+          {
+            name: '利润',
+            type: 'bar',
+            stack: '总量', // 堆叠在一起
+            label: {
+              show: true,
+              position: 'inside', // 在柱子内部显示数值
+            },
+            emphasis: {
+              focus: 'series',
+            },
+            data: [120, 132, 101, 134, 90], // 利润数据
+          },
+        ],
+      };
+
+      // 使用指定的配置项和数据显示图表。
+      myChart.setOption(option);
+
+      // 监听窗口大小变化，自动调整图表大小
+      window.addEventListener('resize', () => {
+        myChart.resize();
+      });
+    };
+
+    onMounted(() => {
+      initChart();
+    });
+
+    return {
+      chart,
+    };
+  },
+};
+</script>
+
+<style scoped>
+.chart-container {
+  width: 100%;
+  height: 100%;
+}
+
+.chart {
+  width: 100%;
+  height: 400px;
+}
+</style>
+
+
+
