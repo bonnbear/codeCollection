@@ -444,3 +444,153 @@ export default {
   }
 }
 </script>
+
+
+
+
+
+
+
+
+
+
+
+//。单位处理
+<template>
+  <div ref="chartRef" :style="{ width: '100%', height: '400px' }"></div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+import * as echarts from 'echarts'
+
+const chartRef = ref(null)
+let chart = null
+
+// 示例数据
+const sampleData = [
+  { category: '第一季度', bar1: 120, bar2: 150, percentage: 0.3 },
+  { category: '第二季度', bar1: 200, bar2: 180, percentage: 0.5 },
+  { category: '第三季度', bar1: 150, bar2: 220, percentage: 0.4 },
+  { category: '第四季度', bar1: 250, bar2: 0, percentage: 0.6 },
+]
+
+const initChart = () => {
+  if (chartRef.value) {
+    chart = echarts.init(chartRef.value)
+    updateChart()
+  }
+}
+
+const updateChart = () => {
+  const maxBarValue = Math.max(...sampleData.flatMap(item => [item.bar1, item.bar2]))
+  const scaledPercentages = sampleData.map(item => item.percentage * maxBarValue)
+
+  const option = {
+    title: {
+      text: '季度销售数据与增长率',
+      left: 'center'
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' }
+    },
+    legend: {
+      data: ['产品A销量', '产品B销量', '增长率'],
+      bottom: 0
+    },
+    xAxis: {
+      type: 'category',
+      data: sampleData.map(item => item.category)
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: '销量',
+        position: 'left',
+        axisLabel: { formatter: '{value} 件' },
+      },
+      {
+        type: 'value',
+        name: '增长率',
+        position: 'right',
+        axisLabel: {
+          formatter: function(value) {
+            return (value / maxBarValue * 100).toFixed(0) + '%'
+          }
+        },
+        max: maxBarValue
+      }
+    ],
+    series: [
+      {
+        name: '产品A销量',
+        type: 'bar',
+        data: sampleData.map(item => item.bar1),
+        tooltip: {
+          valueFormatter: (value) => `${value} 件`
+        },
+        label: {
+          show: true,
+          position: 'top',
+          formatter: function(params) {
+            return params.value > 0 ? `${params.value}` : ''
+          }
+        }
+      },
+      {
+        name: '产品B销量',
+        type: 'bar',
+        data: sampleData.map(item => item.bar2),
+        tooltip: {
+          valueFormatter: (value) => `${value} 件`
+        },
+        label: {
+          show: true,
+          position: 'top',
+          formatter: function(params) {
+            return params.value > 0 ? `${params.value}` : ''
+          }
+        }
+      },
+      {
+        name: '增长率',
+        type: 'line',
+        yAxisIndex: 1,
+        data: scaledPercentages,
+        label: {
+          show: true,
+          formatter: function(params) {
+            return (params.value / maxBarValue * 100).toFixed(2) + '%'
+          }
+        },
+        itemStyle: { color: '#FFA500' },
+        lineStyle: { width: 3 },
+        symbol: 'circle',
+        symbolSize: 8,
+        tooltip: {
+          valueFormatter: (value) => `${(value / maxBarValue * 100).toFixed(2)}%`
+        }
+      }
+    ]
+  }
+
+  chart.setOption(option)
+}
+
+onMounted(() => {
+  initChart()
+  window.addEventListener('resize', chart.resize)
+})
+
+onUnmounted(() => {
+  if (chart) {
+    chart.dispose()
+    window.removeEventListener('resize', chart.resize)
+  }
+})
+</script>
+
+
+
+
