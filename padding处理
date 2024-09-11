@@ -1,0 +1,147 @@
+<template>
+  <div class="layout">
+    <header style="margin-bottom:20px;" ref="headerRef" :style="{ zoom: zoom }">
+      <div class="content-box">Header</div>
+    </header>
+    <main ref="contentRef" :style="{ padding: dynamicPadding }">
+      <div class="content-box" style="height:100%;width:100%;background:pink;">
+        <div>Zoom: {{ zoom }}</div>
+        <div>Header Height (getBoundingClientRect): {{ headerHeight }}px</div>
+        <div>Header Height (offsetHeight): {{ headerOffsetHeight }}px</div>
+        <div>Content Height (getBoundingClientRect): {{ contentHeight }}px</div>
+        <div>Content Height (offsetHeight): {{ contentOffsetHeight }}px</div>
+        <div>Footer Height (getBoundingClientRect): {{ footerHeight }}px</div>
+        <div>Footer Height (offsetHeight): {{ footerOffsetHeight }}px</div>
+        <div>Layout Height (getBoundingClientRect): {{ layoutHeight }}px</div>
+        <div>Layout Height (offsetHeight): {{ layoutOffsetHeight }}px</div>
+        <div>Dynamic Padding: {{ dynamicPadding }}</div>
+      </div>
+    </main>
+    <footer style="margin-top:20px;" ref="footerRef" :style="{ zoom: zoom }">
+      <div class="content-box">Footer</div>
+    </footer>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue';
+
+const headerRef = ref(null);
+const contentRef = ref(null);
+const footerRef = ref(null);
+
+const zoom = ref(1);
+const headerHeight = ref(0);
+const footerHeight = ref(0);
+const contentHeight = ref(0);
+const layoutHeight = ref(0);
+const headerOffsetHeight = ref(0);
+const footerOffsetHeight = ref(0);
+const contentOffsetHeight = ref(0);
+const layoutOffsetHeight = ref(0);
+
+const dynamicPadding = computed(() => {
+  const basePadding = 40; // Original padding value
+  return `${basePadding * zoom.value}px`;
+});
+
+const setWindowSize = () => {
+  let cW = window.innerWidth;
+  let cH = window.innerHeight;
+
+  if (cW / cH >= 16 / 9) {
+    cW = (cH * 16) / 9;
+  } else {
+    cH = (cW * 9) / 16;
+  }
+
+  zoom.value = cH / 1080;
+};
+
+const calculateHeights = () => {
+  if (!headerRef.value || !footerRef.value || !contentRef.value) return;
+
+  const layout = document.querySelector('.layout');
+
+  headerHeight.value = headerRef.value.getBoundingClientRect().height;
+  footerHeight.value = footerRef.value.getBoundingClientRect().height;
+  contentHeight.value = contentRef.value.getBoundingClientRect().height;
+  layoutHeight.value = layout.getBoundingClientRect().height;
+
+  headerOffsetHeight.value = headerRef.value.offsetHeight;
+  footerOffsetHeight.value = footerRef.value.offsetHeight;
+  contentOffsetHeight.value = contentRef.value.offsetHeight;
+  layoutOffsetHeight.value = layout.offsetHeight;
+
+  console.log(`Zoom: ${zoom.value}`);
+  console.log(`Header Height (getBoundingClientRect): ${headerHeight.value}px`);
+  console.log(`Header Height (offsetHeight): ${headerOffsetHeight.value}px`);
+  console.log(`Content Height (getBoundingClientRect): ${contentHeight.value}px`);
+  console.log(`Content Height (offsetHeight): ${contentOffsetHeight.value}px`);
+  console.log(`Footer Height (getBoundingClientRect): ${footerHeight.value}px`);
+  console.log(`Footer Height (offsetHeight): ${footerOffsetHeight.value}px`);
+  console.log(`Layout Height (getBoundingClientRect): ${layoutHeight.value}px`);
+  console.log(`Layout Height (offsetHeight): ${layoutOffsetHeight.value}px`);
+  console.log(`Dynamic Padding: ${dynamicPadding.value}`);
+  console.log('------------------------');
+};
+
+const updateLayout = () => {
+  setWindowSize();
+  nextTick(() => {
+    calculateHeights();
+  });
+};
+
+onMounted(() => {
+  updateLayout();
+  window.addEventListener('resize', updateLayout);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateLayout);
+});
+</script>
+
+<style scoped>
+.layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+header {
+  flex-shrink: 0;
+  background-color: #f0f0f0;
+  height: 100px;
+  padding: 40px;
+}
+
+main {
+  flex-grow: 1;
+  background-color: #e0e0e0;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+footer {
+  flex-shrink: 0;
+  background-color: #f0f0f0;
+  height: 100px;
+  padding: 40px;
+}
+
+.content-box {
+  border: 2px solid black;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+header .content-box, footer .content-box {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+</style>
