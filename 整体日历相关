@@ -2,14 +2,19 @@
   <div class="container mx-auto p-4" ref="containerRef">
     <div class="table-container">
       <div class="table-header">
-        <div class="table-cell font-semibold">一级</div>
-        <div class="table-cell font-semibold">二级</div>
-        <div class="table-cell font-semibold">三级</div>
-        <div class="table-cell font-semibold">活动描述</div>
-        <div class="table-cell font-semibold">开始时间</div>
-        <div class="table-cell font-semibold">结束时间</div>
-        <div class="months-header" :style="{ width: `${timelineWidth}px` }" ref="timelineRef">
-          <div v-for="month in months" :key="month" class="month-cell font-semibold">{{ month }}</div>
+        <div class="header-group activity-process">
+          <div class="header-cell span-3">活动流程</div>
+          <div class="header-row">
+            <div class="header-cell">一级</div>
+            <div class="header-cell">二级</div>
+            <div class="header-cell">三级</div>
+          </div>
+        </div>
+        <div class="header-cell">活动描述</div>
+        <div class="header-cell">开始时间</div>
+        <div class="header-cell">结束时间</div>
+        <div class="months-header" ref="timelineRef">
+          <div v-for="month in months" :key="month" class="month-cell">{{ month }}</div>
         </div>
       </div>
       <div class="table-body">
@@ -59,6 +64,8 @@
                                     :clearable="false"
                                     format="YYYY-MM-DD"
                                     value-format="YYYY-MM-DD"
+                                    :disabled-date="(time) => disabledStartDate(time, activity.endTime)"
+                                    @change="(val) => handleStartDateChange(val, activity)"
                                   />
                                 </div>
                                 <div class="table-cell activity-end-time">
@@ -70,9 +77,11 @@
                                     :clearable="false"
                                     format="YYYY-MM-DD"
                                     value-format="YYYY-MM-DD"
+                                    :disabled-date="(time) => disabledEndDate(time, activity.startTime)"
+                                    @change="(val) => handleEndDateChange(val, activity)"
                                   />
                                 </div>
-                                <div class="activity-timeline" :style="{ width: `${timelineWidth}px` }">
+                                <div class="activity-timeline">
                                   <div class="activity-block"
                                        :style="getActivityStyle(activity)">
                                     <span class="activity-text">
@@ -105,6 +114,8 @@
                                   :clearable="false"
                                   format="YYYY-MM-DD"
                                   value-format="YYYY-MM-DD"
+                                  :disabled-date="(time) => disabledStartDate(time, activity.endTime)"
+                                  @change="(val) => handleStartDateChange(val, activity)"
                                 />
                               </div>
                               <div class="table-cell activity-end-time">
@@ -116,9 +127,11 @@
                                   :clearable="false"
                                   format="YYYY-MM-DD"
                                   value-format="YYYY-MM-DD"
+                                  :disabled-date="(time) => disabledEndDate(time, activity.startTime)"
+                                  @change="(val) => handleEndDateChange(val, activity)"
                                 />
                               </div>
-                              <div class="activity-timeline" :style="{ width: `${timelineWidth}px` }">
+                              <div class="activity-timeline">
                                 <div class="activity-block"
                                      :style="getActivityStyle(activity)">
                                   <span class="activity-text">
@@ -149,11 +162,9 @@ import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
 
 const containerRef = ref(null);
 const timelineRef = ref(null);
-const containerWidth = ref(0);
 const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 const currentDate = ref(new Date());
 const currentYear = computed(() => currentDate.value.getFullYear());
-const timelineWidth = computed(() => containerWidth.value - 700); // 减去固定列的宽度
 const currentDateLineStyle = ref({});
 
 const treeStructure = reactive({
@@ -240,19 +251,21 @@ const updateDateLine = () => {
 
   currentDateLineStyle.value = {
     left: `${timelineLeftOffset + leftPosition}px`,
+    height: `${containerRect.height}px`,
   };
 };
 
-const updateContainerWidth = () => {
-  if (containerRef.value) {
-    containerWidth.value = containerRef.value.offsetWidth;
+const updateLayout = () => {
+  if (timelineRef.value) {
+    const timelineWidth = timelineRef.value.offsetWidth;
+    document.documentElement.style.setProperty('--timeline-width', `${timelineWidth}px`);
   }
   updateDateLine();
 };
 
 onMounted(() => {
-  updateContainerWidth();
-  window.addEventListener('resize', updateContainerWidth);
+  updateLayout();
+  window.addEventListener('resize', updateLayout);
 
   const timer = setInterval(() => {
     currentDate.value = new Date();
@@ -261,9 +274,39 @@ onMounted(() => {
 
   onUnmounted(() => {
     clearInterval(timer);
-    window.removeEventListener('resize', updateContainerWidth);
+    window.removeEventListener('resize', updateLayout);
   });
 });
+
+const disabledStartDate = (time, endTime) => {
+  const start = new Date(currentYear.value, 0, 1);
+  const end = new Date(currentYear.value, 11, 31);
+  if (endTime) {
+    return time.getTime() > new Date(endTime).getTime() || time.getTime() < start.getTime() || time.getTime() > end.getTime();
+  }
+  return time.getTime() < start.getTime() || time.getTime() > end.getTime();
+};
+
+const disabledEndDate = (time, startTime) => {
+  const start = new Date(currentYear.value, 0, 1);
+  const end = new Date(currentYear.value, 11, 31);
+  if (startTime) {
+    return time.getTime() < new Date(startTime).getTime() || time.getTime() < start.getTime() || time.getTime() > end.getTime();
+  }
+  return time.getTime() < start.getTime() || time.getTime() > end.getTime();
+};
+
+const handleStartDateChange = (val, activity) => {
+  if (new Date(val) > new Date(activity.endTime)) {
+    activity.endTime = val;
+  }
+};
+
+const handleEndDateChange = (val, activity) => {
+  if (new Date(val) < new Date(activity.startTime)) {
+    activity.startTime = val;
+  }
+};
 
 const addFirstLevel = () => {
   treeStructure.children.push({
@@ -290,11 +333,16 @@ const addThirdLevel = (firstIndex, branchIndex) => {
 };
 
 const addActivity = (firstIndex, branchIndex, leafIndex) => {
+  const today = new Date();
+  const startDate = new Date(currentYear.value, today.getMonth(), today.getDate());
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 1); // 设置结束日期为开始日期的后一天
+
   const newActivity = {
     name: "New Activity",
     description: "Description of New Activity",
-    startTime: new Date().toISOString().split('T')[0],
-    endTime: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0]
+    startTime: startDate.toISOString().split('T')[0],
+    endTime: endDate.toISOString().split('T')[0]
   };
 
   if (leafIndex !== null) {
@@ -333,18 +381,19 @@ const deleteActivity = (firstIndex, branchIndex, leafIndex, activityIndex) => {
   font-family: Arial, sans-serif;
   font-size: 14px;
   position: relative;
+  overflow: auto;
 }
 
 .table-container {
   display: flex;
   flex-direction: column;
   border: 1px solid #e2e8f0;
-  overflow-x: auto;
+  min-width: fit-content;
 }
 
 .table-header {
   display: grid;
-  grid-template-columns: 100px 100px 100px 200px 100px 100px 1fr;
+  grid-template-columns: 300px 200px 100px 100px minmax(1200px, 1fr);
   background-color: #f8fafc;
   font-weight: 600;
   position: sticky;
@@ -352,17 +401,46 @@ const deleteActivity = (firstIndex, branchIndex, leafIndex, activityIndex) => {
   z-index: 10;
 }
 
+.header-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.header-cell {
+  padding: 12px 8px;
+  text-align: center;
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header-row {
+  display: flex;
+}
+
+.span-3 {
+  grid-column: span 3;
+}
+
+.activity-process .header-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+
 .months-header {
   display: flex;
-  overflow-x: hidden;
 }
 
 .month-cell {
   flex: 1;
   min-width: 100px;
+  box-sizing: border-box;
   padding: 12px 8px;
   text-align: center;
   border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .table-body {
@@ -400,7 +478,7 @@ const deleteActivity = (firstIndex, branchIndex, leafIndex, activityIndex) => {
 
 .activity-row {
   display: grid;
-  grid-template-columns: 200px 100px 100px 1fr;
+  grid-template-columns: 200px 100px 100px minmax(1200px, 1fr);
   border-top: 1px solid #e2e8f0;
 }
 
@@ -437,12 +515,6 @@ const deleteActivity = (firstIndex, branchIndex, leafIndex, activityIndex) => {
 
 .table-cell:last-child {
   border-right: none;
-}
-
-.table-header .table-cell {
-  padding: 12px 8px;
-  background-color: #f1f5f9;
-  border-bottom: 1px solid #e2e8f0;
 }
 
 .first-level-group:first-child {
@@ -494,7 +566,6 @@ const deleteActivity = (firstIndex, branchIndex, leafIndex, activityIndex) => {
 .current-date-line {
   position: absolute;
   top: 0;
-  bottom: 0;
   width: 2px;
   background-color: red;
   z-index: 10;
