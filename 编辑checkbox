@@ -1,0 +1,644 @@
+<template>
+  <div class="container mx-auto p-4" ref="containerRef">
+    <div class="table-container">
+      <div class="table-header">
+        <div class="header-cell checkbox-header">
+          <el-checkbox v-model="selectAll" @change="handleSelectAll">全选</el-checkbox>
+        </div>
+        <div class="header-group activity-process">
+          <div class="header-cell span-3">活动流程</div>
+          <div class="header-row">
+            <div class="header-cell">一级</div>
+            <div class="header-cell">二级</div>
+            <div class="header-cell">三级</div>
+          </div>
+        </div>
+        <div class="header-cell">活动描述</div>
+        <div class="header-cell">开始时间</div>
+        <div class="header-cell">结束时间</div>
+        <div class="months-header" ref="timelineRef">
+          <div v-for="month in months" :key="month" class="month-cell">{{ month }}</div>
+        </div>
+      </div>
+      <div class="table-body">
+        <template v-for="(firstLevel, firstIndex) in treeStructure.children" :key="firstLevel.name">
+          <div class="first-level-group">
+            <div class="checkbox-cell">
+              <el-checkbox v-model="firstLevel.selected" @change="(val) => handleSelect(val, firstIndex)"></el-checkbox>
+            </div>
+            <div class="table-cell first-level">
+              <el-input v-model="firstLevel.name" size="small" />
+              <div class="button-group">
+                <el-button size="small" @click="addSecondLevel(firstIndex)">增加</el-button>
+                <el-button size="small" @click="deleteFirstLevel(firstIndex)">删除</el-button>
+              </div>
+            </div>
+            <div class="branch-content">
+              <template v-for="(branch, branchIndex) in firstLevel.children" :key="`${firstIndex}-${branchIndex}`">
+                <div class="branch-row">
+                  <div class="table-cell second-level">
+                    <el-input v-model="branch.name" size="small" />
+                    <div class="button-group">
+                      <el-button size="small" @click="addThirdLevel(firstIndex, branchIndex)">增加</el-button>
+                      <el-button size="small" @click="deleteSecondLevel(firstIndex, branchIndex)">删除</el-button>
+                    </div>
+                  </div>
+                  <div class="leaf-content">
+                    <template v-if="branch.children && branch.children.length">
+                      <template v-for="(leaf, leafIndex) in branch.children" :key="`${firstIndex}-${branchIndex}-${leafIndex}`">
+                        <div class="leaf-row">
+                          <div class="table-cell third-level">
+                            <el-input v-model="leaf.name" size="small" />
+                            <div class="button-group">
+                              <el-button size="small" @click="addActivity(firstIndex, branchIndex, leafIndex)">增加活动</el-button>
+                              <el-button size="small" @click="deleteThirdLevel(firstIndex, branchIndex, leafIndex)">删除</el-button>
+                            </div>
+                          </div>
+                          <div class="activity-content">
+                            <template v-for="(activity, activityIndex) in leaf.activities" :key="`${firstIndex}-${branchIndex}-${leafIndex}-${activityIndex}`">
+                              <div class="activity-row">
+                                <div class="table-cell activity-description">
+                                  <el-input v-model="activity.description" size="small" />
+                                  <el-button size="small" @click="deleteActivity(firstIndex, branchIndex, leafIndex, activityIndex)">删除</el-button>
+                                </div>
+                                <div class="table-cell activity-start-time">
+                                  <el-date-picker
+                                    v-model="activity.startTime"
+                                    type="date"
+                                    size="small"
+                                    placeholder="选择开始日期"
+                                    :clearable="false"
+                                    format="YYYY-MM-DD"
+                                    value-format="YYYY-MM-DD"
+                                    :disabled-date="(time) => disabledStartDate(time, activity.endTime)"
+                                    @change="(val) => handleStartDateChange(val, activity)"
+                                  />
+                                </div>
+                                <div class="table-cell activity-end-time">
+                                  <el-date-picker
+                                    v-model="activity.endTime"
+                                    type="date"
+                                    size="small"
+                                    placeholder="选择结束日期"
+                                    :clearable="false"
+                                    format="YYYY-MM-DD"
+                                    value-format="YYYY-MM-DD"
+                                    :disabled-date="(time) => disabledEndDate(time, activity.startTime)"
+                                    @change="(val) => handleEndDateChange(val, activity)"
+                                  />
+                                </div>
+                                <div class="activity-timeline">
+                                  <div class="activity-block"
+                                       :style="getActivityStyle(activity)">
+                                    <span class="activity-text">
+                                      {{ activity.description }}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </template>
+                    </template>
+                    <template v-else>
+                      <div class="leaf-row">
+                        <div class="table-cell third-level"></div>
+                        <div class="activity-content">
+                          <template v-for="(activity, activityIndex) in branch.activities" :key="`${firstIndex}-${branchIndex}-${activityIndex}`">
+                            <div class="activity-row">
+                              <div class="table-cell activity-description">
+                                <el-input v-model="activity.description" size="small" />
+                                <el-button size="small" @click="deleteActivity(firstIndex, branchIndex, null, activityIndex)">删除</el-button>
+                              </div>
+                              <div class="table-cell activity-start-time">
+                                <el-date-picker
+                                  v-model="activity.startTime"
+                                  type="date"
+                                  size="small"
+                                  placeholder="选择开始日期"
+                                  :clearable="false"
+                                  format="YYYY-MM-DD"
+                                  value-format="YYYY-MM-DD"
+                                  :disabled-date="(time) => disabledStartDate(time, activity.endTime)"
+                                  @change="(val) => handleStartDateChange(val, activity)"
+                                />
+                              </div>
+                              <div class="table-cell activity-end-time">
+                                <el-date-picker
+                                  v-model="activity.endTime"
+                                  type="date"
+                                  size="small"
+                                  placeholder="选择结束日期"
+                                  :clearable="false"
+                                  format="YYYY-MM-DD"
+                                  value-format="YYYY-MM-DD"
+                                  :disabled-date="(time) => disabledEndDate(time, activity.startTime)"
+                                  @change="(val) => handleEndDateChange(val, activity)"
+                                />
+                              </div>
+                              <div class="activity-timeline">
+                                <div class="activity-block"
+                                     :style="getActivityStyle(activity)">
+                                  <span class="activity-text">
+                                    {{ activity.description }}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+    <div class="current-date-line" :style="currentDateLineStyle"></div>
+    <el-button class="mt-4" @click="addFirstLevel">添加一级</el-button>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
+
+const containerRef = ref(null);
+const timelineRef = ref(null);
+const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+const currentDate = ref(new Date());
+const currentYear = computed(() => currentDate.value.getFullYear());
+const currentDateLineStyle = ref({});
+const selectAll = ref(false);
+
+const treeStructure = reactive({
+  name: "Root",
+  children: [
+    {
+      name: "First Level 1",
+      selected: false,
+      children: [
+        {
+          name: "Branch 1-1",
+          children: [
+            { name: "Leaf 1-1-1", activities: [{ name: "Activity 1", description: "Description of Activity 1", startTime: "2024-01-01", endTime: "2024-03-15" }] },
+            { name: "Leaf 1-1-2", activities: [{ name: "Activity 2", description: "Description of Activity 2", startTime: "2024-02-01", endTime: "2024-05-10" }] },
+          ]
+        },
+        {
+          name: "Branch 1-2",
+          activities: [{ name: "Activity 3", description: "Description of Activity 3", startTime: "2024-03-01", endTime: "2024-07-15" }]
+        },
+      ]
+    },
+    {
+      name: "First Level 2",
+      selected: false,
+      children: [
+        {
+          name: "Branch 2-1",
+          children: [
+            { name: "Leaf 2-1-1", activities: [{ name: "Activity 4", description: "Description of Activity 4", startTime: "2024-04-01", endTime: "2024-08-20" }] },
+            { name: "Leaf 2-1-2", activities: [{ name: "Activity 5", description: "Description of Activity 5", startTime: "2024-05-01", endTime: "2024-09-30" }] },
+            { name: "Leaf 2-1-3", activities: [{ name: "Activity 6", description: "Description of Activity 6", startTime: "2024-06-01", endTime: "2024-10-30" }] },
+          ]
+        },
+      ]
+    },
+    {
+      name: "First Level 3",
+      selected: false,
+      children: [
+        {
+          name: "Branch 3-1",
+          activities: [{ name: "Activity 7", description: "Description of Activity 7", startTime: "2024-07-01", endTime: "2024-11-05" }]
+        },
+        {
+          name: "Branch 3-2",
+          children: [
+            { name: "Leaf 3-2-1", activities: [{ name: "Activity 8", description: "Description of Activity 8", startTime: "2024-08-01", endTime: "2024-12-10" }] },
+            { name: "Leaf 3-2-2", activities: [{ name: "Activity 9", description: "Description of Activity 9", startTime: "2024-09-01", endTime: "2024-12-31" }] },
+          ]
+        },
+      ]
+    },
+  ]
+});
+
+const getActivityStyle = (activity) => {
+  const startDate = new Date(activity.startTime);
+  const endDate = new Date(activity.endTime);
+  const yearStart = new Date(currentYear.value, 0, 1);
+  const yearEnd = new Date(currentYear.value, 11, 31);
+
+  let left = ((startDate - yearStart) / (yearEnd - yearStart)) * 100;
+  let width = ((endDate - startDate) / (yearEnd - yearStart)) * 100;
+
+  const isPastActivity = endDate < currentDate.value;
+
+  return {
+    left: `${left}%`,
+    width: `${width}%`,
+    backgroundColor: isPastActivity ? '#CCCCCC' : '#4CAF50',
+  };
+};
+
+const updateDateLine = () => {
+  if (!containerRef.value || !timelineRef.value) return;
+
+  const containerRect = containerRef.value.getBoundingClientRect();
+  const timelineRect = timelineRef.value.getBoundingClientRect();
+  const timelineLeftOffset = timelineRect.left - containerRect.left;
+
+  const startOfYear = new Date(currentYear.value, 0, 1);
+  const endOfYear = new Date(currentYear.value, 11, 31);
+  const totalDays = (endOfYear - startOfYear) / (24 * 60 * 60 * 1000) + 1;
+  const daysPassed = Math.floor((currentDate.value - startOfYear) / (24 * 60 * 60 * 1000));
+  const leftPosition = (daysPassed / totalDays) * timelineRect.width;
+
+  currentDateLineStyle.value = {
+    left: `${timelineLeftOffset + leftPosition}px`,
+    height: `${containerRect.height}px`,
+  };
+};
+
+const updateLayout = () => {
+  if (timelineRef.value) {
+    const timelineWidth = timelineRef.value.offsetWidth;
+    document.documentElement.style.setProperty('--timeline-width', `${timelineWidth}px`);
+  }
+  updateDateLine();
+};
+
+onMounted(() => {
+  updateLayout();
+  window.addEventListener('resize', updateLayout);
+
+  const timer = setInterval(() => {
+    currentDate.value = new Date();
+    updateDateLine();
+  }, 1000 * 60 * 60); // 每小时更新一次
+
+  onUnmounted(() => {
+    clearInterval(timer);
+    window.removeEventListener('resize', updateLayout);
+  });
+});
+
+const disabledStartDate = (time, endTime) => {
+  const start = new Date(currentYear.value, 0, 1);
+  const end = new Date(currentYear.value, 11, 31);
+  if (endTime) {
+    return time.getTime() > new Date(endTime).getTime() || time.getTime() < start.getTime() || time.getTime() > end.getTime();
+  }
+  return time.getTime() < start.getTime() || time.getTime() > end.getTime();
+};
+
+const disabledEndDate = (time, startTime) => {
+  const start = new Date(currentYear.value, 0, 1);
+  const end = new Date(currentYear.value, 11, 31);
+  if (startTime) {
+    return time.getTime() < new Date(startTime).getTime() || time.getTime() < start.getTime() || time.getTime() > end.getTime();
+  }
+  return time.getTime() < start.getTime() || time.getTime() > end.getTime();
+};
+
+const handleStartDateChange = (val, activity) => {
+  if (new Date(val) > new Date(activity.endTime)) {
+    activity.endTime = val;
+  }
+};
+
+const handleEndDateChange = (val, activity) => {
+  if (new Date(val) < new Date(activity.startTime)) {
+    activity.startTime = val;
+  }
+};
+
+const addFirstLevel = () => {
+  treeStructure.children.push({
+    name: "New First Level",
+    selected: false,
+    children: []
+  });
+};
+
+const addSecondLevel = (firstIndex) => {
+  treeStructure.children[firstIndex].children.push({
+    name: "New Branch",
+    children: []
+  });
+};
+
+const addThirdLevel = (firstIndex, branchIndex) => {
+  if (!treeStructure.children[firstIndex].children[branchIndex].children) {
+    treeStructure.children[firstIndex].children[branchIndex].children = [];
+  }
+  treeStructure.children[firstIndex].children[branchIndex].children.push({
+    name: "New Leaf",
+    activities: []
+  });
+};
+
+const addActivity = (firstIndex, branchIndex, leafIndex) => {
+  const today = new Date();
+  const startDate = new Date(currentYear.value, today.getMonth(), today.getDate());
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 1); // 设置结束日期为开始日期的后一天
+
+  const newActivity = {
+    name: "New Activity",
+    description: "Description of New Activity",
+    startTime: startDate.toISOString().split('T')[0],
+    endTime: endDate.toISOString().split('T')[0]
+  };
+
+  if (leafIndex !== null) {
+    treeStructure.children[firstIndex].children[branchIndex].children[leafIndex].activities.push(newActivity);
+  } else {
+    if (!treeStructure.children[firstIndex].children[branchIndex].activities) {
+      treeStructure.children[firstIndex].children[branchIndex].activities = [];
+    }
+    treeStructure.children[firstIndex].children[branchIndex].activities.push(newActivity);
+  }
+};
+
+const deleteFirstLevel = (firstIndex) => {
+  treeStructure.children.splice(firstIndex, 1);
+};
+
+const deleteSecondLevel = (firstIndex, branchIndex) => {
+  treeStructure.children[firstIndex].children.splice(branchIndex, 1);
+};
+
+const deleteThirdLevel = (firstIndex, branchIndex, leafIndex) => {
+  treeStructure.children[firstIndex].children[branchIndex].children.splice(leafIndex, 1);
+};
+
+const deleteActivity = (firstIndex, branchIndex, leafIndex, activityIndex) => {
+  if (leafIndex !== null) {
+    treeStructure.children[firstIndex].children[branchIndex].children[leafIndex].activities.splice(activityIndex, 1);
+  } else {
+    treeStructure.children[firstIndex].children[branchIndex].activities.splice(activityIndex, 1);
+  }
+};
+
+const handleSelectAll = (val) => {
+  treeStructure.children.forEach(firstLevel => {
+    firstLevel.selected = val;
+  });
+};
+
+const handleSelect = (val, firstIndex) => {
+  treeStructure.children[firstIndex].selected = val;
+  updateSelectAllStatus();
+};
+
+const updateSelectAllStatus = () => {
+  selectAll.value = treeStructure.children.every(firstLevel => firstLevel.selected);
+};
+</script>
+
+<style scoped>
+.container {
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  position: relative;
+  overflow: auto;
+}
+
+.table-container {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e2e8f0;
+  min-width: fit-content;
+}
+
+.table-header {
+  display: grid;
+  grid-template-columns: 40px 300px 200px 100px 100px minmax(1200px, 1fr);
+  background-color: #f8fafc;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.header-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.header-cell {
+  padding: 12px 8px;
+  text-align: center;
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header-row {
+  display: flex;
+}
+
+.span-3 {
+  grid-column: span 3;
+}
+
+.activity-process .header-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.months-header {
+  display: flex;
+}
+
+.month-cell {
+  flex: 1;
+  min-width: 100px;
+  box-sizing: border-box;
+  padding: 12px 8px;
+  text-align: center;
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.table-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.first-level-group {
+  display: grid;
+  grid-template-columns: 40px 100px 1fr;
+  border-top: 1px solid #e2e8f0;
+}
+
+.branch-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.branch-row {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  border-top: 1px solid #e2e8f0;
+}
+
+.leaf-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.leaf-row {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  border-top: 1px solid #e2e8f0;
+}
+
+.activity-row {
+  display: grid;
+  grid-template-columns: 200px 100px 100px minmax(1200px, 1fr);
+  border-top: 1px solid #e2e8f0;
+}
+
+.table-cell {
+  padding: 8px;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.first-level {
+  grid-row: 1 / -1;
+}
+
+.second-level {
+  grid-row: 1 / -1;
+}
+
+.third-level {
+  border-right: 1px solid #e2e8f0;
+}
+
+.activity-description, .activity-start-time, .activity-end-time {
+  border-right: 1px solid #e2e8f0;
+  min-height: 40px;
+}
+
+.activity-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.table-cell:last-child {
+  border-right: none;
+}
+
+.first-level-group:first-child {
+  border-top: none;
+}
+
+.branch-row:first-child {
+  border-top: none;
+}
+
+.leaf-row:first-child {
+  border-top: none;
+}
+
+.activity-row:first-child {
+  border-top: none;
+}
+
+.leaf-content > .leaf-row:first-child .activity-row {
+  border-top: none;
+}
+
+.activity-timeline {
+  position: relative;
+  height: 40px;
+  overflow: hidden;
+}
+
+.activity-block {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  padding: 0 5px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.activity-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: white;
+  font-size: 12px;
+}
+
+.current-date-line {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  background-color: red;
+  z-index: 10;
+}
+
+.button-group {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.checkbox-header, .checkbox-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #e2e8f0;
+}
+
+/* Element Plus overrides */
+.el-input {
+  width: 100%;
+}
+
+.el-date-editor.el-input {
+  width: 100%;
+}
+
+.el-input__inner {
+  height: 32px;
+  line-height: 32px;
+}
+
+.el-date-editor .el-input__inner {
+  padding-left: 30px;
+}
+
+.el-button--small {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.activity-description {
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-description .el-button {
+  margin-top: 4px;
+}
+</style>
