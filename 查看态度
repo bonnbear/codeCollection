@@ -32,12 +32,21 @@
                             <template v-for="(activity, activityIndex) in leaf.activities" :key="`${firstIndex}-${branchIndex}-${leafIndex}-${activityIndex}`">
                               <div class="activity-row">
                                 <div class="activity-timeline">
-                                  <div class="activity-block"
-                                       :style="getActivityStyle(activity)">
-                                    <span class="activity-text">
-                                      {{ activity.description }}
-                                    </span>
-                                  </div>
+                                  <el-popover
+                                    placement="top"
+                                    :width="200"
+                                    trigger="hover"
+                                    :content="getActivityPath(firstLevel, branch, leaf, activity)"
+                                  >
+                                    <template #reference>
+                                      <div class="activity-block"
+                                           :style="getActivityStyle(activity)">
+                                        <span class="activity-text">
+                                          {{ activity.description }}
+                                        </span>
+                                      </div>
+                                    </template>
+                                  </el-popover>
                                 </div>
                               </div>
                             </template>
@@ -52,12 +61,21 @@
                           <template v-for="(activity, activityIndex) in branch.activities" :key="`${firstIndex}-${branchIndex}-${activityIndex}`">
                             <div class="activity-row">
                               <div class="activity-timeline">
-                                <div class="activity-block"
-                                     :style="getActivityStyle(activity)">
-                                  <span class="activity-text">
-                                    {{ activity.description }}
-                                  </span>
-                                </div>
+                                <el-popover
+                                  placement="top"
+                                  :width="200"
+                                  trigger="hover"
+                                  :content="getActivityPath(firstLevel, branch, null, activity)"
+                                >
+                                  <template #reference>
+                                    <div class="activity-block"
+                                         :style="getActivityStyle(activity)">
+                                      <span class="activity-text">
+                                        {{ activity.description }}
+                                      </span>
+                                    </div>
+                                  </template>
+                                </el-popover>
                               </div>
                             </div>
                           </template>
@@ -153,6 +171,15 @@ const getActivityStyle = (activity) => {
     width: `${width}%`,
     backgroundColor: isPastActivity ? '#CCCCCC' : '#4CAF50',
   };
+};
+
+const getActivityPath = (firstLevel, branch, leaf, activity) => {
+  let path = `${firstLevel.name} > ${branch.name}`;
+  if (leaf) {
+    path += ` > ${leaf.name}`;
+  }
+  path += ` > ${activity.description}`;
+  return path;
 };
 
 const updateDateLine = () => {
