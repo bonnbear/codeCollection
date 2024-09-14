@@ -5,14 +5,26 @@
         <div class="header-cell checkbox-header">
           <el-checkbox v-model="selectAll" @change="handleSelectAll">全选</el-checkbox>
         </div>
-        <div class="header-group activity-process">
-          <div class="header-cell span-3">活动流程</div>
-          <div class="header-row">
-            <div class="header-cell">一级</div>
-            <div class="header-cell">二级</div>
-            <div class="header-cell">三级</div>
-          </div>
-        </div>
+         <div class="header-group activity-process">
+    <div class="header-cell span-3">活动流程</div>
+    <div class="header-row">
+      <div class="header-cell">一级</div>
+      <div class="header-cell">
+        二级
+        <el-checkbox 
+          v-model="secondLevelChecked" 
+          @change="handleSecondLevelCheck"
+        ></el-checkbox>
+      </div>
+      <div class="header-cell">
+        三级
+        <el-checkbox 
+          v-model="thirdLevelChecked" 
+          :disabled="secondLevelChecked"
+        ></el-checkbox>
+      </div>
+    </div>
+  </div>
         <div class="header-cell">活动描述</div>
         <div class="header-cell">开始时间</div>
         <div class="header-cell">结束时间</div>
@@ -195,7 +207,16 @@ const selectAll = ref(false);
 const generateId = () => {
   return uuidv4();
 };
+const secondLevelChecked = ref(false);
+const thirdLevelChecked = ref(false);
 
+const handleSecondLevelCheck = (val) => {
+  if (val) {
+    thirdLevelChecked.value = true;
+  } else {
+    thirdLevelChecked.value = false;
+  }
+};
 const treeStructure = reactive({
   id: generateId(),
   name: "Root",
@@ -745,7 +766,20 @@ const saveData = () => {
   height: 40px;
   overflow: hidden;
 }
+.header-cell {
+  padding: 12px 8px;
+  text-align: center;
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column; /* 添加这行以使文本和复选框垂直排列 */
+}
 
+.header-cell .el-checkbox {
+  margin-top: 5px; /* 在复选框和文本之间添加一些间距 */
+}
 .activity-block {
   position: absolute;
   top: 5px;
