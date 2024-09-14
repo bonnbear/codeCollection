@@ -17,12 +17,12 @@
             </div>
             <div class="branch-content">
               <template v-for="(branch, branchIndex) in firstLevel.children" :key="`${firstIndex}-${branchIndex}`">
-                <div class="branch-row">
-                  <div class="table-cell second-level">
+                <div class="branch-row" :class="{'no-children': !branch.children || branch.children.length === 0}">
+                  <div class="table-cell second-level" :class="{'merged': !branch.children || branch.children.length === 0}">
                     {{ branch.name }}
                   </div>
-                  <div class="leaf-content">
-                    <template v-if="branch.children && branch.children.length">
+                  <template v-if="branch.children && branch.children.length">
+                    <div class="leaf-content">
                       <template v-for="(leaf, leafIndex) in branch.children" :key="`${firstIndex}-${branchIndex}-${leafIndex}`">
                         <div class="leaf-row">
                           <div class="table-cell third-level">
@@ -53,36 +53,62 @@
                           </div>
                         </div>
                       </template>
-                    </template>
-                    <template v-else>
-                      <div class="leaf-row">
-                        <div class="table-cell third-level"></div>
-                        <div class="activity-content">
-                          <template v-for="(activity, activityIndex) in branch.activities" :key="`${firstIndex}-${branchIndex}-${activityIndex}`">
-                            <div class="activity-row">
-                              <div class="activity-timeline">
-                                <el-popover
-                                  placement="top"
-                                  :width="200"
-                                  trigger="hover"
-                                  :content="getActivityPath(firstLevel, branch, null, activity)"
-                                >
-                                  <template #reference>
-                                    <div class="activity-block"
-                                         :style="getActivityStyle(activity)">
-                                      <span class="activity-text">
-                                        {{ activity.description }}
-                                      </span>
-                                    </div>
-                                  </template>
-                                </el-popover>
+                      <!-- 添加分支活动的空白行 -->
+                      <template v-if="branch.activities && branch.activities.length">
+                        <div class="leaf-row branch-activity-row">
+                          <div class="table-cell third-level empty"></div>
+                          <div class="activity-content">
+                            <template v-for="(activity, activityIndex) in branch.activities" :key="`${firstIndex}-${branchIndex}-branch-${activityIndex}`">
+                              <div class="activity-row">
+                                <div class="activity-timeline">
+                                  <el-popover
+                                    placement="top"
+                                    :width="200"
+                                    trigger="hover"
+                                    :content="getActivityPath(firstLevel, branch, null, activity)"
+                                  >
+                                    <template #reference>
+                                      <div class="activity-block"
+                                           :style="getActivityStyle(activity)">
+                                        <span class="activity-text">
+                                          {{ activity.description }}
+                                        </span>
+                                      </div>
+                                    </template>
+                                  </el-popover>
+                                </div>
                               </div>
-                            </div>
-                          </template>
+                            </template>
+                          </div>
                         </div>
-                      </div>
-                    </template>
-                  </div>
+                      </template>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="activity-content">
+                      <template v-for="(activity, activityIndex) in branch.activities" :key="`${firstIndex}-${branchIndex}-${activityIndex}`">
+                        <div class="activity-row">
+                          <div class="activity-timeline">
+                            <el-popover
+                              placement="top"
+                              :width="200"
+                              trigger="hover"
+                              :content="getActivityPath(firstLevel, branch, null, activity)"
+                            >
+                              <template #reference>
+                                <div class="activity-block"
+                                     :style="getActivityStyle(activity)">
+                                  <span class="activity-text">
+                                    {{ activity.description }}
+                                  </span>
+                                </div>
+                              </template>
+                            </el-popover>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
                 </div>
               </template>
             </div>
@@ -114,11 +140,17 @@ const treeStructure = reactive({
           name: "Branch 1-1",
           children: [
             { name: "Leaf 1-1-1", activities: [{ name: "Activity 1", description: "Description of Activity 1", startTime: "2024-01-01", endTime: "2024-03-15" }] },
-            { name: "Leaf 1-1-2", activities: [{ name: "Activity 2", description: "Description of Activity 2", startTime: "2024-02-01", endTime: "2024-05-10" }] },
+            { name: "Leaf 1-1-2", activities: [{ name: "Activity 2", description: "Description of Activity 2", startTime: "2024-02-01", endTime: "2024-05-10" },
+              { name: "Activity 2", description: "Description of Activity 2", startTime: "2024-02-01", endTime: "2024-03-10" }
+            ] },
+          ],
+          activities: [{ name: "Branch Activity 1", description: "Description of Branch Activity 1", startTime: "2024-01-15", endTime: "2024-04-30" },
+            { name: "Branch Activity 1", description: "Description of Branch Activity 1", startTime: "2024-01-15", endTime: "2024-04-30" }
           ]
         },
         {
           name: "Branch 1-2",
+     
           activities: [{ name: "Activity 3", description: "Description of Activity 3", startTime: "2024-03-01", endTime: "2024-07-15" }]
         },
       ]
@@ -139,16 +171,18 @@ const treeStructure = reactive({
     {
       name: "First Level 3",
       children: [
-        {
-          name: "Branch 3-1",
-          activities: [{ name: "Activity 7", description: "Description of Activity 7", startTime: "2024-07-01", endTime: "2024-11-05" }]
-        },
+      
         {
           name: "Branch 3-2",
           children: [
             { name: "Leaf 3-2-1", activities: [{ name: "Activity 8", description: "Description of Activity 8", startTime: "2024-08-01", endTime: "2024-12-10" }] },
             { name: "Leaf 3-2-2", activities: [{ name: "Activity 9", description: "Description of Activity 9", startTime: "2024-09-01", endTime: "2024-12-31" }] },
-          ]
+          ],
+          activities: [{ name: "Branch Activity 2", description: "Description of Branch Activity 2", startTime: "2024-08-15", endTime: "2024-12-15" }]
+        },
+          {
+          name: "Branch 3-1",
+          activities: [{ name: "Activity 7", description: "Description of Activity 7", startTime: "2024-07-01", endTime: "2024-11-05" }]
         },
       ]
     },
@@ -316,6 +350,16 @@ onMounted(() => {
   border-top: 1px solid #e2e8f0;
 }
 
+.leaf-row.merged {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+}
+
+.table-cell.third-level.merged {
+  background-color: #f8fafc;
+  border-right: 1px solid #e2e8f0;
+}
+
 .activity-row {
   display: grid;
   grid-template-columns: minmax(1200px, 1fr);
@@ -404,5 +448,35 @@ onMounted(() => {
   width: 2px;
   background-color: red;
   z-index: 10;
+}
+
+.branch-row {
+  display: grid;
+  grid-template-columns: 100px 100px 1fr;
+  border-top: 1px solid #e2e8f0;
+}
+
+.branch-row.no-children {
+  grid-template-columns: 200px 1fr;
+}
+
+.table-cell.second-level.merged {
+  grid-column: span 1;
+}
+
+.activity-content {
+  grid-column: 3;
+}
+
+.branch-row.no-children .activity-content {
+  grid-column: 2;
+}
+.branch-activity-row {
+  background-color: #f8fafc;
+}
+
+.table-cell.third-level.empty {
+  background-color: #f8fafc;
+  border-right: 1px solid #e2e8f0;
 }
 </style>
