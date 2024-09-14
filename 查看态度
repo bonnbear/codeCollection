@@ -148,7 +148,9 @@ const treeStructure = reactive({
         },
         {
           name: "Branch 1-2",
-          activities: [{ name: "Activity 3", description: "Description of Activity 3", startTime: "2024-03-01", endTime: "2024-07-15" }]
+          activities: [{ name: "Activity 3", description: "Description of Activity 3", startTime: "2024-03-01", endTime: "2024-07-15" },
+            { name: "Activity 3", description: "Description of Activity 3", startTime: "2024-08-01", endTime: "2024-12-15" }
+          ]
         },
       ]
     },
@@ -340,7 +342,7 @@ onMounted(() => {
 
 .branch-row {
   display: grid;
-  grid-template-columns: 100px 100px 1fr;
+  grid-template-columns: 100px  1fr;
   border-top: 1px solid #e2e8f0;
 }
 
