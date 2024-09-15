@@ -704,6 +704,8 @@ const saveData = () => {
   display: grid;
   grid-template-columns: 200px 100px 100px minmax(1200px, 1fr);
   border-top: 1px solid #e2e8f0;
+    align-items: center; /* 添加这行来垂直居中所有子元素 */
+
 }
 
 .table-cell {
@@ -713,6 +715,7 @@ const saveData = () => {
   flex-direction: column;
   justify-content: center;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .first-level {
@@ -730,6 +733,7 @@ const saveData = () => {
 .activity-description, .activity-start-time, .activity-end-time {
   border-right: 1px solid #e2e8f0;
   min-height: 40px;
+  height: 100%;
 }
 
 .activity-content {
