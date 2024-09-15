@@ -36,41 +36,13 @@
                             {{ leaf.name }}
                           </div>
                           <div class="activity-content">
-                            <div class="activity-row">
-                              <div class="activity-timeline">
-                                <template v-for="(activity, activityIndex) in sortActivitiesByDuration(leaf.activities)" :key="`${firstIndex}-${branchIndex}-${leafIndex}-${activityIndex}`">
-                                  <el-popover
-                                    placement="top"
-                                    :width="200"
-                                    trigger="hover"
-                                    :content="getActivityPath(firstLevel, branch, leaf, activity)"
-                                  >
-                                    <template #reference>
-                                      <div class="activity-block"
-                                           :style="getActivityStyle(activity, activityIndex)">
-                                        <span class="activity-text">
-                                          {{ activity.description }}
-                                        </span>
-                                      </div>
-                                    </template>
-                                  </el-popover>
-                                </template>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </template>
-                      <div class="leaf-row branch-activity-row" v-if="branch.activities && branch.activities.length" :style="leafRowStyle">
-                        <div v-if="!hiddenColumns.includes('leaf')" class="table-cell third-level empty"></div>
-                        <div class="activity-content">
-                          <div class="activity-row">
                             <div class="activity-timeline">
-                              <template v-for="(activity, activityIndex) in sortActivitiesByDuration(branch.activities)" :key="`${firstIndex}-${branchIndex}-branch-${activityIndex}`">
+                              <template v-for="(activity, activityIndex) in sortActivitiesByDuration(leaf.activities)" :key="`${firstIndex}-${branchIndex}-${leafIndex}-${activityIndex}`">
                                 <el-popover
                                   placement="top"
                                   :width="200"
                                   trigger="hover"
-                                  :content="getActivityPath(firstLevel, branch, null, activity)"
+                                  :content="getActivityPath(firstLevel, branch, leaf, activity)"
                                 >
                                   <template #reference>
                                     <div class="activity-block"
@@ -85,31 +57,53 @@
                             </div>
                           </div>
                         </div>
+                      </template>
+                      <div class="leaf-row branch-activity-row" v-if="branch.activities && branch.activities.length" :style="leafRowStyle">
+                        <div v-if="!hiddenColumns.includes('leaf')" class="table-cell third-level empty"></div>
+                        <div class="activity-content">
+                          <div class="activity-timeline">
+                            <template v-for="(activity, activityIndex) in sortActivitiesByDuration(branch.activities)" :key="`${firstIndex}-${branchIndex}-branch-${activityIndex}`">
+                              <el-popover
+                                placement="top"
+                                :width="200"
+                                trigger="hover"
+                                :content="getActivityPath(firstLevel, branch, null, activity)"
+                              >
+                                <template #reference>
+                                  <div class="activity-block"
+                                       :style="getActivityStyle(activity, activityIndex)">
+                                    <span class="activity-text">
+                                      {{ activity.description }}
+                                    </span>
+                                  </div>
+                                </template>
+                              </el-popover>
+                            </template>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </template>
                   <template v-else>
                     <div class="activity-content">
-                      <div class="activity-row">
-                        <div class="activity-timeline">
-                          <template v-for="(activity, activityIndex) in sortActivitiesByDuration(branch.activities)" :key="`${firstIndex}-${branchIndex}-${activityIndex}`">
-                            <el-popover
-                              placement="top"
-                              :width="200"
-                              trigger="hover"
-                              :content="getActivityPath(firstLevel, branch, null, activity)"
-                            >
-                              <template #reference>
-                                <div class="activity-block"
-                                     :style="getActivityStyle(activity, activityIndex)">
-                                  <span class="activity-text">
-                                    {{ activity.description }}
-                                  </span>
-                                </div>
-                              </template>
-                            </el-popover>
-                          </template>
-                        </div>
+                      <div class="activity-timeline">
+                        <template v-for="(activity, activityIndex) in sortActivitiesByDuration(branch.activities)" :key="`${firstIndex}-${branchIndex}-${activityIndex}`">
+                          <el-popover
+                            placement="top"
+                            :width="200"
+                            trigger="hover"
+                            :content="getActivityPath(firstLevel, branch, null, activity)"
+                          >
+                            <template #reference>
+                              <div class="activity-block"
+                                   :style="getActivityStyle(activity, activityIndex)">
+                                <span class="activity-text">
+                                  {{ activity.description }}
+                                </span>
+                              </div>
+                            </template>
+                          </el-popover>
+                        </template>
                       </div>
                     </div>
                   </template>
@@ -199,6 +193,7 @@ const treeStructure = reactive({
     }
   ]
 }); 
+
 const headerStyle = computed(() => {
   let gridTemplateColumns = '';
   if (hiddenColumns.value.includes('branch') && hiddenColumns.value.includes('leaf')) {
@@ -275,7 +270,7 @@ const getActivityStyle = (activity, index) => {
   const isPastActivity = endDate < currentDate.value;
 
   return {
-    left: `${left}%`,
+   left: `${left}%`,
     width: `${width}%`,
     backgroundColor: isPastActivity ? '#CCCCCC' : '#4CAF50',
     zIndex: index + 1,
@@ -439,7 +434,6 @@ onMounted(() => {
 
 .first-level-group {
   display: grid;
-  border-top: 1px solid #e2e8f0;
 }
 
 .branch-content {
@@ -449,11 +443,6 @@ onMounted(() => {
 
 .branch-row {
   display: grid;
-  border-top: 1px solid #e2e8f0;
-}
-
-.branch-row.no-children {
-  grid-template-columns: 200px 1fr;
 }
 
 .leaf-content {
@@ -463,22 +452,38 @@ onMounted(() => {
 
 .leaf-row {
   display: grid;
-  border-top: 1px solid #e2e8f0;
-}
-
-.activity-row {
-  display: grid;
-  grid-template-columns: minmax(1200px, 1fr);
-  border-top: 1px solid #e2e8f0;
 }
 
 .table-cell {
   padding: 8px;
-  border-right: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
   justify-content: center;
   overflow: hidden;
+  position: relative;
+  border-left: 1px solid #e2e8f0; /* Added border-left */
+}
+
+.table-cell::before,
+.table-cell::after {
+  content: '';
+  position: absolute;
+  background-color: #e2e8f0;
+  z-index: 1;
+}
+
+.table-cell::before {
+  right: 0;
+  top: 0;
+  width: 1px;
+  height: 100%;
+}
+
+.table-cell::after {
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 1px;
 }
 
 .first-level {
@@ -487,10 +492,8 @@ onMounted(() => {
 
 .second-level {
   grid-row: 1 / -1;
-}
+    border-top:  1px solid #e2e8f0;
 
-.third-level {
-  border-right: 1px solid #e2e8f0;
 }
 
 .activity-content {
@@ -498,34 +501,21 @@ onMounted(() => {
   flex-direction: column;
 }
 
-.table-cell:last-child {
-  border-right: none;
-}
-
-.first-level-group:first-child {
-  border-top: none;
-}
-
-.branch-row:first-child {
-  border-top: none;
-}
-
-.leaf-row:first-child {
-  border-top: none;
-}
-
-.activity-row:first-child {
-  border-top: none;
-}
-
-.leaf-content > .leaf-row:first-child .activity-row {
-  border-top: none;
-}
-
 .activity-timeline {
   position: relative;
   height: 40px;
   overflow: visible;
+}
+
+.activity-timeline::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 1px;
+  background-color: #e2e8f0;
+  z-index: 1;
 }
 
 .activity-block {
@@ -569,17 +559,31 @@ onMounted(() => {
 
 .table-cell.second-level.merged {
   grid-column: span 1;
-}
-
-.branch-row.no-children .activity-content {
+  border-top:  1px solid #e2e8f0;
 }
 
 .branch-activity-row {
   background-color: #f8fafc;
 }
+.third-level{
+    border-top:  1px solid #e2e8f0;
 
+}
 .table-cell.third-level.empty {
   background-color: #f8fafc;
-  border-right: 1px solid #e2e8f0;
+}
+
+/* Remove right border for the last column in each row */
+.table-cell:last-child::before,
+.activity-timeline:last-child::before {
+  display: none;
+}
+
+/* Remove bottom border for the last row in each group */
+.first-level-group:last-child .table-cell::after,
+.branch-row:last-child .table-cell::after,
+.leaf-row:last-child .table-cell::after,
+.activity-timeline:last-child::after {
+  display: none;
 }
 </style>
