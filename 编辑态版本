@@ -33,14 +33,14 @@
         </div>
       </div>
       <div class="table-body">
-        <template v-for="(firstLevel, firstIndex) in treeStructure.children" :key="firstLevel.name">
+        <template v-for="(firstLevel, firstIndex) in treeStructure.children" :key="firstLevel.id">>
           <div class="first-level-group">
             <div class="checkbox-cell">
               <el-checkbox v-model="firstLevel.selected" @change="(val) => handleSelect(val, firstIndex)"></el-checkbox>
             </div>
             <div class="table-cell first-level">
               <el-form-item :prop="`children.${firstIndex}.name`" :rules="rules.firstLevel">
-                <el-input v-model="firstLevel.name" size="small" />
+                <el-input  v-model="firstLevel.name" size="small" />
               </el-form-item>
               <div class="button-group">
                 <el-button size="small" @click="addSecondLevel(firstIndex)">增加</el-button>
