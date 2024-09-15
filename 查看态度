@@ -24,7 +24,7 @@
             </div>
             <div class="branch-content">
               <template v-for="(branch, branchIndex) in firstLevel.children" :key="`${firstIndex}-${branchIndex}`">
-                <div class="branch-row" :class="{'no-children': !branch.children || branch.children.length === 0}" :style="branchRowStyle">
+                <div class="branch-row" :class="{'no-children': !branch.children || branch.children.length === 0}" :style="branchRowStyle(branch)">
                   <div v-if="!hiddenColumns.includes('branch')" class="table-cell second-level" :class="{'merged': !branch.children || branch.children.length === 0}">
                     {{ branch.name }}
                   </div>
@@ -153,7 +153,9 @@ const treeStructure = reactive({
           name: "Branch 1-1",
           children: [
             { name: "Leaf 1-1-1", activities: [{ name: "Activity 1", description: "Description of Activity 1", startTime: "2024-01-01", endTime: "2024-03-15" }] },
-            { name: "Leaf 1-1-2", activities: [{ name: "Activity 2", description: "Description of Activity 2", startTime: "2024-02-01", endTime: "2024-05-10" }] }
+            { name: "Leaf 1-1-2", activities: [{ name: "Activity 2", description: "Description of Activity 2", startTime: "2024-02-01", endTime: "2024-05-10" },
+              { name: "Activity 2", description: "Description of Activity 2", startTime: "2024-06-01", endTime: "2024-08-10" }
+            ] }
           ],
           activities: [
             { name: "Branch Activity 1", description: "Description of Branch Activity 1", startTime: "2024-01-15", endTime: "2024-04-30" },
@@ -224,7 +226,8 @@ const firstLevelStyle = computed(() => {
   return { gridTemplateColumns };
 });
 
-const branchRowStyle = computed(() => {
+const branchRowStyle = (branch) => {
+  const hasNoChildren = !branch.children || branch.children.length === 0;
   let gridTemplateColumns = '';
   if (hiddenColumns.value.includes('branch') && hiddenColumns.value.includes('leaf')) {
     gridTemplateColumns = '1fr';
@@ -233,10 +236,10 @@ const branchRowStyle = computed(() => {
   } else if (hiddenColumns.value.includes('leaf')) {
     gridTemplateColumns = '100px 1fr';
   } else {
-    gridTemplateColumns = '100px 1fr';
+    gridTemplateColumns = hasNoChildren ? '200px 1fr' : '100px 1fr';
   }
   return { gridTemplateColumns };
-});
+};
 
 const leafContentStyle = computed(() => {
   return { width: '100%' };
@@ -449,6 +452,10 @@ onMounted(() => {
   border-top: 1px solid #e2e8f0;
 }
 
+.branch-row.no-children {
+  grid-template-columns: 200px 1fr;
+}
+
 .leaf-content {
   display: flex;
   flex-direction: column;
@@ -562,6 +569,9 @@ onMounted(() => {
 
 .table-cell.second-level.merged {
   grid-column: span 1;
+}
+
+.branch-row.no-children .activity-content {
 }
 
 .branch-activity-row {
