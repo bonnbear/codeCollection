@@ -1,31 +1,38 @@
 <template>
   <div class="container mx-auto p-4" ref="containerRef">
+    <div class="button-group mb-4">
+      <button @click="toggleColumn('branch')" class="btn mr-2">Toggle Branch Column</button>
+      <button @click="toggleColumn('both')" class="btn mr-2">Toggle Branch and Leaf Columns</button>
+      <button @click="toggleColumn('leaf')" class="btn">Toggle Leaf Column</button>
+    </div>
+
     <div class="table-container">
-      <div class="table-header">
-        <div class="header-group activity-process">
+      <div class="table-header" :style="headerStyle">
+        <div class="header-group activity-process" :style="activityProcessStyle">
           <div class="header-cell span-3">活动流程</div>
         </div>
         <div class="months-header" ref="timelineRef">
           <div v-for="month in months" :key="month" class="month-cell">{{ month }}</div>
         </div>
       </div>
+
       <div class="table-body">
         <template v-for="(firstLevel, firstIndex) in treeStructure.children" :key="firstLevel.name">
-          <div class="first-level-group">
+          <div class="first-level-group" :style="firstLevelStyle">
             <div class="table-cell first-level">
               {{ firstLevel.name }}
             </div>
             <div class="branch-content">
               <template v-for="(branch, branchIndex) in firstLevel.children" :key="`${firstIndex}-${branchIndex}`">
-                <div class="branch-row" :class="{'no-children': !branch.children || branch.children.length === 0}">
-                  <div class="table-cell second-level" :class="{'merged': !branch.children || branch.children.length === 0}">
+                <div class="branch-row" :class="{'no-children': !branch.children || branch.children.length === 0}" :style="branchRowStyle">
+                  <div v-if="!hiddenColumns.includes('branch')" class="table-cell second-level" :class="{'merged': !branch.children || branch.children.length === 0}">
                     {{ branch.name }}
                   </div>
                   <template v-if="branch.children && branch.children.length">
-                    <div class="leaf-content">
+                    <div class="leaf-content" :style="leafContentStyle">
                       <template v-for="(leaf, leafIndex) in branch.children" :key="`${firstIndex}-${branchIndex}-${leafIndex}`">
-                        <div class="leaf-row">
-                          <div class="table-cell third-level">
+                        <div class="leaf-row" :style="leafRowStyle">
+                          <div v-if="!hiddenColumns.includes('leaf')" class="table-cell third-level">
                             {{ leaf.name }}
                           </div>
                           <div class="activity-content">
@@ -53,8 +60,8 @@
                           </div>
                         </div>
                       </template>
-                      <div class="leaf-row branch-activity-row" v-if="branch.activities && branch.activities.length">
-                        <div class="table-cell third-level empty"></div>
+                      <div class="leaf-row branch-activity-row" v-if="branch.activities && branch.activities.length" :style="leafRowStyle">
+                        <div v-if="!hiddenColumns.includes('leaf')" class="table-cell third-level empty"></div>
                         <div class="activity-content">
                           <div class="activity-row">
                             <div class="activity-timeline">
@@ -112,13 +119,16 @@
           </div>
         </template>
       </div>
+
+      <div class="current-date-line" :style="currentDateLineStyle">
+        <div class="current-date">{{ formattedCurrentDate }}</div>
+      </div>
     </div>
-    <div class="current-date-line" :style="currentDateLineStyle"></div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, computed, nextTick } from 'vue';
 
 const containerRef = ref(null);
 const timelineRef = ref(null);
@@ -126,6 +136,12 @@ const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', 
 const currentDate = ref(new Date());
 const currentYear = computed(() => currentDate.value.getFullYear());
 const currentDateLineStyle = ref({});
+const hiddenColumns = ref([]);
+
+const formattedCurrentDate = computed(() => {
+  const date = currentDate.value;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+});
 
 const treeStructure = reactive({
   name: "Root",
@@ -137,9 +153,7 @@ const treeStructure = reactive({
           name: "Branch 1-1",
           children: [
             { name: "Leaf 1-1-1", activities: [{ name: "Activity 1", description: "Description of Activity 1", startTime: "2024-01-01", endTime: "2024-03-15" }] },
-            { name: "Leaf 1-1-2", activities: [{ name: "Activity 2", description: "Description of Activity 2", startTime: "2024-02-01", endTime: "2024-05-10" },
-              { name: "Activity 2", description: "Description of Activity 2", startTime: "2024-05-01", endTime: "2024-06-10" }
-            ] },
+            { name: "Leaf 1-1-2", activities: [{ name: "Activity 2", description: "Description of Activity 2", startTime: "2024-02-01", endTime: "2024-05-10" }] }
           ],
           activities: [
             { name: "Branch Activity 1", description: "Description of Branch Activity 1", startTime: "2024-01-15", endTime: "2024-04-30" },
@@ -148,10 +162,8 @@ const treeStructure = reactive({
         },
         {
           name: "Branch 1-2",
-          activities: [{ name: "Activity 3", description: "Description of Activity 3", startTime: "2024-03-01", endTime: "2024-07-15" },
-            { name: "Activity 3", description: "Description of Activity 3", startTime: "2024-08-01", endTime: "2024-12-15" }
-          ]
-        },
+          activities: [{ name: "Activity 3", description: "Description of Activity 3", startTime: "2024-03-01", endTime: "2024-07-15" }]
+        }
       ]
     },
     {
@@ -162,29 +174,82 @@ const treeStructure = reactive({
           children: [
             { name: "Leaf 2-1-1", activities: [{ name: "Activity 4", description: "Description of Activity 4", startTime: "2024-04-01", endTime: "2024-08-20" }] },
             { name: "Leaf 2-1-2", activities: [{ name: "Activity 5", description: "Description of Activity 5", startTime: "2024-05-01", endTime: "2024-09-30" }] },
-            { name: "Leaf 2-1-3", activities: [{ name: "Activity 6", description: "Description of Activity 6", startTime: "2024-06-01", endTime: "2024-10-30" }] },
+            { name: "Leaf 2-1-3", activities: [{ name: "Activity 6", description: "Description of Activity 6", startTime: "2024-06-01", endTime: "2024-10-30" }] }
           ]
-        },
+        }
       ]
     },
     {
       name: "First Level 3",
       children: [
         {
-          name: "Branch 3-2",
-          children: [
-            { name: "Leaf 3-2-1", activities: [{ name: "Activity 8", description: "Description of Activity 8", startTime: "2024-08-01", endTime: "2024-12-10" }] },
-            { name: "Leaf 3-2-2", activities: [{ name: "Activity 9", description: "Description of Activity 9", startTime: "2024-09-01", endTime: "2024-12-31" }] },
-          ],
-          activities: [{ name: "Branch Activity 2", description: "Description of Branch Activity 2", startTime: "2024-08-15", endTime: "2024-12-15" }]
-        },
-        {
           name: "Branch 3-1",
           activities: [{ name: "Activity 7", description: "Description of Activity 7", startTime: "2024-07-01", endTime: "2024-11-05" }]
         },
+        {
+          name: "Branch 3-2",
+          children: [
+            { name: "Leaf 3-2-1", activities: [{ name: "Activity 8", description: "Description of Activity 8", startTime: "2024-08-01", endTime: "2024-12-10" }] },
+            { name: "Leaf 3-2-2", activities: [{ name: "Activity 9", description: "Description of Activity 9", startTime: "2024-09-01", endTime: "2024-12-31" }] }
+          ]
+        }
       ]
-    },
+    }
   ]
+}); 
+const headerStyle = computed(() => {
+  let gridTemplateColumns = '';
+  if (hiddenColumns.value.includes('branch') && hiddenColumns.value.includes('leaf')) {
+    gridTemplateColumns = '100px minmax(1200px, 1fr)';
+  } else if (hiddenColumns.value.includes('branch') || hiddenColumns.value.includes('leaf')) {
+    gridTemplateColumns = '200px minmax(1200px, 1fr)';
+  } else {
+    gridTemplateColumns = '300px minmax(1200px, 1fr)';
+  }
+  return { gridTemplateColumns };
+});
+
+const activityProcessStyle = computed(() => {
+  let width = '300px';
+  if (hiddenColumns.value.includes('branch') && hiddenColumns.value.includes('leaf')) {
+    width = '100px';
+  } else if (hiddenColumns.value.includes('branch') || hiddenColumns.value.includes('leaf')) {
+    width = '200px';
+  }
+  return { width };
+});
+
+const firstLevelStyle = computed(() => {
+  let gridTemplateColumns = '100px 1fr';
+  return { gridTemplateColumns };
+});
+
+const branchRowStyle = computed(() => {
+  let gridTemplateColumns = '';
+  if (hiddenColumns.value.includes('branch') && hiddenColumns.value.includes('leaf')) {
+    gridTemplateColumns = '1fr';
+  } else if (hiddenColumns.value.includes('branch')) {
+    gridTemplateColumns = '1fr';
+  } else if (hiddenColumns.value.includes('leaf')) {
+    gridTemplateColumns = '100px 1fr';
+  } else {
+    gridTemplateColumns = '100px 1fr';
+  }
+  return { gridTemplateColumns };
+});
+
+const leafContentStyle = computed(() => {
+  return { width: '100%' };
+});
+
+const leafRowStyle = computed(() => {
+  let gridTemplateColumns = '';
+  if (hiddenColumns.value.includes('leaf')) {
+    gridTemplateColumns = '1fr';
+  } else {
+    gridTemplateColumns = '100px 1fr';
+  }
+  return { gridTemplateColumns };
 });
 
 const sortActivitiesByDuration = (activities) => {
@@ -234,6 +299,7 @@ const updateDateLine = () => {
   const endOfYear = new Date(currentYear.value, 11, 31);
   const totalDays = (endOfYear - startOfYear) / (24 * 60 * 60 * 1000) + 1;
   const daysPassed = Math.floor((currentDate.value - startOfYear) / (24 * 60 * 60 * 1000));
+
   const leftPosition = (daysPassed / totalDays) * timelineRect.width;
 
   currentDateLineStyle.value = {
@@ -250,6 +316,26 @@ const updateLayout = () => {
   updateDateLine();
 };
 
+const toggleColumn = (column) => {
+  if (column === 'both') {
+    if (hiddenColumns.value.includes('branch') && hiddenColumns.value.includes('leaf')) {
+      hiddenColumns.value = [];
+    } else {
+      hiddenColumns.value = ['branch', 'leaf'];
+    }
+  } else {
+    const index = hiddenColumns.value.indexOf(column);
+    if (index > -1) {
+      hiddenColumns.value.splice(index, 1);
+    } else {
+      hiddenColumns.value.push(column);
+    }
+  }
+  nextTick(() => {
+    updateLayout();
+  });
+};
+
 onMounted(() => {
   updateLayout();
   window.addEventListener('resize', updateLayout);
@@ -257,7 +343,7 @@ onMounted(() => {
   const timer = setInterval(() => {
     currentDate.value = new Date();
     updateDateLine();
-  }, 1000 * 60 * 60); // 每小时更新一次
+  }, 1000 * 60 * 60); // Update every hour
 
   onUnmounted(() => {
     clearInterval(timer);
@@ -274,6 +360,26 @@ onMounted(() => {
   overflow: auto;
 }
 
+.button-group {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 1rem;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.btn:hover {
+  background-color: #45a049;
+}
+
 .table-container {
   display: flex;
   flex-direction: column;
@@ -283,7 +389,6 @@ onMounted(() => {
 
 .table-header {
   display: grid;
-  grid-template-columns: 300px minmax(1200px, 1fr);
   background-color: #f8fafc;
   font-weight: 600;
   position: sticky;
@@ -331,7 +436,6 @@ onMounted(() => {
 
 .first-level-group {
   display: grid;
-  grid-template-columns: 100px 1fr;
   border-top: 1px solid #e2e8f0;
 }
 
@@ -342,12 +446,7 @@ onMounted(() => {
 
 .branch-row {
   display: grid;
-  grid-template-columns: 100px  1fr;
   border-top: 1px solid #e2e8f0;
-}
-
-.branch-row.no-children {
-  grid-template-columns: 200px 1fr;
 }
 
 .leaf-content {
@@ -357,7 +456,6 @@ onMounted(() => {
 
 .leaf-row {
   display: grid;
-  grid-template-columns: 100px 1fr;
   border-top: 1px solid #e2e8f0;
 }
 
@@ -451,12 +549,19 @@ onMounted(() => {
   z-index: 10;
 }
 
-.table-cell.second-level.merged {
-  grid-column: span 1;
+.current-date {
+  position: absolute;
+  top: 0;
+  left: 5px;
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+  color: #333;
 }
 
-.branch-row.no-children .activity-content {
-  grid-column: 2;
+.table-cell.second-level.merged {
+  grid-column: span 1;
 }
 
 .branch-activity-row {
