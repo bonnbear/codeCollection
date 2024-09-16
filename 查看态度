@@ -37,6 +37,7 @@
                           </div>
                           <div class="activity-content">
                             <div class="activity-timeline">
+                              <div class="activity-axis"></div>
                               <template v-for="(activity, activityIndex) in sortActivitiesByDuration(leaf.activities)" :key="`${firstIndex}-${branchIndex}-${leafIndex}-${activityIndex}`">
                                 <el-popover
                                   placement="top"
@@ -62,6 +63,7 @@
                         <div v-if="!hiddenColumns.includes('leaf')" class="table-cell third-level empty"></div>
                         <div class="activity-content">
                           <div class="activity-timeline">
+                            <div class="activity-axis"></div>
                             <template v-for="(activity, activityIndex) in sortActivitiesByDuration(branch.activities)" :key="`${firstIndex}-${branchIndex}-branch-${activityIndex}`">
                               <el-popover
                                 placement="top"
@@ -87,6 +89,7 @@
                   <template v-else>
                     <div class="activity-content">
                       <div class="activity-timeline">
+                        <div class="activity-axis"></div>
                         <template v-for="(activity, activityIndex) in sortActivitiesByDuration(branch.activities)" :key="`${firstIndex}-${branchIndex}-${activityIndex}`">
                           <el-popover
                             placement="top"
@@ -270,10 +273,10 @@ const getActivityStyle = (activity, index) => {
   const isPastActivity = endDate < currentDate.value;
 
   return {
-   left: `${left}%`,
+    left: `${left}%`,
     width: `${width}%`,
     backgroundColor: isPastActivity ? '#CCCCCC' : '#4CAF50',
-    zIndex: index + 1,
+    zIndex: index + 3, // Increased z-index to be above the axis line
   };
 };
 
@@ -461,7 +464,7 @@ onMounted(() => {
   justify-content: center;
   overflow: hidden;
   position: relative;
-  border-left: 1px solid #e2e8f0; /* Added border-left */
+  border-left: 1px solid #e2e8f0;
 }
 
 .table-cell::before,
@@ -492,8 +495,7 @@ onMounted(() => {
 
 .second-level {
   grid-row: 1 / -1;
-    border-top:  1px solid #e2e8f0;
-
+  border-top: 1px solid #e2e8f0;
 }
 
 .activity-content {
@@ -538,6 +540,16 @@ onMounted(() => {
   font-size: 12px;
 }
 
+.activity-axis {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: #cccccc;
+  z-index: 2;
+}
+
 .current-date-line {
   position: absolute;
   top: 0;
@@ -559,27 +571,26 @@ onMounted(() => {
 
 .table-cell.second-level.merged {
   grid-column: span 1;
-  border-top:  1px solid #e2e8f0;
+  border-top: 1px solid #e2e8f0;
 }
 
 .branch-activity-row {
   background-color: #f8fafc;
 }
-.third-level{
-    border-top:  1px solid #e2e8f0;
 
+.third-level {
+  border-top: 1px solid #e2e8f0;
 }
+
 .table-cell.third-level.empty {
   background-color: #f8fafc;
 }
 
-/* Remove right border for the last column in each row */
 .table-cell:last-child::before,
 .activity-timeline:last-child::before {
   display: none;
 }
 
-/* Remove bottom border for the last row in each group */
 .first-level-group:last-child .table-cell::after,
 .branch-row:last-child .table-cell::after,
 .leaf-row:last-child .table-cell::after,
