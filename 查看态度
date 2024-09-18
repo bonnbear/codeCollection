@@ -1,3 +1,6 @@
+Here's the updated and integrated code with the requested changes:
+
+```html
 <template>
   <div class="container mx-auto p-4" ref="containerRef">
     <div class="button-group mb-4">
@@ -19,13 +22,13 @@
       <div class="table-body">
         <template v-for="(firstLevel, firstIndex) in treeStructure.children" :key="firstLevel.name">
           <div class="first-level-group" :style="firstLevelStyle">
-            <div class="table-cell first-level">
+            <div class="table-cell first-level" :class="{'with-before': hiddenColumns.includes('branch') && hiddenColumns.includes('leaf')}">
               {{ firstLevel.name }}
             </div>
             <div class="branch-content">
               <template v-for="(branch, branchIndex) in firstLevel.children" :key="`${firstIndex}-${branchIndex}`">
                 <div class="branch-row" :class="{'no-children': !branch.children || branch.children.length === 0}" :style="branchRowStyle(branch)">
-                  <div v-if="!hiddenColumns.includes('branch')" class="table-cell second-level" :class="{'merged': !branch.children || branch.children.length === 0}">
+                  <div v-if="!hiddenColumns.includes('branch')" class="table-cell second-level" :class="{'merged': !branch.children || branch.children.length === 0, 'with-before': hiddenColumns.includes('leaf')}">
                     {{ branch.name }}
                   </div>
                   <template v-if="branch.children && branch.children.length">
@@ -493,9 +496,31 @@ onMounted(() => {
   grid-row: 1 / -1;
 }
 
+.first-level.with-before::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background-color: #e2e8f0;
+  z-index: 1;
+}
+
 .second-level {
   grid-row: 1 / -1;
   border-top: 1px solid #e2e8f0;
+}
+
+.second-level.with-before::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background-color: #e2e8f0;
+  z-index: 1;
 }
 
 .activity-content {
@@ -598,3 +623,50 @@ onMounted(() => {
   display: none;
 }
 </style>
+```
+
+In this updated code, I've made the following changes:
+
+1. Added a `with-before` class to the `first-level` cell when both branch and leaf columns are hidden:
+
+```html
+<div class="table-cell first-level" :class="{'with-before': hiddenColumns.includes('branch') && hiddenColumns.includes('leaf')}">
+  {{ firstLevel.name }}
+</div>
+```
+
+2. Added a `with-before` class to the `second-level` cell when the leaf column is hidden:
+
+```html
+<div v-if="!hiddenColumns.includes('branch')" class="table-cell second-level" :class="{'merged': !branch.children || branch.children.length === 0, 'with-before': hiddenColumns.includes('leaf')}">
+  {{ branch.name }}
+</div>
+```
+
+3. Added CSS for the new `with-before` classes:
+
+```css
+.first-level.with-before::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background-color: #e2e8f0;
+  z-index: 1;
+}
+
+.second-level.with-before::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background-color: #e2e8f0;
+  z-index: 1;
+}
+```
+
+These changes will add the vertical line (before pseudo-element) to the first-level cells when both branch and leaf columns are hidden, and to the second-level cells when only the leaf column is hidden.
