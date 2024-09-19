@@ -3,7 +3,10 @@
     <div class="table-container">
       <div class="table-header">
         <div class="header-cell checkbox-header">
-          <el-checkbox v-model="selectAll" @change="handleSelectAll">全选</el-checkbox>
+          <el-checkbox v-model="selectAll"
+            :indeterminate="isIndeterminate" 
+
+           @change="handleSelectAll">全选</el-checkbox>
         </div>
         <div class="header-group activity-process">
           <div class="header-cell span-3">活动流程</div>
@@ -199,6 +202,8 @@
     <div class="current-date-line" :style="currentDateLineStyle"></div>
     <el-button class="mt-4" @click="addFirstLevel">添加一级</el-button>
     <el-button class="mt-4" type="primary" native-type="submit">保存数据</el-button>
+        <el-button class="mt-4 mb-4" type="danger" @click="deleteSelected" :disabled="!hasSelectedItems">删除选中项</el-button>
+
   </el-form>
 </template>
 
@@ -213,7 +218,9 @@
   const currentYear = computed(() => currentDate.value.getFullYear());
   const currentDateLineStyle = ref({});
   const selectAll = ref(false);
-  
+  const isIndeterminate = ref(false);
+
+
   const generateId = () => {
     return uuidv4();
   };
@@ -540,21 +547,43 @@
   const deleteActivity = (firstIndex, branchIndex, leafIndex, activityIndex) => {
     treeStructure.children[firstIndex].children[branchIndex].children[leafIndex].activities.splice(activityIndex, 1);
   };
-  
+   const hasSelectedItems = computed(() => {
+    return treeStructure.children.some(item => item.selected);
+  });
   const handleSelectAll = (val) => {
     treeStructure.children.forEach(firstLevel => {
       firstLevel.selected = val;
     });
+      isIndeterminate.value = false;
+
+    updateSelectAllStatus();
   };
+
   
   const handleSelect = (val, firstIndex) => {
     treeStructure.children[firstIndex].selected = val;
     updateSelectAllStatus();
   };
-  
-  const updateSelectAllStatus = () => {
-    selectAll.value = treeStructure.children.every(firstLevel => firstLevel.selected);
+    const deleteSelected = () => {
+    treeStructure.children = treeStructure.children.filter(item => !item.selected);
+    updateSelectAllStatus();
   };
+
+ const updateSelectAllStatus = () => {
+  const selectedCount = treeStructure.children.filter(item => item.selected).length;
+  const totalCount = treeStructure.children.length;
+
+  if (selectedCount === 0) {
+    selectAll.value = false;
+    isIndeterminate.value = false;
+  } else if (selectedCount === totalCount) {
+    selectAll.value = true;
+    isIndeterminate.value = false;
+  } else {
+    selectAll.value = false;
+    isIndeterminate.value = true;
+  }
+};
   
   const processDataBeforeSave = (data) => {
     const processedData = JSON.parse(JSON.stringify(data));
