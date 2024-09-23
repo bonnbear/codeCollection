@@ -1334,3 +1334,23 @@ onMounted(() => {
   display: none;
 }
 </style>
+.activity-block {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  padding: 0 5px;
+  box-sizing: border-box;
+  overflow: hidden;
+  transition: all 0.3s ease; /* 添加过渡效果 */
+}
+
+.activity-block:hover {
+  border: 2px solid blue; /* 添加蓝色边框 */
+  z-index: 5; /* 确保悬浮的元素在其他元素之上 */
+}
+.activity-block:hover .activity-text {
+  padding: 0 3px; /* 稍微减少内边距以补偿边框宽度 */
+}
