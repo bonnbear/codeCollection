@@ -1,0 +1,145 @@
+<template>
+  <div id="app">
+    <button @click="showModal = true">打开表格</button>
+
+    <!-- 模态框 -->
+    <div v-if="showModal" class="modal-overlay">
+      <div class="modal-content">
+        <button @click="showModal = false" class="close-button">&times;</button>
+        <h2>表格数据</h2>
+        <div class="table-container" ref="tableContainer">
+          <table>
+            <thead :style="{ position: 'sticky', top: `${headerTop}px` }">
+              <tr>
+                <th v-for="header in headers" :key="header">{{ header }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, index) in rows" :key="index">
+                <td v-for="(cell, cellIndex) in row" :key="cellIndex">{{ cell }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import { ref, onMounted, onUnmounted } from 'vue'
+
+export default {
+  name: 'App',
+  setup() {
+    const showModal = ref(false)
+    const tableContainer = ref(null)
+    const headerTop = ref(0)
+
+    const headers = ['姓名', '年龄', '城市']
+    const rows = [
+      ['张三', '30', '北京'],
+      ['李四', '25', '上海'],
+      ['王五', '35', '广州'],
+      ['赵六', '28', '深圳'],
+      ['钱七', '32', '杭州'],
+      // 添加更多行以演示滚动效果
+      ...Array(20).fill(0).map((_, i) => [`用户${i+6}`, `${20+i}`, '其他城市'])
+    ]
+
+    const updateHeaderPosition = () => {
+      if (tableContainer.value) {
+        const { top } = tableContainer.value.getBoundingClientRect()
+        headerTop.value = top > 0 ? 0 : Math.abs(top)
+      }
+    }
+
+    onMounted(() => {
+      window.addEventListener('resize', updateHeaderPosition)
+    })
+
+    onUnmounted(() => {
+      window.removeEventListener('resize', updateHeaderPosition)
+    })
+
+    return {
+      showModal,
+      tableContainer,
+      headerTop,
+      headers,
+      rows,
+      updateHeaderPosition
+    }
+  }
+}
+</script>
+
+<style scoped>
+#app {
+  font-family: Arial, sans-serif;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-content {
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  max-width: 80%;
+  max-height: 80%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.close-button {
+  align-self: flex-end;
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.table-container {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+th {
+  background-color: #f2f2f2;
+}
+
+button {
+  padding: 10px 15px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #45a049;
+}
+</style>
