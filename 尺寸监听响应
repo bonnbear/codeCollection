@@ -1,0 +1,57 @@
+<template>
+  <div>
+    <div ref="resizableElement" class="resizable">
+      <calendarView ref="calendarViewRef"></calendarView>
+    </div>
+    <p>当前尺寸: {{ width }}px x {{ height }}px</p>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+import calendarView from './calendarView.vue';
+
+const resizableElement = ref(null);
+const calendarViewRef = ref(null);
+const width = ref(0);
+const height = ref(0);
+let resizeObserver = null;
+
+onMounted(() => {
+  resizeObserver = new ResizeObserver(entries => {
+    for (let entry of entries) {
+      const cr = entry.contentRect;
+      width.value = Math.round(cr.width);
+      height.value = Math.round(cr.height);
+      
+      // 使用 nextTick 确保在 DOM 更新后调用 updateLayout
+      nextTick(() => {
+        if (calendarViewRef.value && calendarViewRef.value.updateLayout) {
+          calendarViewRef.value.updateLayout();
+        }
+      });
+    }
+  });
+
+  if (resizableElement.value) {
+    resizeObserver.observe(resizableElement.value);
+  }
+});
+
+onUnmounted(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+  }
+});
+</script>
+
+<style scoped>
+.resizable {
+  width: 200px;
+  height: 200px;
+  background-color: #f0f0f0;
+  resize: both;
+  overflow: auto;
+  margin-bottom: 10px;
+}
+</style>
