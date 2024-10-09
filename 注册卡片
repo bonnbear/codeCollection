@@ -16,14 +16,13 @@
           <h2>{{ tab.name }}内容</h2>
           <div class="card-grid">
             <div
-              v-for="item in tab.items"
+              v-for="item in getTabItems(tab.id)"
               :key="item.id"
               class="card"
               :class="{ selected: isSelected(item) }"
               @click="toggleSelection(item)"
             >
               <div class="card-thumbnail" :style="{ backgroundColor: item.color }">
-                <!-- 添加选中图标 -->
                 <div class="selected-icon" v-if="isSelected(item)">✓</div>
                 {{ item.name.charAt(0) }}
               </div>
@@ -74,16 +73,19 @@ const tabs = [
   {
     id: 'all',
     name: '全部',
-    items: [
-      { id: 'a1', name: '全部项目1', tabId: 'all', color: '#B3FFF0' },
-      { id: 'a2', name: '全部项目2', tabId: 'all', color: '#FFB3D9' },
-      { id: 'a3', name: '全部项目3', tabId: 'all', color: '#D9FFB3' },
-    ]
+    items: []
   }
 ]
 
 const currentTab = ref('personal')
 const selectedItems = ref([])
+
+const getTabItems = (tabId) => {
+  if (tabId === 'all') {
+    return [...tabs[0].items, ...tabs[1].items]
+  }
+  return tabs.find(tab => tab.id === tabId).items
+}
 
 const isSelected = (item) => {
   return selectedItems.value.some(i => i.id === item.id)
