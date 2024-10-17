@@ -1,0 +1,277 @@
+<script setup>
+import { ref, onMounted, computed, reactive } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+
+const tableData = ref([])
+const loading = ref(false)
+const total = ref(0)
+const currentPage = ref(1)
+const pageSize = ref(5)
+const multipleSelection = ref([])
+
+// 弹框相关
+const dialogVisible = ref(false)
+const dialogTitle = ref('')
+const formData = reactive({
+  id: '',
+  type: '',
+  date: '',
+  name: '',
+  address: ''
+})
+const formRules = {
+  type: [{ required: true, message: '请输入类型', trigger: 'blur' }],
+  date: [{ required: true, message: '请选择日期', trigger: 'change' }],
+  name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
+  address: [{ required: true, message: '请输入地址', trigger: 'blur' }]
+}
+const formRef = ref(null)
+
+// 模拟API调用的函数
+const fetchData = (page, size) => {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const allData = [
+        { id: 1, type: 'B', date: '2016-05-04', name: 'Morgan', address: 'New York' },
+        { id: 2, type: 'A', date: '2016-05-03', name: 'Tom', address: 'Los Angeles' },
+        { id: 3, type: 'B', date: '2016-05-05', name: 'Jessy', address: 'Chicago' },
+        { id: 4, type: 'C', date: '2016-05-06', name: 'Alice', address: 'Houston' },
+        { id: 5, type: 'A', date: '2016-05-02', name: 'John', address: 'San Francisco' },
+        { id: 6, type: 'C', date: '2016-05-07', name: 'Lisa', address: 'Washington D.C.' },
+        { id: 7, type: 'D', date: '2016-05-08', name: 'Emma', address: 'Boston' },
+        { id: 8, type: 'D', date: '2016-05-09', name: 'Oliver', address: 'Seattle' },
+        { id: 9, type: 'E', date: '2016-05-10', name: 'Sophia', address: 'Miami' },
+        { id: 10, type: 'B', date: '2016-05-04', name: 'Morgan', address: 'New York' },
+        { id: 11, type: 'B', date: '2016-05-04', name: 'Morgan', address: 'New York' },
+        { id: 12, type: 'E', date: '2016-05-11', name: 'Liam', address: 'Denver' },
+      ]
+
+      // 对数据进行分组和排序
+      const groupedData = allData.reduce((acc, curr) => {
+        if (!acc[curr.type]) {
+          acc[curr.type] = [];
+        }
+        acc[curr.type].push(curr);
+        return acc;
+      }, {});
+
+      const sortedData = Object.keys(groupedData).sort().flatMap(type => groupedData[type]);
+
+      // 计算总数和当前页数据
+      const totalCount = sortedData.length;
+      const start = (page - 1) * size;
+      const end = start + size;
+      const paginatedData = sortedData.slice(start, end);
+
+      resolve({
+        data: paginatedData,
+        total: totalCount
+      });
+    }, 500) // 模拟0.5秒的延迟
+  })
+}
+
+// 加载数据的函数
+const loadData = async () => {
+  loading.value = true;
+  try {
+    const { data, total: totalCount } = await fetchData(currentPage.value, pageSize.value);
+    tableData.value = data;
+    total.value = totalCount;
+  } catch (error) {
+    console.error('Failed to fetch data:', error);
+  } finally {
+    loading.value = false;
+  }
+}
+
+// 处理页码变化
+const handleCurrentChange = (val) => {
+  currentPage.value = val;
+  loadData();
+}
+
+// 处理每页显示数量变化
+const handleSizeChange = (val) => {
+  pageSize.value = val;
+  currentPage.value = 1; // 重置到第一页
+  loadData();
+}
+
+// 计算合并单元格的方法
+const spanMethod = ({ row, column, rowIndex, columnIndex }) => {
+  if (columnIndex === 2) {
+    if (rowIndex === 0 || row.type !== tableData.value[rowIndex - 1].type) {
+      let rowspan = 1;
+      let i = rowIndex + 1;
+      while (i < tableData.value.length && tableData.value[i].type === row.type) {
+        rowspan++;
+        i++;
+      }
+      return { rowspan, colspan: 1 };
+    } else {
+      return { rowspan: 0, colspan: 0 };
+    }
+  }
+}
+
+// 处理选择变化
+const handleSelectionChange = (val) => {
+  multipleSelection.value = val;
+}
+
+// 计算索引的方法
+const getIndex = (index) => {
+  return (currentPage.value - 1) * pageSize.value + index + 1;
+}
+
+// 打开新增记录弹框
+const openAddDialog = () => {
+  dialogTitle.value = '新增记录'
+  Object.keys(formData).forEach(key => formData[key] = '')
+  dialogVisible.value = true
+}
+
+// 打开编辑记录弹框
+const openEditDialog = (row) => {
+  dialogTitle.value = '编辑记录'
+  Object.keys(formData).forEach(key => formData[key] = row[key])
+  dialogVisible.value = true
+}
+
+// 提交表单
+const submitForm = () => {
+  formRef.value.validate((valid) => {
+    if (valid) {
+      if (dialogTitle.value === '新增记录') {
+        const newRecord = { ...formData, id: Date.now() }
+        tableData.value.unshift(newRecord)
+        total.value++
+        ElMessage.success('新记录已添加')
+      } else {
+        const index = tableData.value.findIndex(item => item.id === formData.id)
+        if (index !== -1) {
+          tableData.value[index] = { ...formData }
+          ElMessage.success('记录已更新')
+        }
+      }
+      dialogVisible.value = false
+    } else {
+      return false
+    }
+  })
+}
+
+// 删除单条记录
+const deleteRecord = (row) => {
+  ElMessageBox.confirm('确定要删除这条记录吗？', '警告', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(() => {
+    const index = tableData.value.findIndex(item => item.id === row.id)
+    if (index !== -1) {
+      tableData.value.splice(index, 1)
+      total.value--
+      ElMessage.success('记录已删除')
+    }
+  }).catch(() => {
+    ElMessage.info('已取消删除操作')
+  })
+}
+
+// 删除选中记录
+const deleteSelected = () => {
+  if (multipleSelection.value.length === 0) {
+    ElMessage.warning('请先选择要删除的记录');
+    return;
+  }
+
+  ElMessageBox.confirm('确定要删除选中的记录吗？', '警告', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(() => {
+    const selectedIds = multipleSelection.value.map(item => item.id);
+    tableData.value = tableData.value.filter(item => !selectedIds.includes(item.id));
+    total.value -= selectedIds.length;
+    ElMessage.success('选中的记录已删除');
+  }).catch(() => {
+    ElMessage.info('已取消删除操作');
+  });
+}
+
+// 组件挂载时加载初始数据
+onMounted(() => {
+  loadData();
+})
+</script>
+
+<template>
+  <div>
+    <div style="margin-bottom: 20px;">
+      <el-button type="primary" @click="openAddDialog">新增</el-button>
+      <el-button type="danger" @click="deleteSelected">删除选中</el-button>
+    </div>
+
+    <el-table 
+      v-loading="loading"
+      :data="tableData" 
+      :span-method="spanMethod" 
+      border 
+      style="width: 100%"
+      @selection-change="handleSelectionChange"
+    >
+      <el-table-column type="selection" width="55" />
+      <el-table-column label="Index" width="80">
+        <template #default="scope">
+          {{ getIndex(scope.$index) }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="type" label="Type" width="180" />
+      <el-table-column prop="date" label="Date" width="180" />
+      <el-table-column prop="name" label="Name" width="180" />
+      <el-table-column prop="address" label="Address" />
+      <el-table-column label="操作" width="150">
+        <template #default="scope">
+          <el-button size="small" @click="openEditDialog(scope.row)">编辑</el-button>
+          <el-button size="small" type="danger" @click="deleteRecord(scope.row)">删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <el-pagination
+      @size-change="handleSizeChange"
+      @current-change="handleCurrentChange"
+      :current-page="currentPage"
+      :page-sizes="[5, 10, 20, 50]"
+      :page-size="pageSize"
+      layout="total, sizes, prev, pager, next, jumper"
+      :total="total">
+    </el-pagination>
+
+    <!-- 新增/编辑弹框 -->
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="30%" @close="formRef.resetFields()">
+      <el-form ref="formRef" :model="formData" :rules="formRules" label-width="100px">
+        <el-form-item label="类型" prop="type">
+          <el-input v-model="formData.type"></el-input>
+        </el-form-item>
+        <el-form-item label="日期" prop="date">
+          <el-date-picker v-model="formData.date" type="date" placeholder="选择日期"></el-date-picker>
+        </el-form-item>
+        <el-form-item label="名称" prop="name">
+          <el-input v-model="formData.name"></el-input>
+        </el-form-item>
+        <el-form-item label="地址" prop="address">
+          <el-input v-model="formData.address"></el-input>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="dialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="submitForm">确定</el-button>
+        </span>
+      </template>
+    </el-dialog>
+  </div>
+</template>
