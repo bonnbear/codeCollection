@@ -527,3 +527,573 @@ defineExpose({
   position: absolute;
 }
 </style>
+
+
+
+
+
+
+
+
+
+/////  校验 
+<template>
+  <el-form ref="formRef" :model="formData" :rules="rules">
+    <el-table 
+      ref="tableRef" 
+      :data="tableData" 
+      style="width: 100%" 
+      @cell-click="handleCellClick"
+    >
+      <el-table-column v-for="column in columns" :key="column.prop" :label="column.label" :width="column.width">
+        <template #default="scope">
+          <el-form-item 
+            :prop="`rows.${scope.$index}.${column.prop}.value`"
+            :rules="rules[column.prop]"
+            :class="{ 'is-error': showError(scope.$index, column.prop) }"
+          >
+            <span 
+              v-if="!isEditing(scope.row, column.prop)" 
+              @click.stop="startEdit(scope.row, column.prop, scope.$index)"
+              :class="{ 'is-required': isRequired(column.prop) }"
+            >
+              {{ formatCellValue(scope.row[column.prop].value, column.type, column.options) }}
+            </span>
+            <!-- 输入框 -->
+            <div 
+              v-else-if="column.type === 'input'"
+              @click.stop  
+              class="edit-wrapper"
+            >
+              <el-input
+                v-model="scope.row[column.prop].value"
+                @blur="handleBlur"
+                @keyup.enter="finishEdit"
+                @keyup.escape="cancelEdit"
+                ref="inputRefs"
+                :validate-event="false"
+              />
+            </div>
+            <!-- 选择器 -->
+            <div 
+              v-else-if="column.type === 'select'"
+              @click.stop
+              class="edit-wrapper"
+            >
+              <el-select
+                v-model="scope.row[column.prop].value"
+                @blur="handleBlur"
+                @change="finishEdit"
+                @keyup.escape="cancelEdit"
+                ref="inputRefs"
+                :validate-event="false"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="item in column.options"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </div>
+            <!-- 日期选择器 -->
+            <div 
+              v-else-if="column.type === 'date'"
+              @click.stop
+              class="edit-wrapper"
+            >
+              <el-date-picker
+                v-model="scope.row[column.prop].value"
+                :type="column.dateType || 'date'"
+                :format="column.format"
+                :value-format="column.valueFormat || 'YYYY-MM-DD'"
+                @blur="handleBlur"
+                @change="finishEdit"
+                @keyup.escape="cancelEdit"
+                ref="inputRefs"
+                :validate-event="false"
+                style="width: 100%"
+              />
+            </div>
+            <!-- 数字输入框 -->
+            <div 
+              v-else-if="column.type === 'number'"
+              @click.stop
+              class="edit-wrapper"
+            >
+              <el-input-number
+                v-model="scope.row[column.prop].value"
+                :min="column.min"
+                :max="column.max"
+                :precision="column.precision"
+                :step="column.step || 1"
+                @blur="handleBlur"
+                @change="handleNumberChange"
+                @keyup.escape="cancelEdit"
+                ref="inputRefs"
+                :validate-event="false"
+                style="width: 100%"
+              />
+            </div>
+            <!-- 开关 -->
+            <div 
+              v-else-if="column.type === 'switch'"
+              @click.stop
+              class="edit-wrapper"
+            >
+              <el-switch
+                v-model="scope.row[column.prop].value"
+                @change="handleSwitchChange"
+                ref="inputRefs"
+                :validate-event="false"
+              />
+            </div>
+          </el-form-item>
+        </template>
+      </el-table-column>
+    </el-table>
+  </el-form>
+</template>
+<style scoped>
+.el-table .cell {
+  line-height: 23px;
+}
+
+.is-required:not(.el-form-item--error):before {
+  content: "*";
+  color: #f56c6c;
+  margin-right: 4px;
+}
+
+.el-form-item.is-error {
+  margin-bottom: 0;
+}
+
+.form-item-wrapper {
+  position: relative;
+  padding-bottom: 18px;
+}
+
+.edit-wrapper {
+  width: 100%;
+  position: relative;
+}
+
+.switch-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.el-form-item.is-error .el-input__wrapper,
+.el-form-item.is-error .el-select .el-input__wrapper,
+.el-form-item.is-error .el-date-editor.el-input__wrapper {
+  box-shadow: 0 0 0 1px #f56c6c inset;
+}
+
+:deep(.el-select .el-input__wrapper) {
+  width: 100%;
+}
+
+:deep(.el-date-editor.el-input__wrapper) {
+  width: 100%;
+}
+
+:deep(.el-input-number .el-input__wrapper) {
+  box-shadow: none;
+}
+
+:deep(.el-input__wrapper),
+:deep(.el-select .el-input__wrapper),
+:deep(.el-date-editor.el-input__wrapper) {
+  box-shadow: none;
+  border: 1px solid #dcdfe6;
+}
+
+:deep(.el-input__wrapper:hover),
+:deep(.el-select .el-input__wrapper:hover),
+:deep(.el-date-editor.el-input__wrapper:hover) {
+  border-color: #409eff;
+}
+
+:deep(.el-input__wrapper.is-focus),
+:deep(.el-select .el-input__wrapper.is-focus),
+:deep(.el-date-editor.el-input__wrapper.is-focus) {
+  border-color: #409eff;
+  box-shadow: 0 0 0 1px #409eff;
+}
+
+:deep(.el-input-number.is-without-controls .el-input__wrapper) {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+:deep(.el-form-item.is-error .el-input__wrapper) {
+  box-shadow: none;
+  border-color: #f56c6c;
+}
+
+:deep(.el-table__cell) {
+  padding: 4px 0;
+}
+
+:deep(.el-form-item--default) {
+  margin-bottom: 0;
+}
+
+:deep(.el-select) {
+  width: 100%;
+}
+
+:deep(.el-form-item.is-error .el-input__wrapper),
+:deep(.el-form-item.is-error .el-select .el-input__wrapper),
+:deep(.el-form-item.is-error .el-date-editor.el-input__wrapper) {
+  border-color: #f56c6c;
+}
+
+:deep(.el-input-number) {
+  width: 100%;
+}
+
+:deep(.el-input.is-disabled .el-input__wrapper) {
+  background-color: #f5f7fa;
+}
+
+:deep(.el-select .el-input.is-disabled .el-input__wrapper) {
+  background-color: #f5f7fa;
+}
+
+:deep(.el-date-editor.is-disabled .el-input__wrapper) {
+  background-color: #f5f7fa;
+}
+
+:deep(.el-form-item__error) {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  padding-top: 2px;
+  color: #f56c6c;
+  font-size: 12px;
+  line-height: 1;
+}
+</style>
+<script setup>
+import { ref, reactive, nextTick, onMounted, onUnmounted } from 'vue'
+import { ElTable, ElTableColumn, ElInput, ElForm, ElFormItem, ElSelect, ElOption, ElDatePicker, ElInputNumber, ElSwitch } from 'element-plus'
+
+// 列配置
+const columns = [
+  { 
+    prop: 'date', 
+    label: '日期', 
+    width: '180', 
+    required: true,
+    type: 'date',
+    format: 'YYYY-MM-DD',
+    valueFormat: 'YYYY-MM-DD'
+  },
+  { 
+    prop: 'name', 
+    label: '姓名', 
+    width: '180', 
+    required: true,
+    type: 'input'
+  },
+  { 
+    prop: 'type', 
+    label: '类型', 
+    width: '180',
+    required: true,
+    type: 'select',
+    options: [
+      { value: '1', label: '类型一' },
+      { value: '2', label: '类型二' },
+      { value: '3', label: '类型三' }
+    ]
+  },
+  { 
+    prop: 'amount', 
+    label: '金额', 
+    width: '180',
+    type: 'number',
+    required: true,
+    min: 0,
+    max: 1000000,
+    precision: 2,
+    step: 0.1
+  },
+  { 
+    prop: 'status', 
+    label: '状态', 
+    width: '100',
+    type: 'switch'
+  },
+  { 
+    prop: 'address', 
+    label: '地址',
+    type: 'input'
+  }
+]
+
+const createEditableCell = (value) => reactive({
+  value,
+  isEditing: false
+})
+
+const tableData = ref([
+  {
+    date: createEditableCell('2016-05-03'),
+    name: createEditableCell('张三'),
+    type: createEditableCell('1'),
+    amount: createEditableCell(100),
+    status: createEditableCell(true),
+    address: createEditableCell('浙江省杭州市西湖区')
+  },
+  {
+    date: createEditableCell('2016-05-02'),
+    name: createEditableCell('李四'),
+    type: createEditableCell('2'),
+    amount: createEditableCell(200),
+    status: createEditableCell(false),
+    address: createEditableCell('广东省深圳市南山区')
+  }
+])
+
+// 表单数据模型
+const formData = reactive({
+  rows: tableData.value
+})
+
+// 验证规则
+const rules = {
+  date: [
+    { required: true, message: '日期不能为空', trigger: 'change' }
+  ],
+  name: [
+    { required: true, message: '姓名不能为空', trigger: 'blur' },
+    { min: 2, max: 5, message: '长度在 2 到 5 个字符', trigger: 'blur' }
+  ],
+  type: [
+    { required: true, message: '请选择类型', trigger: 'change' }
+  ],
+  amount: [
+    { required: true, message: '请输入金额', trigger: 'change' },
+    { type: 'number', min: 0, max: 1000000, message: '金额必须在0-1000000之间', trigger: 'change' }
+  ]
+}
+
+const formRef = ref(null)
+const inputRefs = ref([])
+const currentEditingCell = ref(null)
+const tableRef = ref(null)
+const originalValue = ref(null)
+let isBlurProcessing = false
+
+const formatCellValue = (value, type, options) => {
+  if (value === null || value === undefined) return ''
+  
+  switch (type) {
+    case 'select':
+      return options?.find(opt => opt.value === value)?.label || value
+    case 'switch':
+      return value ? '是' : '否'
+    default:
+      return value
+  }
+}
+
+const isRequired = (prop) => {
+  return columns.find(col => col.prop === prop)?.required
+}
+
+const showError = (index, prop) => {
+  const errors = formRef.value?.errors
+  const fieldName = `rows.${index}.${prop}.value`
+  return errors && errors[fieldName]
+}
+
+const isEditing = (row, prop) => {
+  return currentEditingCell.value && 
+         currentEditingCell.value.row === row && 
+         currentEditingCell.value.prop === prop
+}
+
+const validateField = async (index, prop) => {
+  try {
+    await formRef.value?.validateField(`rows.${index}.${prop}.value`)
+    return true
+  } catch (error) {
+    return false
+  }
+}
+
+const startEdit = async (row, prop, index) => {
+  const column = columns.find(col => col.prop === prop)
+  
+  if (column.type === 'switch') {
+    row[prop].value = !row[prop].value
+    await validateField(index, prop)
+    return
+  }
+
+  if (currentEditingCell.value &&
+      currentEditingCell.value.row === row && 
+      currentEditingCell.value.prop === prop) {
+    return
+  }
+
+  if (currentEditingCell.value) {
+    const success = await finishEdit()
+    if (!success) return
+  }
+
+  originalValue.value = row[prop].value
+  currentEditingCell.value = { row, prop, index }
+  
+  await nextTick()
+  const input = inputRefs.value.find(el => el && el.$el.contains(document.activeElement))
+  if (input) {
+    if (input.focus) {
+      input.focus()
+    }
+    if (column.type === 'input' && input.select) {
+      input.select()
+    }
+  }
+}
+
+const cancelEdit = () => {
+  if (currentEditingCell.value && originalValue.value !== undefined) {
+    const { row, prop } = currentEditingCell.value
+    row[prop].value = originalValue.value
+    currentEditingCell.value = null
+    originalValue.value = undefined
+  }
+}
+
+const handleBlur = async (event) => {
+  if (isBlurProcessing) return
+  isBlurProcessing = true
+
+  setTimeout(async () => {
+    const isStillInEditArea = inputRefs.value.some(ref => {
+      return ref && ref.$el && (ref.$el.contains(document.activeElement) || ref.$el === document.activeElement)
+    })
+
+    if (!isStillInEditArea) {
+      await finishEdit()
+    }
+    isBlurProcessing = false
+  }, 100)
+}
+
+const handleCellClick = (row, column, cell, event) => {
+  const isClickInEditControl = inputRefs.value.some(ref => {
+    return ref && ref.$el && ref.$el.contains(event.target)
+  })
+
+  if (isClickInEditControl) {
+    return
+  }
+
+  if (currentEditingCell.value && 
+      currentEditingCell.value.row === row && 
+      currentEditingCell.value.prop === column.property) {
+    return
+  }
+  
+  if (currentEditingCell.value) {
+    finishEdit()
+  }
+}
+
+import { ElMessage } from 'element-plus'
+
+// ... 其他代码保持不变 ...
+
+const finishEdit = async () => {
+  if (currentEditingCell.value) {
+    const { index, prop, row } = currentEditingCell.value
+    const column = columns.find(col => col.prop === prop)
+    
+    // 检查必填字段
+    if (column.required && (row[prop].value === null || row[prop].value === undefined || row[prop].value === '')) {
+      // 还原原始值
+      row[prop].value = originalValue.value
+      
+      // 显示错误消息
+      ElMessage({
+        message: `${column.label}不能为空`,
+        type: 'error',
+        duration: 2000
+      })
+      
+      // 强制触发验证以显示错误消息
+      await validateField(index, prop)
+      
+      currentEditingCell.value = null
+      originalValue.value = undefined
+      return false
+    }
+
+    try {
+      // 调用保存接口（这里需要你自己实现）
+      // const saveResult = await saveData(row[prop].value)
+      
+      await validateField(index, prop)
+      currentEditingCell.value = null
+      originalValue.value = undefined
+      return true
+    } catch (error) {
+      // 如果保存失败，还原原始值
+      row[prop].value = originalValue.value
+      ElMessage({
+        message: '保存失败',
+        type: 'error',
+        duration: 2000
+      })
+      return false
+    }
+  }
+  return true
+}
+
+const handleNumberChange = async (value) => {
+  if (currentEditingCell.value) {
+    const { index, prop } = currentEditingCell.value
+    await validateField(index, prop)
+  }
+}
+
+const handleSwitchChange = async (value) => {
+  if (currentEditingCell.value) {
+    const { index, prop } = currentEditingCell.value
+    await validateField(index, prop)
+  }
+}
+
+const handleGlobalClick = async (event) => {
+  if (currentEditingCell.value && tableRef.value) {
+    const tableEl = tableRef.value.$el
+    if (tableEl && !tableEl.contains(event.target)) {
+      await finishEdit()
+    }
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleGlobalClick)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleGlobalClick)
+})
+
+const validateTable = () => {
+  return formRef.value?.validate()
+}
+
+defineExpose({
+  validateTable
+})
+</script>
