@@ -1,6 +1,11 @@
 <template>
   <el-form ref="formRef" :model="formData" :rules="rules">
-    <el-table ref="tableRef" :data="tableData" style="width: 100%" @cell-click="handleCellClick">
+    <el-table 
+      ref="tableRef" 
+      :data="tableData" 
+      style="width: 100%" 
+      @cell-click="handleCellClick"
+    >
       <el-table-column v-for="column in columns" :key="column.prop" :label="column.label" :width="column.width">
         <template #default="scope">
           <el-form-item 
@@ -16,61 +21,95 @@
               {{ formatCellValue(scope.row[column.prop].value, column.type, column.options) }}
             </span>
             <!-- 输入框 -->
-            <el-input
+            <div 
               v-else-if="column.type === 'input'"
-              v-model="scope.row[column.prop].value"
-              @blur="finishEdit"
-              @keyup.enter="finishEdit"
-              ref="inputRefs"
-            />
-            <!-- 选择器 -->
-            <el-select
-              v-else-if="column.type === 'select'"
-              v-model="scope.row[column.prop].value"
-              @blur="finishEdit"
-              @change="finishEdit"
-              ref="inputRefs"
-              style="width: 100%"
+              @click.stop  
+              class="edit-wrapper"
             >
-              <el-option
-                v-for="item in column.options"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
+              <el-input
+                v-model="scope.row[column.prop].value"
+                @blur="handleBlur"
+                @keyup.enter="finishEdit"
+                @keyup.esc="cancelEdit"
+                ref="inputRefs"
+                :validate-event="false"
               />
-            </el-select>
+            </div>
+            <!-- 选择器 -->
+            <div 
+              v-else-if="column.type === 'select'"
+              @click.stop
+              class="edit-wrapper"
+            >
+              <el-select
+                v-model="scope.row[column.prop].value"
+                @blur="handleBlur"
+                @change="finishEdit"
+                @keyup.esc="cancelEdit"
+                ref="inputRefs"
+                :validate-event="false"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="item in column.options"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </div>
             <!-- 日期选择器 -->
-            <el-date-picker
+            <div 
               v-else-if="column.type === 'date'"
-              v-model="scope.row[column.prop].value"
-              :type="column.dateType || 'date'"
-              :format="column.format"
-              :value-format="column.valueFormat || 'YYYY-MM-DD'"
-              @blur="finishEdit"
-              @change="finishEdit"
-              ref="inputRefs"
-              style="width: 100%"
-            />
+              @click.stop
+              class="edit-wrapper"
+            >
+              <el-date-picker
+                v-model="scope.row[column.prop].value"
+                :type="column.dateType || 'date'"
+                :format="column.format"
+                :value-format="column.valueFormat || 'YYYY-MM-DD'"
+                @blur="handleBlur"
+                @change="finishEdit"
+                @keyup.esc="cancelEdit"
+                ref="inputRefs"
+                :validate-event="false"
+                style="width: 100%"
+              />
+            </div>
             <!-- 数字输入框 -->
-            <el-input-number
+            <div 
               v-else-if="column.type === 'number'"
-              v-model="scope.row[column.prop].value"
-              :min="column.min"
-              :max="column.max"
-              :precision="column.precision"
-              :step="column.step || 1"
-              @blur="finishEdit"
-              @change="finishEdit"
-              ref="inputRefs"
-              style="width: 100%"
-            />
+              @click.stop
+              class="edit-wrapper"
+            >
+              <el-input-number
+                v-model="scope.row[column.prop].value"
+                :min="column.min"
+                :max="column.max"
+                :precision="column.precision"
+                :step="column.step || 1"
+                @blur="handleBlur"
+                @change="handleNumberChange"
+                @keyup.esc="cancelEdit"
+                ref="inputRefs"
+                :validate-event="false"
+                style="width: 100%"
+              />
+            </div>
             <!-- 开关 -->
-            <el-switch
+            <div 
               v-else-if="column.type === 'switch'"
-              v-model="scope.row[column.prop].value"
-              @change="finishEdit"
-              ref="inputRefs"
-            />
+              @click.stop
+              class="edit-wrapper"
+            >
+              <el-switch
+                v-model="scope.row[column.prop].value"
+                @change="handleSwitchChange"
+                ref="inputRefs"
+                :validate-event="false"
+              />
+            </div>
           </el-form-item>
         </template>
       </el-table-column>
@@ -182,6 +221,17 @@ const rules = {
     { type: 'number', min: 0, max: 1000000, message: '金额必须在0-1000000之间', trigger: 'change' }
   ]
 }
+</script>
+
+<script setup>
+// ... 接上部分 ...
+
+const formRef = ref(null)
+const inputRefs = ref([])
+const currentEditingCell = ref(null)
+const tableRef = ref(null)
+const originalValue = ref(null)
+let isBlurProcessing = false
 
 const formatCellValue = (value, type, options) => {
   if (value === null || value === undefined) return ''
@@ -195,11 +245,6 @@ const formatCellValue = (value, type, options) => {
       return value
   }
 }
-
-const formRef = ref(null)
-const inputRefs = ref([])
-const currentEditingCell = ref(null)
-const tableRef = ref(null)
 
 const isRequired = (prop) => {
   return columns.find(col => col.prop === prop)?.required
@@ -217,49 +262,95 @@ const isEditing = (row, prop) => {
          currentEditingCell.value.prop === prop
 }
 
-// 修改点 1：修改 startEdit 函数，增加对当前编辑单元格的判断
-const startEdit = (row, prop, index) => {
+const validateField = async (index, prop) => {
+  try {
+    await formRef.value?.validateField(`rows.${index}.${prop}.value`)
+    return true
+  } catch (error) {
+    return false
+  }
+}
+
+const startEdit = async (row, prop, index) => {
   const column = columns.find(col => col.prop === prop)
-  // 如果是开关类型，直接切换值而不进入编辑状态
+  
+  // 如果是开关类型，直接切换值
   if (column.type === 'switch') {
     row[prop].value = !row[prop].value
+    await validateField(index, prop)
     return
   }
 
-  // 如果已经在编辑这个单元格，则不需要重新进入编辑状态
+  // 如果已经在编辑这个单元格，不做任何处理
   if (currentEditingCell.value &&
       currentEditingCell.value.row === row && 
       currentEditingCell.value.prop === prop) {
     return
   }
 
+  // 如果正在编辑其他单元格，先完成编辑
   if (currentEditingCell.value) {
-    finishEdit()
+    const success = await finishEdit()
+    if (!success) return // 如果验证失败，不切换编辑状态
   }
+
+  // 保存原始值
+  originalValue.value = row[prop].value
   
+  // 设置新的编辑单元格
   currentEditingCell.value = { row, prop, index }
-  nextTick(() => {
-    const input = inputRefs.value.find(el => el && el.$el.contains(document.activeElement))
-    if (input) {
+  
+  // 确保输入框获得焦点
+  await nextTick()
+  const input = inputRefs.value.find(el => el && el.$el.contains(document.activeElement))
+  if (input) {
+    if (input.focus) {
       input.focus()
     }
-  })
-}
-
-const finishEdit = async () => {
-  if (currentEditingCell.value) {
-    const { index, prop } = currentEditingCell.value
-    try {
-      await formRef.value?.validateField(`rows.${index}.${prop}.value`)
-      currentEditingCell.value = null
-    } catch (error) {
-      return
+    // 如果是输入框，选中所有文本
+    if (column.type === 'input' && input.select) {
+      input.select()
     }
   }
 }
 
-// 修改点 2：修改 handleCellClick 函数，增加对当前编辑单元格的判断
+const cancelEdit = () => {
+  if (currentEditingCell.value && originalValue.value !== undefined) {
+    const { row, prop } = currentEditingCell.value
+    row[prop].value = originalValue.value
+    currentEditingCell.value = null
+    originalValue.value = undefined
+  }
+}
+
+const handleBlur = async (event) => {
+  if (isBlurProcessing) return
+  isBlurProcessing = true
+
+  // 使用 setTimeout 确保在所有其他事件处理完成后执行
+  setTimeout(async () => {
+    // 检查新的焦点元素是否还在编辑区域内
+    const isStillInEditArea = inputRefs.value.some(ref => {
+      return ref && ref.$el && (ref.$el.contains(document.activeElement) || ref.$el === document.activeElement)
+    })
+
+    if (!isStillInEditArea) {
+      await finishEdit()
+    }
+    isBlurProcessing = false
+  }, 100)
+}
+
 const handleCellClick = (row, column, cell, event) => {
+  // 检查点击是否发生在编辑控件内
+  const isClickInEditControl = inputRefs.value.some(ref => {
+    return ref && ref.$el && ref.$el.contains(event.target)
+  })
+
+  if (isClickInEditControl) {
+    return // 如果点击在编辑控件内，不做任何处理
+  }
+
   // 如果点击的是当前正在编辑的单元格，则不做任何处理
   if (currentEditingCell.value && 
       currentEditingCell.value.row === row && 
@@ -267,34 +358,60 @@ const handleCellClick = (row, column, cell, event) => {
     return
   }
   
-  // 如果点击的是其他单元格，则完成当前编辑并开始新的编辑
+  // 如果点击的是其他单元格，完成当前编辑
   if (currentEditingCell.value) {
     finishEdit()
   }
 }
 
-const handleGlobalClick = (event) => {
+const finishEdit = async () => {
+  if (currentEditingCell.value) {
+    const { index, prop } = currentEditingCell.value
+    try {
+      await validateField(index, prop)
+      currentEditingCell.value = null
+      originalValue.value = undefined
+      return true
+    } catch (error) {
+      return false
+    }
+  }
+  return true
+}
+
+const handleNumberChange = async (value) => {
+  if (currentEditingCell.value) {
+    const { index, prop } = currentEditingCell.value
+    await validateField(index, prop)
+  }
+}
+
+const handleSwitchChange = async (value) => {
+  if (currentEditingCell.value) {
+    const { index, prop } = currentEditingCell.value
+    await validateField(index, prop)
+  }
+}
+
+const handleGlobalClick = async (event) => {
   if (currentEditingCell.value && tableRef.value) {
     const tableEl = tableRef.value.$el
     if (tableEl && !tableEl.contains(event.target)) {
-      finishEdit()
+      await finishEdit()
     }
   }
 }
 
 onMounted(() => {
-  nextTick(() => {
-    document.addEventListener('click', handleGlobalClick)
-  })
+  document.addEventListener('click', handleGlobalClick)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleGlobalClick)
 })
 
-// 验证整个表格数据的方法
 const validateTable = () => {
-  return formRef.value.validate()
+  return formRef.value?.validate()
 }
 </script>
 
@@ -319,15 +436,4 @@ const validateTable = () => {
   box-shadow: 0 0 0 1px #f56c6c inset;
 }
 
-:deep(.el-select .el-input__wrapper) {
-  width: 100%;
-}
-
-:deep(.el-date-editor.el-input__wrapper) {
-  width: 100%;
-}
-
-:deep(.el-input-number .el-input__wrapper) {
-  box-shadow: none;
-}
-</style>
+.
