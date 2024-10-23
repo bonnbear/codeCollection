@@ -1,5 +1,3 @@
-
-             
 <template>
   <el-form ref="formRef" :model="formData" :rules="rules">
     <el-table ref="tableRef" :data="tableData" style="width: 100%" @cell-click="handleCellClick">
@@ -10,37 +8,69 @@
             :rules="rules[column.prop]"
             :class="{ 'is-error': showError(scope.$index, column.prop) }"
           >
-            <!-- 非编辑状态 -->
-            <div 
+            <span 
               v-if="!isEditing(scope.row, column.prop)" 
-              class="cell-content"
-              @click="handleCellContentClick(scope.row, column.prop, scope.$index, $event)"
+              @click.stop="startEdit(scope.row, column.prop, scope.$index)"
+              :class="{ 'is-required': isRequired(column.prop) }"
             >
-              <span :class="{ 'is-required': isRequired(column.prop) }">
-                {{ formatCellValue(scope.row[column.prop].value, column.type, column.options) }}
-              </span>
-            </div>
-            <!-- 编辑状态 -->
-            <component
-              v-else
-              :is="getComponentByType(column.type)"
+              {{ formatCellValue(scope.row[column.prop].value, column.type, column.options) }}
+            </span>
+            <!-- 输入框 -->
+            <el-input
+              v-else-if="column.type === 'input'"
               v-model="scope.row[column.prop].value"
-              v-bind="getComponentProps(column)"
-              @blur="handleBlur"
-              @change="handleChange"
+              @blur="finishEdit"
+              @keyup.enter="finishEdit"
               ref="inputRefs"
-              :class="column.type"
+            />
+            <!-- 选择器 -->
+            <el-select
+              v-else-if="column.type === 'select'"
+              v-model="scope.row[column.prop].value"
+              @blur="finishEdit"
+              @change="finishEdit"
+              ref="inputRefs"
+              style="width: 100%"
             >
-              <!-- select的选项 -->
-              <template v-if="column.type === 'select'">
-                <el-option
-                  v-for="item in column.options"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                />
-              </template>
-            </component>
+              <el-option
+                v-for="item in column.options"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+            <!-- 日期选择器 -->
+            <el-date-picker
+              v-else-if="column.type === 'date'"
+              v-model="scope.row[column.prop].value"
+              :type="column.dateType || 'date'"
+              :format="column.format"
+              :value-format="column.valueFormat || 'YYYY-MM-DD'"
+              @blur="finishEdit"
+              @change="finishEdit"
+              ref="inputRefs"
+              style="width: 100%"
+            />
+            <!-- 数字输入框 -->
+            <el-input-number
+              v-else-if="column.type === 'number'"
+              v-model="scope.row[column.prop].value"
+              :min="column.min"
+              :max="column.max"
+              :precision="column.precision"
+              :step="column.step || 1"
+              @blur="finishEdit"
+              @change="finishEdit"
+              ref="inputRefs"
+              style="width: 100%"
+            />
+            <!-- 开关 -->
+            <el-switch
+              v-else-if="column.type === 'switch'"
+              v-model="scope.row[column.prop].value"
+              @change="finishEdit"
+              ref="inputRefs"
+            />
           </el-form-item>
         </template>
       </el-table-column>
@@ -50,18 +80,7 @@
 
 <script setup>
 import { ref, reactive, nextTick, onMounted, onUnmounted } from 'vue'
-import { 
-  ElTable, 
-  ElTableColumn, 
-  ElInput, 
-  ElForm, 
-  ElFormItem, 
-  ElSelect, 
-  ElOption, 
-  ElDatePicker, 
-  ElInputNumber, 
-  ElSwitch 
-} from 'element-plus'
+import { ElTable, ElTableColumn, ElInput, ElForm, ElFormItem, ElSelect, ElOption, ElDatePicker, ElInputNumber, ElSwitch } from 'element-plus'
 
 // 列配置
 const columns = [
@@ -164,46 +183,6 @@ const rules = {
   ]
 }
 
-// 获取编辑组件类型
-const getComponentByType = (type) => {
-  const componentMap = {
-    'input': ElInput,
-    'select': ElSelect,
-    'date': ElDatePicker,
-    'number': ElInputNumber,
-    'switch': ElSwitch
-  }
-  return componentMap[type] || ElInput
-}
-
-// 获取组件属性
-const getComponentProps = (column) => {
-  const commonProps = {
-    style: { width: '100%' }
-  }
-
-  const propsMap = {
-    'date': {
-      type: column.dateType || 'date',
-      format: column.format,
-      valueFormat: column.valueFormat || 'YYYY-MM-DD',
-      ...commonProps
-    },
-    'number': {
-      min: column.min,
-      max: column.max,
-      precision: column.precision,
-      step: column.step || 1,
-      ...commonProps
-    },
-    'select': commonProps,
-    'input': commonProps,
-    'switch': {}
-  }
-
-  return propsMap[column.type] || commonProps
-}
-
 const formatCellValue = (value, type, options) => {
   if (value === null || value === undefined) return ''
   
@@ -238,29 +217,26 @@ const isEditing = (row, prop) => {
          currentEditingCell.value.prop === prop
 }
 
-// 处理单元格内容点击
-const handleCellContentClick = (row, prop, index, event) => {
-  event.stopPropagation() // 阻止事件冒泡
+// 修改点 1：修改 startEdit 函数，增加对当前编辑单元格的判断
+const startEdit = (row, prop, index) => {
   const column = columns.find(col => col.prop === prop)
-  
-  // 如果是开关类型，直接切换值
+  // 如果是开关类型，直接切换值而不进入编辑状态
   if (column.type === 'switch') {
     row[prop].value = !row[prop].value
     return
   }
 
-  // 如果已经在编辑状态，则不做任何操作
-  if (isEditing(row, prop)) {
+  // 如果已经在编辑这个单元格，则不需要重新进入编辑状态
+  if (currentEditingCell.value &&
+      currentEditingCell.value.row === row && 
+      currentEditingCell.value.prop === prop) {
     return
   }
 
-  startEdit(row, prop, index)
-}
-
-const startEdit = (row, prop, index) => {
   if (currentEditingCell.value) {
     finishEdit()
   }
+  
   currentEditingCell.value = { row, prop, index }
   nextTick(() => {
     const input = inputRefs.value.find(el => el && el.$el.contains(document.activeElement))
@@ -282,54 +258,19 @@ const finishEdit = async () => {
   }
 }
 
-// 处理单元格点击
+// 修改点 2：修改 handleCellClick 函数，增加对当前编辑单元格的判断
 const handleCellClick = (row, column, cell, event) => {
-  // 如果点击的是当前编辑的单元格，不做任何操作
+  // 如果点击的是当前正在编辑的单元格，则不做任何处理
   if (currentEditingCell.value && 
       currentEditingCell.value.row === row && 
       currentEditingCell.value.prop === column.property) {
     return
   }
-
-  // 如果点击的是其他单元格，结束当前编辑
+  
+  // 如果点击的是其他单元格，则完成当前编辑并开始新的编辑
   if (currentEditingCell.value) {
     finishEdit()
   }
-}
-
-// 处理失去焦点
-const handleBlur = () => {
-  // 使用 setTimeout 确保在处理 click 事件之后执行
-  setTimeout(() => {
-    if (currentEditingCell.value && !isClickInsideComponent()) {
-      finishEdit()
-    }
-  }, 200)
-}
-
-// 处理值变化
-const handleChange = () => {
-  const column = columns.find(col => col.prop === currentEditingCell.value?.prop)
-  // 对于 select 和 date 类型，值变化后直接完成编辑
-  if (column && (column.type === 'select' || column.type === 'date')) {
-    finishEdit()
-  }
-}
-
-// 检查点击是否在组件内部
-const isClickInsideComponent = () => {
-  if (!currentEditingCell.value) return false
-  
-  const activeElement = document.activeElement
-  const inputs = inputRefs.value
-  
-  return inputs.some(input => {
-    if (!input?.$el) return false
-    return input.$el.contains(activeElement) || 
-           // 检查下拉面板
-           document.querySelector('.el-select-dropdown')?.contains(activeElement) ||
-           document.querySelector('.el-picker__popper')?.contains(activeElement)
-  })
 }
 
 const handleGlobalClick = (event) => {
@@ -338,42 +279,6 @@ const handleGlobalClick = (event) => {
     if (tableEl && !tableEl.contains(event.target)) {
       finishEdit()
     }
-  }
-}
-
-// 添加新行
-const addRow = () => {
-  tableData.value.push({
-    date: createEditableCell(''),
-    name: createEditableCell(''),
-    type: createEditableCell(''),
-    amount: createEditableCell(0),
-    status: createEditableCell(false),
-    address: createEditableCell('')
-  })
-}
-
-// 删除行
-const removeRow = (index) => {
-  tableData.value.splice(index, 1)
-}
-
-// 验证并提交数据
-const submitData = async () => {
-  try {
-    await formRef.value.validate()
-    const formattedData = tableData.value.map(row => {
-      const newRow = {}
-      for (const key in row) {
-        newRow[key] = row[key].value
-      }
-      return newRow
-    })
-    console.log('提交的数据：', formattedData)
-    return formattedData
-  } catch (error) {
-    console.log('验证失败')
-    return false
   }
 }
 
@@ -387,13 +292,10 @@ onUnmounted(() => {
   document.removeEventListener('click', handleGlobalClick)
 })
 
-// 暴露方法供父组件使用
-defineExpose({
-  addRow,
-  removeRow,
-  submitData,
-  validateTable: () => formRef.value.validate()
-})
+// 验证整个表格数据的方法
+const validateTable = () => {
+  return formRef.value.validate()
+}
 </script>
 
 <style scoped>
@@ -417,28 +319,15 @@ defineExpose({
   box-shadow: 0 0 0 1px #f56c6c inset;
 }
 
-.cell-content {
-  cursor: pointer;
-  width: 100%;
-  height: 100%;
-}
-
-/* 编辑状态下的控件样式 */
-:deep(.el-select),
-:deep(.el-date-editor),
-:deep(.el-input-number) {
+:deep(.el-select .el-input__wrapper) {
   width: 100%;
 }
 
-:deep(.el-input__wrapper) {
+:deep(.el-date-editor.el-input__wrapper) {
   width: 100%;
 }
 
-/* 确保开关在单元格中居中显示 */
-:deep(.el-switch) {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
+:deep(.el-input-number .el-input__wrapper) {
+  box-shadow: none;
 }
 </style>
