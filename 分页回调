@@ -1,0 +1,130 @@
+是的,使用 provide/inject 配合回调函数是一个很好的解决方案,这样可以实现更优雅的组件通信。下面是具体实现:
+
+```vue
+<!-- 父组件 -->
+<template>
+  <div>
+    <el-button @click="handleNextPage">下一页</el-button>
+    <child-component />
+  </div>
+</template>
+
+<script setup>
+import { provide } from 'vue'
+
+// 定义分页方法
+const pagination = {
+  nextPage: null,
+  setPageSize: null
+}
+
+// 提供回调注册方法
+provide('registerPagination', (methods) => {
+  Object.assign(pagination, methods)
+})
+
+// 使用注册的方法
+const handleNextPage = () => {
+  pagination.nextPage?.()
+}
+</script>
+```
+
+```vue
+<!-- 子组件 -->
+<template>
+  <div>
+    <el-pagination
+      v-model:current-page="currentPage"
+      v-model:page-size="pageSize"
+      :total="total"
+      :page-sizes="[10, 20, 30, 40]"
+      layout="total, sizes, prev, pager, next, jumper"
+      @size-change="handleSizeChange"
+      @current-change="handleCurrentChange"
+    />
+  </div>
+</template>
+
+<script setup>
+import { ref, inject, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
+
+const currentPage = ref(1)
+const pageSize = ref(10)
+const total = ref(100)
+
+// 注入注册方法
+const registerPagination = inject('registerPagination')
+
+// 分页方法
+const handleNextPage = () => {
+  const lastPage = Math.ceil(total.value / pageSize.value)
+  if (currentPage.value >= lastPage) {
+    ElMessage.warning('已经是最后一页')
+    return
+  }
+  currentPage.value++
+  fetchData()
+}
+
+const handleSizeChange = (val) => {
+  pageSize.value = val
+  currentPage.value = 1
+  fetchData()
+}
+
+const handleCurrentChange = (val) => {
+  currentPage.value = val
+  fetchData()
+}
+
+const fetchData = () => {
+  console.log('当前页:', currentPage.value)
+  console.log('每页条数:', pageSize.value)
+}
+
+// 组件挂载时注册分页方法
+onMounted(() => {
+  registerPagination({
+    nextPage: handleNextPage,
+    setPageSize: handleSizeChange
+  })
+})
+</script>
+```
+
+这种方式的优点:
+
+1. 解耦性好
+- 父子组件通过provide/inject通信,不需要ref
+- 子组件仍然保持独立性和封装性
+
+2. 灵活性高  
+- 父组件可以注册多个回调
+- 子组件决定暴露哪些方法
+- 方便扩展其他分页功能
+
+3. 类型安全
+- 可以通过TypeScript定义回调接口
+- 避免方法调用错误
+
+如果需要类型支持,可以添加类型定义:
+
+```ts
+// types.ts
+export interface PaginationMethods {
+  nextPage: () => void
+  setPageSize: (size: number) => void
+}
+
+// 父组件
+provide<(methods: PaginationMethods) => void>('registerPagination', (methods) => {
+  Object.assign(pagination, methods)
+})
+
+// 子组件
+const registerPagination = inject<(methods: PaginationMethods) => void>('registerPagination')
+```
+
+这样实现的分页组件既保持了良好的封装性,又提供了灵活的控制方式,你觉得如何?
