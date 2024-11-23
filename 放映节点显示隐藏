@@ -1,0 +1,248 @@
+<template>
+  <el-button @click="openDialog">打开树形结构</el-button>
+
+  <el-dialog
+    v-model="dialogVisible"
+    title="两级树形结构"
+    width="50%"
+    :before-close="handleClose"
+  >
+    <el-tree
+      ref="treeRef"
+      :data="treeData"
+      :props="defaultProps"
+      @node-click="handleNodeClick"
+      default-expand-all
+    >
+      <template #default="{ node, data }">
+        <span class="custom-tree-node">
+          <span>{{ node.label }}</span>
+          <el-icon
+            @click.stop="toggleEyeState(node, data)"
+            :class="{ 'text-gray-400': !data.isEyeOpen }"
+          >
+            <View v-if="data.isEyeOpen" />
+            <Hide v-else />
+          </el-icon>
+        </span>
+      </template>
+    </el-tree>
+
+    <template #footer>
+      <span class="dialog-footer">
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSave">确定</el-button>
+      </span>
+    </template>
+  </el-dialog>
+
+  <!-- 新增：用于测试findNextOpenEyeNode功能的按钮 -->
+  <el-button @click="testFindNext">查找下一个开眼节点</el-button>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+import { View, Hide } from '@element-plus/icons-vue'
+import { ElMessageBox, ElMessage } from 'element-plus'
+
+const dialogVisible = ref(false)
+const treeRef = ref(null)
+
+const treeData = ref([])
+
+const defaultProps = {
+  children: 'children',
+  label: 'label'
+}
+
+// 模拟 API 调用
+const fetchTreeData = () => {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve([
+        {
+          id: 1,
+          label: '一级 1',
+          isEyeOpen: true,
+          children: [
+            { id: 4, label: '二级 1-1', isEyeOpen: true },
+            { id: 5, label: '二级 1-2', isEyeOpen: false },
+            { id: 6, label: '二级 1-3', isEyeOpen: true }
+          ]
+        },
+        {
+          id: 2,
+          label: '一级 2',
+          isEyeOpen: true,
+          children: [
+            { id: 7, label: '二级 2-1', isEyeOpen: true },
+            { id: 8, label: '二级 2-2', isEyeOpen: true }
+          ]
+        },
+        {
+          id: 3,
+          label: '一级 3',
+          isEyeOpen: false,
+          children: [
+            { id: 9, label: '二级 3-1', isEyeOpen: false },
+            { id: 10, label: '二级 3-2', isEyeOpen: false },
+            { id: 11, label: '二级 3-3', isEyeOpen: false }
+          ]
+        }
+      ])
+    }, 500)
+  })
+}
+
+const saveTreeData = (data) => {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      console.log('Saved tree data:', data)
+      resolve({ success: true })
+    }, 500)
+  })
+}
+
+onMounted(async () => {
+  const data = await fetchTreeData()
+  treeData.value = data
+})
+
+const handleNodeClick = (data) => {
+  console.log(data)
+}
+
+const toggleEyeState = (node, data) => {
+  if (node.level === 1) {
+    // 一级节点
+    data.isEyeOpen = !data.isEyeOpen
+    updateChildrenEyeState(node, data.isEyeOpen)
+  } else {
+    // 二级节点
+    data.isEyeOpen = !data.isEyeOpen
+    updateParentEyeState(node.parent)
+  }
+}
+
+const updateChildrenEyeState = (node, isOpen) => {
+  node.childNodes.forEach(childNode => {
+    childNode.data.isEyeOpen = isOpen
+  })
+}
+
+const updateParentEyeState = (parentNode) => {
+  if (parentNode && parentNode.data) {
+    const allChildren = parentNode.childNodes
+    const anyOpen = allChildren.some(child => child.data.isEyeOpen)
+    parentNode.data.isEyeOpen = anyOpen
+  }
+}
+
+const openDialog = async () => {
+  dialogVisible.value = true
+  // 每次打开对话框时重新获取数据
+  const data = await fetchTreeData()
+  treeData.value = data
+}
+
+const handleSave = async () => {
+  try {
+    await saveTreeData(treeData.value)
+    ElMessage.success('保存成功')
+    dialogVisible.value = false
+  } catch (error) {
+    ElMessage.error('保存失败')
+  }
+}
+
+const handleClose = (done) => {
+  ElMessageBox.confirm('确认关闭？未保存的更改将丢失。')
+    .then(() => {
+      done()
+    })
+    .catch(() => {
+      // 取消关闭
+    })
+}
+
+// 查找节点函数
+const findNodeByLabel = (nodes, label) => {
+  for (const node of nodes) {
+    if (node.label === label) {
+      return node;
+    }
+    if (node.children && node.children.length > 0) {
+      const foundNode = findNodeByLabel(node.children, label);
+      if (foundNode) {
+        return foundNode;
+      }
+    }
+  }
+  return null;
+};
+
+// 新增的查找下一个开眼节点的函数
+const findNextOpenEyeNode = (labelList, startIndex = 0) => {
+  for (let i = startIndex; i < labelList.length; i++) {
+    const label = labelList[i];
+    const node = findNodeByLabel(treeData.value, label);
+    
+    if (node) {
+      console.log(`检查节点: ${label}, 眼睛状态: ${node.isEyeOpen ? '开' : '闭'}`);
+      
+      if (node.isEyeOpen) {
+        console.log(`找到开眼节点: ${label}`);
+        return { node, index: i };
+      }
+    } else {
+      console.log(`未找到节点: ${label}`);
+    }
+  }
+  
+  console.log('未找到开眼节点');
+  return null;
+};
+
+// 使用findNextOpenEyeNode的逻辑
+const labelList = ref(['二级 1-1', '二级 1-2', '二级 2-1', '二级 3-1']);
+let currentIndex = 0;
+
+const findNext = () => {
+  const result = findNextOpenEyeNode(labelList.value, currentIndex);
+  if (result) {
+    console.log(`找到的开眼节点: ${result.node.label}`);
+    currentIndex = (result.index + 1) % labelList.value.length;  // 循环索引
+    return result.node;
+  } else {
+    console.log('没有找到开眼节点，重置索引');
+    currentIndex = 0;
+    return null;
+  }
+};
+
+// 测试findNext功能的方法
+const testFindNext = () => {
+  const node = findNext();
+  if (node) {
+    ElMessage.success(`找到开眼节点: ${node.label}`);
+  } else {
+    ElMessage.warning('没有找到开眼节点');
+  }
+};
+
+</script>
+
+<style scoped>
+.custom-tree-node {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  padding-right: 8px;
+}
+
+.dialog-footer button:first-child {
+  margin-right: 10px;
+}
+</style>
