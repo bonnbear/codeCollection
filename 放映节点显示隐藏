@@ -529,3 +529,249 @@ const saveTreeData = (data) => {
 4. 减少了事件通信的复杂度
 
 需要我详细解释某个部分吗？
+
+
+
+
+<!-- components/TreeDialog.vue -->
+<template>
+  <el-button @click="openDialog">{{ buttonText }}</el-button>
+
+  <div v-if="visible" class="dialog-overlay" @click="handleOverlayClick">
+    <div class="dialog-container" @click.stop>
+      <div class="dialog-header">
+        <h3>{{ title }}</h3>
+        <button class="close-button" @click="handleClose">×</button>
+      </div>
+
+      <div class="dialog-body">
+        <el-tree
+          ref="treeRef"
+          :data="treeData"
+          :props="defaultProps"
+          @node-click="handleNodeClick"
+          default-expand-all
+        >
+          <template #default="{ node, data }">
+            <span class="custom-tree-node">
+              <span>{{ node.label }}</span>
+              <el-icon
+                @click.stop="toggleEyeState(node, data)"
+                :class="{ 'text-gray-400': !data.isEyeOpen }"
+              >
+                <View v-if="data.isEyeOpen" />
+                <Hide v-else />
+              </el-icon>
+            </span>
+          </template>
+        </el-tree>
+      </div>
+
+      <div class="dialog-footer">
+        <button class="dialog-button cancel" @click="handleCancel">取消</button>
+        <button class="dialog-button confirm" @click="handleSave">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 确认弹框 -->
+  <div v-if="showConfirm" class="dialog-overlay">
+    <div class="confirm-dialog">
+      <div class="confirm-content">
+        <p>确认关闭？未保存的更改将丢失。</p>
+        <div class="confirm-buttons">
+          <button class="dialog-button cancel" @click="cancelClose">取消</button>
+          <button class="dialog-button confirm" @click="confirmClose">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+import { View, Hide } from '@element-plus/icons-vue'
+
+// ... 其他 script 代码保持不变 ...
+
+const showConfirm = ref(false)
+let closeCallback = null
+
+const handleOverlayClick = () => {
+  handleClose()
+}
+
+const handleClose = (done) => {
+  showConfirm.value = true
+  closeCallback = done
+}
+
+const confirmClose = () => {
+  showConfirm.value = false
+  props.onClose()
+  if (closeCallback) closeCallback()
+}
+
+const cancelClose = () => {
+  showConfirm.value = false
+  closeCallback = null
+}
+
+// ... 其他 script 代码保持不变 ...
+</script>
+
+<style scoped>
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.dialog-container {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  width: 50%;
+  max-width: 800px;
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog-header {
+  padding: 20px;
+  border-bottom: 1px solid #e4e7ed;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dialog-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #303133;
+}
+
+.close-button {
+  border: none;
+  background: none;
+  font-size: 24px;
+  color: #909399;
+  cursor: pointer;
+  padding: 0;
+}
+
+.close-button:hover {
+  color: #303133;
+}
+
+.dialog-body {
+  padding: 20px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.dialog-footer {
+  padding: 20px;
+  border-top: 1px solid #e4e7ed;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.dialog-button {
+  padding: 8px 20px;
+  border-radius: 4px;
+  border: 1px solid #dcdfe6;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s;
+}
+
+.dialog-button.cancel {
+  background-color: #ffffff;
+  color: #606266;
+}
+
+.dialog-button.cancel:hover {
+  color: #409eff;
+  border-color: #c6e2ff;
+  background-color: #ecf5ff;
+}
+
+.dialog-button.confirm {
+  background-color: #409eff;
+  border-color: #409eff;
+  color: #ffffff;
+}
+
+.dialog-button.confirm:hover {
+  background-color: #66b1ff;
+  border-color: #66b1ff;
+}
+
+.confirm-dialog {
+  background-color: white;
+  border-radius: 4px;
+  padding: 20px;
+  width: 300px;
+}
+
+.confirm-content {
+  text-align: center;
+}
+
+.confirm-content p {
+  margin-bottom: 20px;
+}
+
+.confirm-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.custom-tree-node {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  padding-right: 8px;
+}
+
+/* 添加动画效果 */
+.dialog-overlay {
+  animation: fadeIn 0.3s ease;
+}
+
+.dialog-container {
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+</style>
