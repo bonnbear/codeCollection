@@ -757,3 +757,525 @@ const onDragEnd = (evt) => {
   }
 }
 </style>
+
+
+
+
+
+
+
+
+
+
+<template>
+  <div class="container">
+    <button class="open-btn" @click="showDialog = true">打开拖拽面板</button>
+
+    <div class="dialog" v-if="showDialog">
+      <div class="dialog-content">
+        <div class="dialog-header">
+          <div class="header-left">
+            <h3>拖拽排序</h3>
+            <div class="size-controls">
+              <div class="input-group">
+                <label>宽度:</label>
+                <input 
+                  type="number" 
+                  v-model="itemWidth" 
+                  @input="updateItemSize"
+                  min="50"
+                  max="300"
+                >
+                <span>px</span>
+              </div>
+              <div class="input-group">
+                <label>高度:</label>
+                <input 
+                  type="number" 
+                  v-model="itemHeight" 
+                  @input="updateItemSize"
+                  min="50"
+                  max="300"
+                >
+                <span>px</span>
+              </div>
+            </div>
+          </div>
+          <button class="close-btn" @click="showDialog = false">&times;</button>
+        </div>
+
+        <div class="dialog-body">
+          <div class="area">
+            <h4>区域 1</h4>
+            <draggable 
+              v-model="list1"
+              :group="{ name: 'items', pull: true, put: true }"
+              item-key="id"
+              class="items-container"
+              :animation="400"
+              :delay="50"
+              :delayOnTouchOnly="true"
+              ghost-class="ghost-item"
+              drag-class="dragging-item"
+              chosen-class="chosen-item"
+              :clone-class="isCrossDragging ? 'clone-item' : ''"
+              @start="onDragStart($event, 1)"
+              @end="onDragEnd"
+              @add="onAdd"
+              @remove="onRemove"
+              data-area="1"
+            >
+              <template #item="{ element, index }">
+                <div 
+                  class="drag-item" 
+                  :data-index="index" 
+                  :class="{ 'item-dragging': isDragging }"
+                  :style="itemStyle"
+                >
+                  <div class="item-content">
+                    <div class="drag-handle">⋮⋮</div>
+                    <button class="delete-btn" @click.stop="removeItem(1, index)">&times;</button>
+                    <img :src="element.icon" alt="icon">
+                    <span>{{ element.name }}</span>
+                  </div>
+                </div>
+              </template>
+            </draggable>
+          </div>
+
+          <div class="area">
+            <h4>区域 2</h4>
+            <draggable 
+              v-model="list2"
+              :group="{ name: 'items', pull: true, put: true }"
+              item-key="id"
+              class="items-container"
+              :animation="400"
+              :delay="50"
+              :delayOnTouchOnly="true"
+              ghost-class="ghost-item"
+              drag-class="dragging-item"
+              chosen-class="chosen-item"
+              :clone-class="isCrossDragging ? 'clone-item' : ''"
+              @start="onDragStart($event, 2)"
+              @end="onDragEnd"
+              @add="onAdd"
+              @remove="onRemove"
+              data-area="2"
+            >
+              <template #item="{ element, index }">
+                <div 
+                  class="drag-item area2" 
+                  :data-index="index" 
+                  :class="{ 'item-dragging': isDragging }"
+                  :style="itemStyle"
+                >
+                  <div class="item-content">
+                    <div class="drag-handle">⋮⋮</div>
+                    <button class="delete-btn" @click.stop="removeItem(2, index)">&times;</button>
+                    <img :src="element.icon" alt="icon">
+                    <span>{{ element.name }}</span>
+                  </div>
+                </div>
+              </template>
+            </draggable>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+import draggable from 'vuedraggable'
+
+const showDialog = ref(false)
+const isDragging = ref(false)
+const isCrossDragging = ref(false)
+const draggedElement = ref(null)
+const draggedRect = ref(null)
+const sourceArea = ref(null)
+
+// 新增尺寸控制
+const itemWidth = ref(150) // 默认宽度
+const itemHeight = ref(150) // 默认高度
+
+const itemStyle = computed(() => ({
+  width: `${itemWidth.value}px`,
+  height: `${itemHeight.value}px`
+}))
+
+const updateItemSize = () => {
+  // 确保输入值在合理范围内
+  itemWidth.value = Math.max(50, Math.min(300, itemWidth.value))
+  itemHeight.value = Math.max(50, Math.min(300, itemHeight.value))
+}
+
+const list1 = ref([
+  { id: 1, name: '项目 1', icon: '📱' },
+  { id: 2, name: '项目 2', icon: '💻' },
+  { id: 3, name: '项目 3', icon: '🖥' },
+  { id: 4, name: '项目 4', icon: '⌨️' },
+])
+
+const list2 = ref([
+  { id: 5, name: '项目 5', icon: '🖱' },
+  { id: 6, name: '项目 6', icon: '🖨' },
+  { id: 7, name: '项目 7', icon: '📷' },
+  { id: 8, name: '项目 8', icon: '📺' },
+])
+
+const removeItem = (listNumber, index) => {
+  if (listNumber === 1) {
+    list1.value.splice(index, 1)
+  } else {
+    list2.value.splice(index, 1)
+  }
+}
+
+const onDragStart = (evt, area) => {
+  isDragging.value = true
+  sourceArea.value = area
+  draggedElement.value = evt.item
+  draggedRect.value = evt.item.getBoundingClientRect()
+  
+  evt.item.classList.add('dragging')
+  
+  const container = evt.item.closest('.items-container')
+  const items = container.querySelectorAll('.drag-item:not(.dragging)')
+  
+  items.forEach(item => {
+    const rect = item.getBoundingClientRect()
+    item.dataset.originalX = rect.left
+    item.dataset.originalY = rect.top
+  })
+}
+
+const onDragEnd = (evt) => {
+  isDragging.value = false
+  isCrossDragging.value = false
+  sourceArea.value = null
+  
+  if (draggedElement.value) {
+    draggedElement.value.classList.remove('dragging')
+    draggedElement.value = null
+    draggedRect.value = null
+    
+    const items = document.querySelectorAll('.drag-item')
+    items.forEach(item => {
+      item.style.transform = ''
+      delete item.dataset.originalX
+      delete item.dataset.originalY
+    })
+  }
+}
+
+const onAdd = (evt) => {
+  const targetArea = evt.to.getAttribute('data-area')
+  if (sourceArea.value !== parseInt(targetArea)) {
+    isCrossDragging.value = true
+  }
+}
+
+const onRemove = (evt) => {
+  const targetArea = evt.to.getAttribute('data-area')
+  if (sourceArea.value !== parseInt(targetArea)) {
+    isCrossDragging.value = true
+  }
+}
+</script>
+<style scoped>
+.container {
+  padding: 20px;
+}
+
+.open-btn {
+  padding: 8px 16px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.open-btn:hover {
+  background: #45a049;
+}
+
+.dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.dialog-content {
+  background: white;
+  border-radius: 8px;
+  width: 80%;
+  max-width: 800px;
+  max-height: 90vh;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+
+/* 新增 header 相关样式 */
+.dialog-header {
+  padding: 16px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.size-controls {
+  display: flex;
+  gap: 16px;
+}
+
+.input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-group label {
+  color: #666;
+  font-size: 14px;
+}
+
+.input-group input {
+  width: 60px;
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.input-group input:focus {
+  outline: none;
+  border-color: #2196F3;
+}
+
+.input-group span {
+  color: #666;
+  font-size: 14px;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0 8px;
+  transition: color 0.3s;
+}
+
+.close-btn:hover {
+  color: #ff4444;
+}
+
+.dialog-body {
+  padding: 20px;
+  max-height: calc(90vh - 100px);
+  overflow-y: auto;
+}
+
+.area {
+  margin-bottom: 30px;
+}
+
+.area h4 {
+  margin: 0 0 10px 0;
+  color: #333;
+  font-size: 1.1em;
+}
+
+.items-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--item-min-width, 150px), 1fr));
+  gap: 16px;
+  min-height: 120px;
+  padding: 16px;
+  background: #f8f9fa;
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  transition: background 0.3s, border-color 0.3s;
+  position: relative;
+}
+
+.items-container:hover {
+  border-color: #2196F3;
+  background: #fafafa;
+}
+
+.drag-item {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  cursor: move;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  will-change: transform;
+  transform-origin: center;
+}
+
+.drag-handle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: #999;
+  cursor: move;
+  font-size: 16px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 24px;
+  height: 24px;
+  background: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  opacity: 0;
+  transition: all 0.3s ease;
+  z-index: 2;
+}
+
+.delete-btn:hover {
+  background: #ff0000;
+  transform: scale(1.1);
+}
+
+.drag-item:hover .delete-btn,
+.drag-item:hover .drag-handle {
+  opacity: 1;
+}
+
+.drag-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  border-color: #2196F3;
+}
+
+.drag-item.area2 {
+  background: #e3f2fd;
+}
+
+.ghost-item {
+  opacity: 0.2;
+  background: #c8e6c9 !important;
+  border: 2px dashed #4CAF50 !important;
+  transform: scale(0.95);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.clone-item {
+  background: #e3f2fd !important;
+  border: 2px dashed #2196F3 !important;
+  opacity: 0.3;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  transform: scale(0.98);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dragging-item {
+  opacity: 0.8;
+  transform: scale(1.05);
+  z-index: 999;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.item-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  padding: 12px;
+}
+
+.item-content img {
+  font-size: 28px;
+  margin-bottom: 12px;
+}
+
+.item-dragging {
+  transform: scale(1.05);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+  z-index: 100;
+}
+
+/* 拖拽时的挤开效果 - 动态适应网格列数 */
+.items-container .drag-item:not(.dragging-item):not(.ghost-item) {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@media (max-width: 768px) {
+  .header-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .size-controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .input-group input {
+    width: 50px;
+  }
+  
+  .items-container {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+}
+
+@media (max-width: 576px) {
+  .dialog-content {
+    width: 95%;
+  }
+
+  .size-controls {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .items-container {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .drag-item {
+    font-size: 12px;
+  }
+}
+</style>
