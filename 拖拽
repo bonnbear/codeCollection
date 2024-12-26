@@ -379,3 +379,381 @@ const onDragEnd = (evt) => {
   }
 }
 </style>
+
+
+
+
+
+
+
+
+
+
+
+<template>
+  <div class="container">
+    <button class="open-btn" @click="showDialog = true">打开拖拽面板</button>
+
+    <div class="dialog" v-if="showDialog">
+      <div class="dialog-content">
+        <div class="dialog-header">
+          <h3>拖拽排序</h3>
+          <button class="close-btn" @click="showDialog = false">&times;</button>
+        </div>
+
+        <div class="dialog-body">
+          <div class="area">
+            <h4>区域 1</h4>
+            <draggable 
+              v-model="list1"
+              :group="{ name: 'items', pull: true, put: true }"
+              item-key="id"
+              class="items-container"
+              :animation="300"
+              :delay="50"
+              :delayOnTouchOnly="true"
+              ghost-class="ghost-item"
+              chosen-class="chosen-item"
+              drag-class="dragging-item"
+              @start="onDragStart"
+              @end="onDragEnd"
+            >
+              <template #item="{ element, index }">
+                <div class="drag-item" :data-index="index">
+                  <div class="item-content">
+                    <div class="drag-handle">⋮⋮</div>
+                    <button class="delete-btn" @click.stop="removeItem(1, index)">&times;</button>
+                    <img :src="element.icon" alt="icon">
+                    <span>{{ element.name }}</span>
+                  </div>
+                </div>
+              </template>
+            </draggable>
+          </div>
+
+          <div class="area">
+            <h4>区域 2</h4>
+            <draggable 
+              v-model="list2"
+              :group="{ name: 'items', pull: true, put: true }"
+              item-key="id"
+              class="items-container"
+              :animation="300"
+              :delay="50"
+              :delayOnTouchOnly="true"
+              ghost-class="ghost-item"
+              chosen-class="chosen-item"
+              drag-class="dragging-item"
+              @start="onDragStart"
+              @end="onDragEnd"
+            >
+              <template #item="{ element, index }">
+                <div class="drag-item area2" :data-index="index">
+                  <div class="item-content">
+                    <div class="drag-handle">⋮⋮</div>
+                    <button class="delete-btn" @click.stop="removeItem(2, index)">&times;</button>
+                    <img :src="element.icon" alt="icon">
+                    <span>{{ element.name }}</span>
+                  </div>
+                </div>
+              </template>
+            </draggable>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+import draggable from 'vuedraggable'
+
+const showDialog = ref(false)
+const draggedElement = ref(null)
+const draggedRect = ref(null)
+
+const list1 = ref([
+  { id: 1, name: '项目 1', icon: '📱' },
+  { id: 2, name: '项目 2', icon: '💻' },
+  { id: 3, name: '项目 3', icon: '🖥' },
+  { id: 4, name: '项目 4', icon: '⌨️' },
+])
+
+const list2 = ref([
+  { id: 5, name: '项目 5', icon: '🖱' },
+  { id: 6, name: '项目 6', icon: '🖨' },
+  { id: 7, name: '项目 7', icon: '📷' },
+  { id: 8, name: '项目 8', icon: '📺' },
+])
+
+const removeItem = (listNumber, index) => {
+  if (listNumber === 1) {
+    list1.value.splice(index, 1)
+  } else {
+    list2.value.splice(index, 1)
+  }
+}
+
+const onDragStart = (evt) => {
+  draggedElement.value = evt.item
+  draggedRect.value = evt.item.getBoundingClientRect()
+  
+  // 添加拖拽开始的类
+  evt.item.classList.add('dragging')
+  
+  // 获取所有同容器内的其他项目
+  const container = evt.item.closest('.items-container')
+  const items = container.querySelectorAll('.drag-item:not(.dragging)')
+  
+  // 记录初始位置
+  items.forEach(item => {
+    const rect = item.getBoundingClientRect()
+    item.dataset.originalX = rect.left
+    item.dataset.originalY = rect.top
+  })
+}
+
+const onDragEnd = (evt) => {
+  if (draggedElement.value) {
+    draggedElement.value.classList.remove('dragging')
+    draggedElement.value = null
+    draggedRect.value = null
+    
+    // 移除所有临时样式和数据
+    const items = document.querySelectorAll('.drag-item')
+    items.forEach(item => {
+      item.style.transform = ''
+      delete item.dataset.originalX
+      delete item.dataset.originalY
+    })
+  }
+}
+</script>
+
+<style scoped>
+.container {
+  padding: 20px;
+}
+
+.open-btn {
+  padding: 8px 16px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.open-btn:hover {
+  background: #45a049;
+}
+
+.dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.dialog-content {
+  background: white;
+  border-radius: 8px;
+  width: 80%;
+  max-width: 800px;
+  max-height: 90vh;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+
+.dialog-header {
+  padding: 16px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0 8px;
+  transition: color 0.3s;
+}
+
+.close-btn:hover {
+  color: #ff4444;
+}
+
+.dialog-body {
+  padding: 20px;
+  max-height: calc(90vh - 100px);
+  overflow-y: auto;
+}
+
+.area {
+  margin-bottom: 30px;
+}
+
+.area h4 {
+  margin: 0 0 10px 0;
+  color: #333;
+  font-size: 1.1em;
+}
+
+.items-container {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  min-height: 120px;
+  padding: 16px;
+  background: #f8f9fa;
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  transition: background 0.3s, border-color 0.3s;
+  position: relative;
+}
+
+.items-container:hover {
+  border-color: #2196F3;
+  background: #fafafa;
+}
+
+.drag-item {
+  aspect-ratio: 1;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  cursor: move;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+.drag-handle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: #999;
+  cursor: move;
+  font-size: 16px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 24px;
+  height: 24px;
+  background: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  opacity: 0;
+  transition: all 0.3s ease;
+  z-index: 2;
+}
+
+.delete-btn:hover {
+  background: #ff0000;
+  transform: scale(1.1);
+}
+
+.drag-item:hover .delete-btn,
+.drag-item:hover .drag-handle {
+  opacity: 1;
+}
+
+.drag-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  border-color: #2196F3;
+}
+
+.drag-item.area2 {
+  background: #e3f2fd;
+}
+
+.ghost-item {
+  opacity: 0;
+  background: transparent !important;
+  border: 2px dashed #4CAF50 !important;
+}
+
+.dragging-item {
+  transform: scale(1.05) !important;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.15) !important;
+  z-index: 999;
+  opacity: 0.9;
+  background: white !important;
+}
+
+.dragging-item::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(33, 150, 243, 0.1);
+  border-radius: 8px;
+  z-index: -1;
+}
+
+.item-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  padding: 12px;
+}
+
+.item-content img {
+  font-size: 28px;
+  margin-bottom: 12px;
+}
+
+/* 拖拽时的动画效果 */
+.items-container .drag-item {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.items-container .drag-item:not(.dragging):not(.ghost-item) {
+  transform-origin: center;
+}
+
+/* 被挤开的元素动画 */
+
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+  .items-container {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 576px) {
+  .items-container {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+</style>
