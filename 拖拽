@@ -1739,3 +1739,205 @@ const handleKeyboard = (e) => {
   }
 }
 </style>
+
+
+<template>
+  <div class="container">
+    <button class="open-btn" @click="showDialog = true" aria-label="打开拖拽面板">
+      打开拖拽面板
+    </button>
+
+    <Teleport to="body">
+      <transition name="dialog-fade">
+        <div class="dialog" v-if="showDialog" @click.self="showDialog = false" role="dialog" aria-modal="true">
+          <div class="dialog-content" ref="dialogRef">
+            <div class="dialog-header">
+              <h3>拖拽排序</h3>
+              <button 
+                class="close-btn" 
+                @click="showDialog = false"
+                aria-label="关闭面板"
+              >&times;</button>
+            </div>
+
+            <div class="dialog-body">
+              <div class="area">
+                <h4>区域 1</h4>
+                <div ref="container1" class="items-container">
+                  <div
+                    v-for="item in list1"
+                    :key="item.id"
+                    class="drag-item"
+                    :data-id="item.id"
+                  >
+                    <div class="item-content">
+                      <div class="drag-handle" aria-hidden="true">⋮⋮</div>
+                      <button 
+                        class="delete-btn" 
+                        @click.stop="removeItem(1, item.id)"
+                        aria-label="删除项目"
+                      >&times;</button>
+                      <span class="item-icon" role="img" :aria-label="item.name">
+                        {{ item.icon }}
+                      </span>
+                      <span class="item-name">{{ item.name }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="area">
+                <h4>区域 2</h4>
+                <div ref="container2" class="items-container">
+                  <div
+                    v-for="item in list2"
+                    :key="item.id"
+                    class="drag-item area2"
+                    :data-id="item.id"
+                  >
+                    <div class="item-content">
+                      <div class="drag-handle" aria-hidden="true">⋮⋮</div>
+                      <button 
+                        class="delete-btn" 
+                        @click.stop="removeItem(2, item.id)"
+                        aria-label="删除项目"
+                      >&times;</button>
+                      <span class="item-icon" role="img" :aria-label="item.name">
+                        {{ item.icon }}
+                      </span>
+                      <span class="item-name">{{ item.name }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import Sortable from 'sortablejs'
+
+const showDialog = ref(false)
+const container1 = ref(null)
+const container2 = ref(null)
+const isDragging = ref(false)
+
+const list1 = ref([
+  { id: 1, name: '项目 1', icon: '📱' },
+  { id: 2, name: '项目 2', icon: '💻' },
+  { id: 3, name: '项目 3', icon: '🖥' },
+  { id: 4, name: '项目 4', icon: '⌨️' },
+])
+
+const list2 = ref([
+  { id: 5, name: '项目 5', icon: '🖱' },
+  { id: 6, name: '项目 6', icon: '🖨' },
+  { id: 7, name: '项目 7', icon: '📷' },
+  { id: 8, name: '项目 8', icon: '📺' },
+])
+
+let sortable1 = null
+let sortable2 = null
+
+const removeItem = (listNumber, itemId) => {
+  const targetList = listNumber === 1 ? list1 : list2
+  targetList.value = targetList.value.filter(item => item.id !== itemId)
+}
+
+const updateList = (evt) => {
+  const fromList = evt.from === container1.value ? list1 : list2
+  const toList = evt.to === container1.value ? list1 : list2
+  
+  // 获取新的排序
+  const newOrder = Array.from(evt.to.children).map(el => {
+    const id = parseInt(el.dataset.id)
+    return [...list1.value, ...list2.value].find(item => item.id === id)
+  })
+  
+  // 如果是同一个容器内的排序
+  if (evt.from === evt.to) {
+    fromList.value = newOrder
+  } else {
+    // 如果是跨容器拖拽
+    const fromOrder = Array.from(evt.from.children).map(el => {
+      const id = parseInt(el.dataset.id)
+      return fromList.value.find(item => item.id === id)
+    })
+    
+    fromList.value = fromOrder
+    toList.value = newOrder
+  }
+}
+
+const initSortable = () => {
+  if (container1.value && container2.value) {
+    // 销毁现有实例
+    if (sortable1) sortable1.destroy()
+    if (sortable2) sortable2.destroy()
+
+    const options = {
+      group: 'shared',
+      animation: 300,
+      handle: '.drag-handle',
+      ghostClass: 'ghost-item',
+      chosenClass: 'chosen-item',
+      dragClass: 'dragging-item',
+      onStart: () => {
+        isDragging.value = true
+        document.body.style.cursor = 'grabbing'
+      },
+      onEnd: (evt) => {
+        isDragging.value = false
+        document.body.style.cursor = ''
+        updateList(evt)
+      }
+    }
+
+    sortable1 = new Sortable(container1.value, options)
+    sortable2 = new Sortable(container2.value, options)
+  }
+}
+
+// 监听对话框的显示状态
+watch(showDialog, async (newVal) => {
+  if (newVal) {
+    await nextTick()
+    initSortable()
+  }
+})
+
+// 监听列表变化，重新初始化排序
+watch([list1, list2], () => {
+  if (showDialog.value) {
+    nextTick(() => {
+      initSortable()
+    })
+  }
+}, { deep: true })
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyboard)
+})
+
+onBeforeUnmount(() => {
+  if (sortable1) sortable1.destroy()
+  if (sortable2) sortable2.destroy()
+  window.removeEventListener('keydown', handleKeyboard)
+})
+
+const handleKeyboard = (e) => {
+  if (!showDialog.value) return
+  if (e.key === 'Escape') {
+    showDialog.value = false
+  }
+}
+</script>
+
+<style scoped>
+/* 之前的样式保持不变 */
+</style>
