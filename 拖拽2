@@ -1,0 +1,437 @@
+<template>
+  <div class="container">
+    <button class="open-btn" @click="showDialog = true" aria-label="打开拖拽面板">
+      打开拖拽面板
+    </button>
+
+    <Teleport to="body">
+      <transition name="dialog-fade">
+        <div class="dialog" v-if="showDialog" @click.self="showDialog = false" role="dialog" aria-modal="true">
+          <div class="dialog-content" ref="dialogRef">
+            <div class="dialog-header">
+              <h3>拖拽排序</h3>
+              <button 
+                class="close-btn" 
+                @click="showDialog = false"
+                aria-label="关闭面板"
+              >&times;</button>
+            </div>
+
+            <div class="dialog-body">
+              <div class="area">
+                <h4>已选择区域</h4>
+                <div ref="container1" class="items-container">
+                  <div
+                    v-for="item in list1"
+                    :key="item.id"
+                    class="drag-item"
+                    :data-id="item.id"
+                  >
+                    <div class="item-content">
+                      <div class="drag-handle" aria-hidden="true">⋮⋮</div>
+                      <button 
+                        class="delete-btn" 
+                        @click.stop="moveToList2(item)"
+                        aria-label="移除项目"
+                      >&times;</button>
+                      <span class="item-icon" role="img" :aria-label="item.name">
+                        {{ item.icon }}
+                      </span>
+                      <span class="item-name">{{ item.name }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="area">
+                <h4>可选择区域</h4>
+                <div ref="container2" class="items-container items-container-selectable">
+                  <div
+                    v-for="item in list2"
+                    :key="item.id"
+                    class="drag-item area2"
+                    :data-id="item.id"
+                    @click="moveToList1(item)"
+                  >
+                    <div class="item-content">
+                      <span class="item-icon" role="img" :aria-label="item.name">
+                        {{ item.icon }}
+                      </span>
+                      <span class="item-name">{{ item.name }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import Sortable from 'sortablejs'
+
+const showDialog = ref(false)
+const container1 = ref(null)
+const container2 = ref(null)
+const isDragging = ref(false)
+
+const list1 = ref([
+  { id: 1, name: '项目 1', icon: '📱' },
+  { id: 2, name: '项目 2', icon: '💻' },
+  { id: 3, name: '项目 3', icon: '🖥' },
+  { id: 4, name: '项目 4', icon: '⌨️' },
+])
+
+const list2 = ref([
+  { id: 5, name: '项目 5', icon: '🖱' },
+  { id: 6, name: '项目 6', icon: '🖨' },
+  { id: 7, name: '项目 7', icon: '📷' },
+  { id: 8, name: '项目 8', icon: '📺' },
+])
+
+let sortable1 = null
+
+const moveToList2 = (item) => {
+  list1.value = list1.value.filter(i => i.id !== item.id)
+  list2.value.push(item)
+}
+
+const moveToList1 = (item) => {
+  list2.value = list2.value.filter(i => i.id !== item.id)
+  list1.value.push(item)
+}
+
+const updateList = (evt) => {
+  const newOrder = Array.from(evt.to.children).map(el => {
+    const id = parseInt(el.dataset.id)
+    return list1.value.find(item => item.id === id)
+  })
+  list1.value = newOrder
+}
+
+const initSortable = () => {
+  if (container1.value) {
+    if (sortable1) sortable1.destroy()
+
+    const options = {
+      group: 'list1',
+      animation: 300,
+      handle: '.drag-handle',
+      ghostClass: 'ghost-item',
+      chosenClass: 'chosen-item',
+      dragClass: 'dragging-item',
+      onStart: () => {
+        isDragging.value = true
+        document.body.style.cursor = 'grabbing'
+      },
+      onEnd: (evt) => {
+        isDragging.value = false
+        document.body.style.cursor = ''
+        updateList(evt)
+      }
+    }
+
+    sortable1 = new Sortable(container1.value, options)
+  }
+}
+
+watch(showDialog, async (newVal) => {
+  if (newVal) {
+    await nextTick()
+    initSortable()
+  }
+})
+
+watch(list1, () => {
+  if (showDialog.value) {
+    nextTick(() => {
+      initSortable()
+    })
+  }
+}, { deep: true })
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyboard)
+})
+
+onBeforeUnmount(() => {
+  if (sortable1) sortable1.destroy()
+  window.removeEventListener('keydown', handleKeyboard)
+})
+
+const handleKeyboard = (e) => {
+  if (!showDialog.value) return
+  if (e.key === 'Escape') {
+    showDialog.value = false
+  }
+}
+</script>
+
+<style scoped>
+.container {
+  padding: 20px;
+}
+
+.open-btn {
+  padding: 8px 16px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.open-btn:hover {
+  background: #45a049;
+}
+
+.dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.dialog-content {
+  background: white;
+  border-radius: 8px;
+  width: 80%;
+  max-width: 800px;
+  max-height: 90vh;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+
+.dialog-header {
+  padding: 16px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0 8px;
+  transition: color 0.3s;
+}
+
+.close-btn:hover {
+  color: #ff4444;
+}
+
+.dialog-body {
+  padding: 20px;
+  max-height: calc(90vh - 100px);
+  overflow-y: auto;
+}
+
+.area {
+  margin-bottom: 30px;
+}
+
+.area h4 {
+  margin: 0 0 10px 0;
+  color: #333;
+  font-size: 1.1em;
+}
+
+.items-container {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  min-height: 120px;
+  padding: 16px;
+  background: #f8f9fa;
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  transition: background 0.3s, border-color 0.3s;
+  position: relative;
+}
+
+.items-container:hover {
+  border-color: #2196F3;
+  background: #fafafa;
+}
+
+.items-container-selectable .drag-item {
+  cursor: pointer;
+}
+
+.items-container-selectable .drag-item:hover {
+  transform: translateY(-2px);
+  border-color: #4CAF50;
+}
+
+.drag-item {
+  aspect-ratio: 1;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+  contain: content;
+}
+
+.drag-handle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: #999;
+  cursor: move;
+  font-size: 16px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 24px;
+  height: 24px;
+  background: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  opacity: 0;
+  transition: all 0.3s ease;
+  z-index: 2;
+}
+
+.delete-btn:hover {
+  background: #ff0000;
+  transform: scale(1.1);
+}
+
+.drag-item:hover .delete-btn,
+.drag-item:hover .drag-handle {
+  opacity: 1;
+}
+
+.drag-item:hover {
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.drag-item.area2 {
+  background: #e3f2fd;
+}
+
+.ghost-item {
+  opacity: 0.3;
+  background: #4CAF50 !important;
+}
+
+.chosen-item {
+  background: #f5f5f5;
+}
+
+.dragging-item {
+  transform: scale(1.05) !important;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.15) !important;
+  z-index: 999;
+  opacity: 0.9;
+  background: white !important;
+}
+
+.item-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  padding: 12px;
+}
+
+.item-icon {
+  font-size: 28px;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.item-name {
+  font-size: 14px;
+  color: #333;
+  text-align: center;
+  word-break: break-word;
+}
+
+.dialog-fade-enter-active,
+.dialog-fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.dialog-fade-enter-from,
+.dialog-fade-leave-to {
+  opacity: 0;
+}
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+  .items-container {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 576px) {
+  .items-container {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 触摸设备优化 */
+@media (hover: none) {
+  .drag-handle,
+  .delete-btn {
+    opacity: 1;
+  }
+  
+  .drag-item:active {
+    transform: scale(1.02);
+  }
+}
+
+/* 深色模式支持 */
+@media (prefers-color-scheme: dark) {
+  .dialog-content {
+    background: #1e1e1e;
+    color: #fff;
+  }
+  
+  .drag-item {
+    background: #2d2d2d;
+    border-color: #404040;
+  }
+  
+  .item-name {
+    color: #fff;
+  }
+  
+  .items-container {
+    background: #161616;
+    border-color: #404040;
+  }
+}
+</style>
