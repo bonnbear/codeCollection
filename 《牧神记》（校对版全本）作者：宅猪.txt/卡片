@@ -1,0 +1,275 @@
+<template>
+  <div class="task-container">
+    <!-- 自定义 Tab -->
+    <div class="tab-container">
+      <div
+        v-for="tab in tabs"
+        :key="tab.value"
+        :class="['tab-item', { active: currentTab === tab.value }]"
+        @click="handleTabChange(tab.value)"
+      >
+        {{ tab.label }}
+        <span class="tab-count">({{ getTabCount(tab.value) }})</span>
+      </div>
+    </div>
+
+    <!-- 卡片列表 -->
+    <div v-loading="loading" class="card-list">
+      <el-empty v-if="list.length === 0" description="暂无数据" />
+      
+      <el-card v-for="item in list" :key="item.id" class="card-item">
+        <div class="card-content">
+          <h3>{{ item.title }}</h3>
+          <p>{{ item.description }}</p>
+          <div class="card-footer">
+            <span>{{ item.date }}</span>
+            <span :class="['status', item.status]">{{ getStatusText(item.status) }}</span>
+          </div>
+        </div>
+      </el-card>
+    </div>
+
+    <!-- 分页 -->
+    <div class="pagination-container">
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-sizes="[10, 20, 30, 50]"
+        layout="total, sizes, prev, pager, next"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+
+// 模拟后端接口响应数据
+const mockApi = {
+  getList({ type, page, pageSize }) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        // 模拟数据库中的数据
+        const allData = Array.from({ length: 100 }, (_, index) => ({
+          id: index + 1,
+          title: `任务标题 ${index + 1}`,
+          description: `这是任务描述内容 ${index + 1}，包含了一些具体的信息。`,
+          date: `2024-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')}`,
+          status: ['completed', 'ended', 'processing'][Math.floor(Math.random() * 3)]
+        }))
+
+        // 模拟根据 type 筛选
+        let filteredData = type === 'all' 
+          ? allData 
+          : allData.filter(item => item.status === type)
+
+        // 计算分页数据
+        const start = (page - 1) * pageSize
+        const end = start + pageSize
+        const pageData = filteredData.slice(start, end)
+
+        // 模拟接口返回格式
+        resolve({
+          code: 200,
+          data: {
+            list: pageData,
+            total: filteredData.length,
+            page,
+            pageSize
+          },
+          message: 'success'
+        })
+      }, 300) // 模拟网络延迟
+    })
+  }
+}
+
+// Tab 配置
+const tabs = [
+  { label: '全部', value: 'all' },
+  { label: '已完成', value: 'completed' },
+  { label: '已结束', value: 'ended' }
+]
+
+// 状态管理
+const currentTab = ref('all')
+const currentPage = ref(1)
+const pageSize = ref(10)
+const total = ref(0)
+const list = ref([])
+const loading = ref(false)
+
+// 获取每个 tab 的数量
+const getTabCount = (tabValue) => {
+  if (tabValue === 'all') return total.value
+  return list.value.filter(item => item.status === tabValue).length
+}
+
+// 获取列表数据
+const getList = async () => {
+  loading.value = true
+  try {
+    const res = await mockApi.getList({
+      type: currentTab.value,
+      page: currentPage.value,
+      pageSize: pageSize.value
+    })
+    
+    if (res.code === 200) {
+      list.value = res.data.list
+      total.value = res.data.total
+    }
+  } catch (error) {
+    console.error('获取列表失败：', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+// 状态文字转换
+const getStatusText = (status) => {
+  const statusMap = {
+    completed: '已完成',
+    ended: '已结束',
+    processing: '进行中'
+  }
+  return statusMap[status] || '未知状态'
+}
+
+// 事件处理
+const handleTabChange = (tab) => {
+  if (currentTab.value === tab) return
+  currentTab.value = tab
+  currentPage.value = 1 // 切换 tab 时重置页码
+  getList()
+}
+
+const handleSizeChange = (val) => {
+  pageSize.value = val
+  getList()
+}
+
+const handleCurrentChange = (val) => {
+  currentPage.value = val
+  getList()
+}
+
+// 初始化
+onMounted(() => {
+  getList()
+})
+</script>
+
+<style scoped>
+.task-container {
+  padding: 20px;
+}
+
+/* Tab 样式 */
+.tab-container {
+  display: flex;
+  gap: 32px;
+  margin-bottom: 24px;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.3s;
+  background: #F5F7FA;
+  color: #606266;
+  user-select: none;
+}
+
+.tab-item:hover {
+  background: #EBEEF5;
+}
+
+.tab-item.active {
+  background: #409EFF;
+  color: #ffffff;
+}
+
+.tab-item.active .tab-count {
+  color: #ffffff;
+}
+
+.tab-count {
+  margin-left: 4px;
+  color: #909399;
+  font-size: 12px;
+}
+
+/* 卡片列表样式 */
+.card-list {
+  position: relative;
+  min-height: 200px;
+  margin: 20px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.card-item {
+  transition: all 0.3s;
+}
+
+.card-item:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
+}
+
+.card-content h3 {
+  margin: 0 0 10px 0;
+  font-size: 18px;
+  color: #303133;
+}
+
+.card-content p {
+  color: #666;
+  margin-bottom: 15px;
+  line-height: 1.6;
+}
+
+.card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #909399;
+  font-size: 13px;
+}
+
+.status {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.status.completed {
+  background: #e1f3d8;
+  color: #67c23a;
+}
+
+.status.ended {
+  background: #fde2e2;
+  color: #f56c6c;
+}
+
+.status.processing {
+  background: #e6f1fc;
+  color: #409eff;
+}
+
+.pagination-container {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+}
+</style>
