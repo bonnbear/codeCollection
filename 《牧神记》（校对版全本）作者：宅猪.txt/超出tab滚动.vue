@@ -1,645 +1,329 @@
-<!-- Calendar.vue -->
 <template>
-  <div class="calendar-container">
-    <div class="dark-calendar">
-      <div class="calendar-header">
-        <div class="navigation">
-          <button class="nav-btn" @click="goToLastYear">«</button>
-          <button class="nav-btn" @click="goToLastMonth">‹</button>
-          <div class="current-date">{{ currentYear }} {{ monthNames[currentMonth] }}</div>
-          <button class="nav-btn" @click="goToNextMonth">›</button>
-          <button class="nav-btn" @click="goToNextYear">»</button>
+  <div class="tab-container" ref="container">
+    <div class="tab-wrapper">
+      <!-- 左侧标签页区域 -->
+      <div class="tabs-section">
+        <!-- 左右滚动按钮 -->
+        <div 
+          v-show="showLeftArrow" 
+          class="nav-prev" 
+          @click="scroll('left')"
+        >
+          <span class="arrow-left">◄</span>
         </div>
-        <button class="expand-btn" @click="toggleExpand">
-          {{ isExpanded ? '收起' : '展开' }}
-        </button>
-      </div>
 
-      <div class="weekdays">
-        <div v-for="day in weekDays" :key="day" class="weekday">{{ day }}</div>
-      </div>
-
-      <div class="days-grid" :class="{ 'collapsed': !isExpanded }">
-        <template v-for="(week, weekIndex) in weeks" :key="weekIndex">
-          <div
-            v-for="day in week"
-            :key="day.date"
-            class="day"
-            :class="{
-              'other-month': !day.isCurrentMonth,
-              'today': day.isToday,
-              'selected': isSelected(day.date),
-              'hidden': !isExpanded && !isCurrentWeek(weekIndex),
-              'has-events': hasEvents(day.date)
-            }"
-            @click="selectDate(day.date)"
+        <!-- 标签容器 -->
+        <div 
+          class="nav-scroll" 
+          ref="navScroll"
+          @wheel.prevent="handleWheel"
+        >
+          <div 
+            class="nav-wrap" 
+            ref="navWrap"
           >
-            {{ day.dayNumber }}
-          </div>
-        </template>
-      </div>
-    </div>
-
-    <div class="events-list">
-      <div class="events-header">
-        <h3>Events for {{ formatDate(selectedDate) }}</h3>
-        <button class="add-event-btn" @click="showAddEventModal">+ Add Event</button>
-      </div>
-      <div v-if="loading" class="loading">Loading...</div>
-      <div v-else-if="events.length === 0" class="no-events">No events for this day</div>
-      <div v-else class="events">
-        <div v-for="event in events" :key="event.id" class="event-item">
-          <div class="event-time">{{ formatTime(event.time) }}</div>
-          <div class="event-content">
-            <div class="event-title">{{ event.title }}</div>
-            <div class="event-description">{{ event.description }}</div>
-          </div>
-          <div class="event-actions">
-            <button @click="deleteEvent(event.id)" class="delete-btn">Delete</button>
+            <div class="tabs">
+              <div
+                v-for="(tab, index) in tabs"
+                :key="index"
+                class="tab-item"
+                :class="{ active: activeTab === index }"
+                @click="handleTabClick(index)"
+              >
+                {{ tab.name }}
+              </div>
+            </div>
           </div>
         </div>
+
+        <!-- 右箭头 -->
+        <div 
+          v-show="showRightArrow" 
+          class="nav-next" 
+          @click="scroll('right')"
+        >
+          <span class="arrow-right">►</span>
+        </div>
+      </div>
+
+      <!-- 右侧标题区域 -->
+      <div class="header-title">
+        页面标题
       </div>
     </div>
 
-    <!-- Add Event Modal -->
-    <div v-if="showModal" class="modal-overlay" @click="closeModal">
-      <div class="modal-content" @click.stop>
-        <h3>Add New Event</h3>
-        <form @submit.prevent="addNewEvent">
-          <div class="form-group">
-            <label>Time:</label>
-            <input type="time" v-model="newEvent.time" required>
-          </div>
-          <div class="form-group">
-            <label>Title:</label>
-            <input type="text" v-model="newEvent.title" required>
-          </div>
-          <div class="form-group">
-            <label>Description:</label>
-            <textarea v-model="newEvent.description" required></textarea>
-          </div>
-          <div class="modal-actions">
-            <button type="button" @click="closeModal" class="cancel-btn">Cancel</button>
-            <button type="submit" class="submit-btn">Add Event</button>
-          </div>
-        </form>
+    <!-- 内容区域 -->
+    <div class="tab-content">
+      <div 
+        v-for="(tab, index) in tabs" 
+        :key="index"
+        v-show="activeTab === index"
+      >
+        {{ tab.content }}
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
-import axios from 'axios'
+import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 
-const currentDate = ref(new Date())
-const selectedDate = ref(new Date())
-const currentMonth = ref(currentDate.value.getMonth())
-const currentYear = ref(currentDate.value.getFullYear())
-const isExpanded = ref(false)
-const loading = ref(false)
-const events = ref([])
-const showModal = ref(false)
+// 模拟数据
+const tabs = ref([
+  { name: 'Tab 1', content: 'Content 1' },
+  { name: 'Tab 2', content: 'Content 2' },
+  { name: 'Tab 3', content: 'Content 3' },
+  { name: 'Tab 4', content: 'Content 4' },
+  { name: 'Tab 5', content: 'Content 5' },
+  { name: 'Tab 6', content: 'Content 6' },
+  { name: 'Tab 7', content: 'Content 7' },
+  { name: 'Tab 8', content: 'Content 8' },
+  { name: 'Tab 9', content: 'Content 9' },
+  { name: 'Tab 10', content: 'Content 10' },
+])
 
-const newEvent = ref({
-  time: '',
-  title: '',
-  description: ''
-})
+const activeTab = ref(0)
+const navScroll = ref(null)
+const navWrap = ref(null)
+const container = ref(null)
+const showLeftArrow = ref(false)
+const showRightArrow = ref(false)
 
-const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const monthNames = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-]
+// 创建 ResizeObserver 实例
+let resizeObserver = null
 
-const days = computed(() => {
-  const daysArray = []
+// 检查是否需要显示箭头
+const checkArrows = () => {
+  if (!navScroll.value || !navWrap.value) return
+
+  const { scrollWidth, clientWidth, scrollLeft } = navScroll.value
   
-  const firstDayOfMonth = new Date(currentYear.value, currentMonth.value, 1)
-  const lastDayOfMonth = new Date(currentYear.value, currentMonth.value + 1, 0)
+  // 只有当滚动区域宽度大于可视区域宽度时才显示箭头
+  const needArrows = scrollWidth > clientWidth
   
-  const firstDayWeekday = firstDayOfMonth.getDay()
-  const prevMonthDays = new Date(currentYear.value, currentMonth.value, 0).getDate()
-  
-  for (let i = firstDayWeekday - 1; i >= 0; i--) {
-    const date = new Date(currentYear.value, currentMonth.value - 1, prevMonthDays - i)
-    daysArray.push({
-      date,
-      dayNumber: prevMonthDays - i,
-      isCurrentMonth: false,
-      isToday: isSameDay(date, new Date())
-    })
-  }
-  
-  for (let i = 1; i <= lastDayOfMonth.getDate(); i++) {
-    const date = new Date(currentYear.value, currentMonth.value, i)
-    daysArray.push({
-      date,
-      dayNumber: i,
-      isCurrentMonth: true,
-      isToday: isSameDay(date, new Date())
-    })
-  }
-  
-  const remainingDays = 42 - daysArray.length
-  for (let i = 1; i <= remainingDays; i++) {
-    const date = new Date(currentYear.value, currentMonth.value + 1, i)
-    daysArray.push({
-      date,
-      dayNumber: i,
-      isCurrentMonth: false,
-      isToday: isSameDay(date, new Date())
-    })
-  }
-  
-  return daysArray
-})
-
-const weeks = computed(() => {
-  const weeksArray = []
-  for (let i = 0; i < days.value.length; i += 7) {
-    weeksArray.push(days.value.slice(i, i + 7))
-  }
-  return weeksArray
-})
-
-const currentWeekIndex = computed(() => {
-  const today = new Date()
-  return weeks.value.findIndex(week => 
-    week.some(day => isSameDay(day.date, today))
-  )
-})
-
-// Calendar Navigation Functions
-const isCurrentWeek = (weekIndex) => {
-  return weekIndex === currentWeekIndex.value
+  showLeftArrow.value = needArrows && scrollLeft > 0
+  showRightArrow.value = needArrows && scrollLeft < scrollWidth - clientWidth
 }
 
-const toggleExpand = () => {
-  isExpanded.value = !isExpanded.value
-}
+// 处理滚动
+const scroll = (direction) => {
+  if (!navScroll.value) return
 
-const goToLastMonth = () => {
-  if (currentMonth.value === 0) {
-    currentMonth.value = 11
-    currentYear.value--
-  } else {
-    currentMonth.value--
-  }
-}
+  const SCROLL_STEP = 200
+  const currentScrollLeft = navScroll.value.scrollLeft
+  const newScrollLeft = direction === 'left' 
+    ? currentScrollLeft - SCROLL_STEP 
+    : currentScrollLeft + SCROLL_STEP
 
-const goToNextMonth = () => {
-  if (currentMonth.value === 11) {
-    currentMonth.value = 0
-    currentYear.value++
-  } else {
-    currentMonth.value++
-  }
-}
-
-const goToLastYear = () => {
-  currentYear.value--
-}
-
-const goToNextYear = () => {
-  currentYear.value++
-}
-
-// Date Utilities
-const isSameDay = (date1, date2) => {
-  return date1.getDate() === date2.getDate() &&
-         date1.getMonth() === date2.getMonth() &&
-         date1.getFullYear() === date2.getFullYear()
-}
-
-const isSelected = (date) => {
-  return isSameDay(date, selectedDate.value)
-}
-
-const selectDate = (date) => {
-  selectedDate.value = date
-}
-
-// Events Management
-const fetchEvents = async (date) => {
-  loading.value = true
-  try {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    // Generate mock data
-    const mockEvents = [
-      {
-        id: Date.now(),
-        time: '09:00',
-        title: 'Morning Meeting',
-        description: 'Team sync-up meeting'
-      },
-      {
-        id: Date.now() + 1,
-        time: '14:30',
-        title: 'Project Review',
-        description: 'Q4 project status review'
-      },
-      {
-        id: Date.now() + 2,
-        time: '16:00',
-        title: 'Client Call',
-        description: 'Discussion about new requirements'
-      }
-    ].filter(() => Math.random() > 0.5)
-    
-    events.value = mockEvents
-  } catch (error) {
-    console.error('Error fetching events:', error)
-    events.value = []
-  } finally {
-    loading.value = false
-  }
-}
-
-const hasEvents = (date) => {
-  return Math.random() > 0.7
-}
-
-const formatDate = (date) => {
-  return date.toLocaleDateString('en-US', { 
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
+  navScroll.value.scrollTo({
+    left: newScrollLeft,
+    behavior: 'smooth'
   })
 }
 
-const formatTime = (time) => {
-  return time
+// 处理鼠标滚轮
+const handleWheel = (e) => {
+  if (!navScroll.value) return
+  
+  navScroll.value.scrollLeft += e.deltaY
+  checkArrows()
 }
 
-// Modal Management
-const showAddEventModal = () => {
-  showModal.value = true
+// 处理标签点击
+const handleTabClick = (index) => {
+  activeTab.value = index
 }
 
-const closeModal = () => {
-  showModal.value = false
-  newEvent.value = {
-    time: '',
-    title: '',
-    description: ''
-  }
+// 监听滚动事件
+const handleScroll = () => {
+  checkArrows()
 }
 
-const addNewEvent = () => {
-  const event = {
-    id: Date.now(),
-    ...newEvent.value
-  }
-  events.value.push(event)
-  closeModal()
+// 处理窗口大小变化
+const handleResize = () => {
+  checkArrows()
 }
 
-const deleteEvent = (eventId) => {
-  events.value = events.value.filter(event => event.id !== eventId)
-}
-
-// Watch for selected date changes
-watch(selectedDate, (newDate) => {
-  fetchEvents(newDate)
+// 监听tabs变化
+watch(tabs, () => {
+  nextTick(() => {
+    checkArrows()
+  })
 })
 
-// Initial fetch
-fetchEvents(selectedDate.value)
+// 监听activeTab变化，确保当前活动tab可见
+watch(activeTab, (newIndex) => {
+  nextTick(() => {
+    if (!navScroll.value) return
+    
+    const tabElements = navScroll.value.getElementsByClassName('tab-item')
+    if (tabElements[newIndex]) {
+      const tabElement = tabElements[newIndex]
+      const { offsetLeft, offsetWidth } = tabElement
+      const { scrollLeft, clientWidth } = navScroll.value
+
+      if (offsetLeft < scrollLeft) {
+        navScroll.value.scrollTo({
+          left: offsetLeft,
+          behavior: 'smooth'
+        })
+      } else if (offsetLeft + offsetWidth > scrollLeft + clientWidth) {
+        navScroll.value.scrollTo({
+          left: offsetLeft + offsetWidth - clientWidth,
+          behavior: 'smooth'
+        })
+      }
+    }
+    checkArrows()
+  })
+})
+
+onMounted(() => {
+  nextTick(() => {
+    checkArrows()
+    if (navScroll.value) {
+      navScroll.value.addEventListener('scroll', handleScroll)
+    }
+    
+    window.addEventListener('resize', handleResize)
+    
+    if (container.value) {
+      resizeObserver = new ResizeObserver(() => {
+        checkArrows()
+      })
+      resizeObserver.observe(container.value)
+    }
+  })
+})
+
+onBeforeUnmount(() => {
+  if (navScroll.value) {
+    navScroll.value.removeEventListener('scroll', handleScroll)
+  }
+  window.removeEventListener('resize', handleResize)
+  
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+  }
+})
 </script>
 
 <style scoped>
-.calendar-container {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-.dark-calendar {
-  width: 300px;
-  background: #1c1c1c;
-  border-radius: 8px;
-  padding: 16px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-}
-
-.calendar-header {
-  margin-bottom: 16px;
-}
-
-.navigation {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  color: #ffffff;
-  margin-bottom: 8px;
-}
-
-.nav-btn {
-  background: none;
-  border: none;
-  color: #ffffff;
-  cursor: pointer;
-  font-size: 18px;
-  padding: 4px 8px;
-  transition: background-color 0.2s;
-}
-
-.nav-btn:hover {
-  background-color: #333333;
-  border-radius: 4px;
-}
-
-.expand-btn {
+.tab-container {
   width: 100%;
-  background: #333333;
-  border: none;
-  color: #ffffff;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: background-color 0.2s;
+  border: 1px solid #e4e7ed;
 }
 
-.expand-btn:hover {
-  background-color: #444444;
-}
-
-.current-date {
-  font-size: 16px;
-}
-
-.weekdays {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  margin-bottom: 8px;
-}
-
-.weekday {
-  color: #666666;
-  font-size: 14px;
-  text-align: center;
-  padding: 4px 0;
-}
-
-.days-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
-  transition: all 0.3s ease-in-out;
-}
-
-.days-grid.collapsed {
-  grid-template-rows: 1fr;
-}
-
-.day {
-  aspect-ratio: 1;
+.tab-wrapper {
   display: flex;
   align-items: center;
-  justify-content: center;
-  color: #ffffff;
-  cursor: pointer;
-  font-size: 14px;
-  border-radius: 4px;
-  transition: all 0.2s;
+  min-height: 40px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+/* 调整标签区域样式 */
+.tabs-section {
   position: relative;
-}
-
-.day.hidden {
-  display: none;
-}
-
-.day:hover {
-  background-color: #333333;
-}
-
-.day.has-events::before {
-  content: '';
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 4px;
-  height: 4px;
-  background-color: #00ff00;
-  border-radius: 50%;
-}
-
-.other-month {
-  color: #666666;
-}
-
-.today {
-  color: #0066ff;
-  font-weight: bold;
-  position: relative;
-}
-
-.today::after {
-  content: '';
-  position: absolute;
-  bottom: 4px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
-  height: 4px;
-  background-color: #0066ff;
-  border-radius: 50%;
-}
-
-.selected {
-  background-color: #2a2a2a;
-  border: 1px solid #0066ff;
-  color: #ffffff;
-}
-
-.today.selected {
-  background-color: #2a2a2a;
-  color: #0066ff;
-}
-
-.events-list {
-  background: #1c1c1c;
-  border-radius: 8px;
-  padding: 16px;
-  min-height: 200px;
-}
-
-.events-header {
+  flex: 1; /* 占据剩余空间 */
+  min-width: 0; /* 防止flex子项溢出 */
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  border-right: 1px solid #e4e7ed; /* 添加右边框 */
 }
 
-.events-header h3 {
-  color: #ffffff;
-  margin: 0;
-  font-size: 16px;
-}
-
-.add-event-btn {
-  background: #0066ff;
-  border: none;
-  color: #ffffff;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.add-event-btn:hover {
-  background: #0052cc;
-}
-
-.loading, .no-events {
-  color: #666666;
-  text-align: center;
-  padding: 20px;
-}
-
-.events {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.event-item {
-  display: flex;
-  gap: 12px;
-  padding: 12px;
-  background: #2a2a2a;
-  border-radius: 6px;
-}
-
-.event-time {
-  color: #0066ff;
+/* 调整标题区域样式 */
+.header-title {
+  flex: 0 0 200px; /* 固定宽度不伸缩 */
+  padding: 0 15px;
   font-weight: bold;
-  min-width: 60px;
+  white-space: nowrap;
+  height: 40px;
+  line-height: 40px;
+  text-align: right; /* 靠右对齐 */
 }
 
-.event-content {
+.nav-scroll {
   flex: 1;
+  overflow-x: hidden;
+  white-space: nowrap;
+  position: relative;
+  margin: 0 20px;
+  height: 40px;
 }
 
-.event-title {
-  color: #ffffff;
-  font-weight: bold;
-  margin-bottom: 4px;
+.nav-wrap {
+  display: inline-block;
+  height: 100%;
 }
 
-.event-description {
-  color: #999999;
-  font-size: 14px;
-}
-
-.event-actions {
+.tabs {
   display: flex;
-  align-items: center;
+  flex-wrap: nowrap;
+  height: 100%;
 }
 
-.delete-btn {
-  background: #ff4444;
-  border: none;
-  color: #ffffff;
-  padding: 4px 8px;
-  border-radius: 4px;
+.tab-item {
+  padding: 0 20px;
+  height: 40px;
+  line-height: 40px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.3s;
+  flex-shrink: 0;
 }
 
-.delete-btn:hover {
-  background: #cc0000;
+.tab-item:hover {
+  color: #409eff;
 }
 
-/* Modal Styles */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
+.tab-item.active {
+  color: #409eff;
+  border-bottom: 2px solid #409eff;
 }
 
-.modal-content {
-  background: #1c1c1c;
-  padding: 24px;
-  border-radius: 8px;
-  width: 90%;
-  max-width: 400px;
-}
-
-.modal-content h3 {
-  color: #ffffff;
-  margin: 0 0 20px 0;
-}
-
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-group label {
-  display: block;
-  color: #ffffff;
-  margin-bottom: 8px;
-}
-
-.form-group input,
-.form-group textarea {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #333333;
-  border-radius: 4px;
-  background: #2a2a2a;
-  color: #ffffff;
-}
-
-.form-group textarea {
-  height: 100px;
-  resize: vertical;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 20px;
-}
-
-.cancel-btn {
-  background: #333333;
-  border: none;
-  color: #ffffff;
-  padding: 8px 16px;
-  border-radius: 4px;
+.nav-prev,
+.nav-next {
+  flex: 0 0 20px;
+  height: 40px;
+  line-height: 40px;
+  text-align: center;
   cursor: pointer;
+  background-color: #fff;
+  color: #909399;
+  z-index: 10;
 }
 
-.submit-btn {
-  background: #0066ff;
-  border: none;
-  color: #ffffff;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
+.nav-prev:hover,
+.nav-next:hover {
+  color: #409eff;
 }
 
-.cancel-btn:hover {
-  background: #444444;
+.tab-content {
+  padding: 15px;
 }
 
-.submit-btn:hover {
-  background: #0052cc;
+.arrow-left,
+.arrow-right {
+  font-size: 12px;
+}
+
+/* 响应式布局 */
+@media screen and (max-width: 768px) {
+  .header-title {
+    flex: 0 0 120px; /* 小屏幕下减小标题宽度 */
+  }
+  
+  .tab-item {
+    padding: 0 15px;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .header-title {
+    flex: 0 0 100px; /* 更小屏幕下进一步减小标题宽度 */
+  }
+  
+  .tab-item {
+    padding: 0 10px;
+  }
 }
 </style>
