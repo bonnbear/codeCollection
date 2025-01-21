@@ -19,28 +19,30 @@
             <div class="table-cell cell-action">操作</div>
           </div>
 
-          <!-- 固定的第一行 -->
-          <div class="table-row first-row">
-            <div class="table-cell cell-seq">1</div>
-            <div class="table-cell cell-name">
-              <div class="flex items-center gap-2">
-                <span class="lock-icon">
-                  <svg viewBox="0 0 24 24" width="14" height="14">
-                    <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" fill="#999"/>
-                  </svg>
-                </span>
-                <span>{{ items[0]?.text }}</span>
+          <!-- 固定项目（不可拖动）-->
+          <template v-for="(item, index) in fixedItems" :key="item.id">
+            <div class="table-row first-row">
+              <div class="table-cell cell-seq">{{ index + 1 }}</div>
+              <div class="table-cell cell-name">
+                <div class="flex items-center gap-2">
+                  <span class="lock-icon">
+                    <svg viewBox="0 0 24 24" width="14" height="14">
+                      <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" fill="#999"/>
+                    </svg>
+                  </span>
+                  <span>{{ item.text }}</span>
+                </div>
               </div>
+              <div class="table-cell cell-status">
+                <el-switch
+                  v-model="item.visible"
+                  :active-text="item.visible ? '显示' : '隐藏'"
+                  inline-prompt
+                />
+              </div>
+              <div class="table-cell cell-action">-</div>
             </div>
-            <div class="table-cell cell-status">
-              <el-switch
-                v-model="items[0].visible"
-                :active-text="items[0].visible ? '显示' : '隐藏'"
-                inline-prompt
-              />
-            </div>
-            <div class="table-cell cell-action">-</div>
-          </div>
+          </template>
 
           <!-- 可拖拽表格区域 -->
           <div ref="listRef" class="table-body">
@@ -51,7 +53,7 @@
                    backgroundColor: item.color,
                    opacity: item.visible ? 1 : 0.5 
                  }">
-              <div class="table-cell cell-seq">{{ index + 2 }}</div>
+              <div class="table-cell cell-seq">{{ index + fixedItems.length + 1 }}</div>
               <div class="table-cell cell-name">
                 <div class="flex items-center gap-2">
                   <span class="drag-handle">
@@ -99,7 +101,6 @@
     </div>
   </div>
 </template>
-
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import Sortable from 'sortablejs'
@@ -114,9 +115,14 @@ const loading = ref(true)
 const saving = ref(false)
 const items = ref([])
 
+// 计算属性：获取固定项目
+const fixedItems = computed(() => {
+  return items.value.filter(item => item.fixed)
+})
+
 // 计算属性：获取可拖拽项目
 const draggableItems = computed(() => {
-  return items.value.slice(1)
+  return items.value.filter(item => !item.fixed)
 })
 
 // 模拟后端 API 接口
@@ -126,11 +132,12 @@ const mockApi = {
     return new Promise((resolve) => {
       setTimeout(() => {
         resolve([
-          { id: 1, text: '固定项目（不可拖动）', color: '#fff', visible: true },
-          { id: 2, text: '项目 2', color: '#fff', visible: true },
-          { id: 3, text: '项目 3', color: '#fff', visible: true },
-          { id: 4, text: '项目 4', color: '#fff', visible: true },
-          { id: 5, text: '项目 5', color: '#fff', visible: true }
+          { id: 1, text: '固定项目1', color: '#fff', visible: true, fixed: true },
+          { id: 2, text: '固定项目2', color: '#fff', visible: true, fixed: true },
+          { id: 3, text: '固定项目3', color: '#fff', visible: true, fixed: true },
+          { id: 4, text: '项目4', color: '#fff', visible: true, fixed: false },
+          { id: 5, text: '项目5', color: '#fff', visible: true, fixed: false },
+          { id: 6, text: '项目6', color: '#fff', visible: true, fixed: false }
         ])
       }, 1000)
     })
@@ -201,7 +208,8 @@ const addItem = async () => {
     const newItem = {
       text: newItemText.value,
       color: '#fff',
-      visible: true
+      visible: true,
+      fixed: false
     }
     
     const savedItem = await mockApi.addItem(newItem)
@@ -217,9 +225,15 @@ const addItem = async () => {
 // 删除项目
 const deleteItem = async (id) => {
   try {
+    const item = items.value.find(item => item.id === id)
+    if (!item || item.fixed) {
+      ElMessage.warning('固定项目不能删除')
+      return
+    }
+    
     await mockApi.deleteItem(id)
     const index = items.value.findIndex(item => item.id === id)
-    if (index !== -1 && index !== 0) {
+    if (index !== -1) {
       items.value.splice(index, 1)
       ElMessage.success('删除成功')
     }
@@ -237,20 +251,24 @@ const initializeSortable = () => {
     ghostClass: 'ghost',
     
     onStart: (evt) => {
-      const realIndex = evt.oldIndex + 1
-      const item = items.value[realIndex]
+      const item = draggableItems.value[evt.oldIndex]
       item.color = '#f0f0f0'
     },
     
     onEnd: (evt) => {
-      const realOldIndex = evt.oldIndex + 1
-      const realNewIndex = evt.newIndex + 1
+      const oldIndex = evt.oldIndex
+      const newIndex = evt.newIndex
       
-      const newItems = [...items.value]
-      const itemMove = newItems.splice(realOldIndex, 1)[0]
-      newItems.splice(realNewIndex, 0, itemMove)
+      const draggableItemsCopy = [...draggableItems.value]
+      const itemMove = draggableItemsCopy.splice(oldIndex, 1)[0]
+      draggableItemsCopy.splice(newIndex, 0, itemMove)
       itemMove.color = '#fff'
-      items.value = newItems
+      
+      // 更新原始数组
+      items.value = [
+        ...fixedItems.value,
+        ...draggableItemsCopy
+      ]
     }
   })
 }
@@ -261,7 +279,6 @@ onMounted(async () => {
   initializeSortable()
 })
 </script>
-
 <style scoped>
 .container {
   max-width: 1000px;
@@ -281,6 +298,7 @@ onMounted(async () => {
   background-color: white;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
 }
 
 .loading-container {
@@ -306,6 +324,7 @@ onMounted(async () => {
   width: 100%;
   border: 1px solid #ebeef5;
   border-radius: 4px;
+  overflow: hidden;
 }
 
 /* 行样式 */
@@ -336,6 +355,11 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  border-right: 1px solid #ebeef5;
+}
+
+.table-cell:last-child {
+  border-right: none;
 }
 
 /* 各列宽度定义 */
@@ -459,6 +483,16 @@ onMounted(async () => {
 /* Switch 组件样式调整 */
 :deep(.el-switch) {
   margin: 0 auto;
+}
+
+/* 表格主体区域 */
+.table-body {
+  border-bottom: 1px solid #ebeef5;
+}
+
+/* 最后一行不需要底部边框 */
+.table-row:last-child {
+  border-bottom: none;
 }
 
 /* 响应式适配 */
