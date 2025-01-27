@@ -92,3 +92,107 @@ function compareArrayObjects(arr1, arr2, keys = []) {
         differences
     };
 }
+function compareArrayObjects(arr1, arr2, keys) {
+    // 检查输入是否为数组
+    if (!Array.isArray(arr1) || !Array.isArray(arr2)) {
+        return {
+            isEqual: false,
+            differences: [{
+                reason: 'Not both arrays',
+                value1: arr1,
+                value2: arr2
+            }]
+        };
+    }
+
+    // 检查数组长度是否相同
+    if (arr1.length !== arr2.length) {
+        return {
+            isEqual: false,
+            differences: [{
+                reason: 'Different array lengths',
+                length1: arr1.length,
+                length2: arr2.length
+            }]
+        };
+    }
+
+    const differences = [];
+
+    // 遍历数组中的每个对象
+    arr1.forEach((item1, index) => {
+        const item2 = arr2[index];
+        let keysToCompare = keys;
+
+        // 如果没有传入keys，则比较所有键
+        if (keysToCompare === undefined) {
+            keysToCompare = [...new Set([...Object.keys(item1), ...Object.keys(item2)])];
+        }
+
+        const itemDiffs = [];
+
+        // 比较确定的键
+        keysToCompare.forEach(key => {
+            const hasKey1 = item1.hasOwnProperty(key);
+            const hasKey2 = item2.hasOwnProperty(key);
+
+            // 如果两个对象都没有这个键，跳过比较
+            if (!hasKey1 && !hasKey2) {
+                return; // 继续下一个键
+            }
+
+            // 如果只有一个对象有这个键
+            if (hasKey1 !== hasKey2) {
+                itemDiffs.push({
+                    key,
+                    value1: hasKey1 ? item1[key] : 'missing',
+                    value2: hasKey2 ? item2[key] : 'missing',
+                    reason: 'key exists in only one object'
+                });
+                return;
+            }
+
+            // 获取键值
+            const value1 = item1[key];
+            const value2 = item2[key];
+
+            // 检查是否为对象或数组
+            const isObject1 = typeof value1 === 'object' && value1 !== null;
+            const isObject2 = typeof value2 === 'object' && value2 !== null;
+
+            // 如果两者都是对象或数组，递归比较
+            if (isObject1 && isObject2) {
+                const nestedKeys = [...new Set([...Object.keys(value1), ...Object.keys(value2)])];
+                const nestedComparison = compareArrayObjects([value1], [value2], nestedKeys);
+                if (!nestedComparison.isEqual) {
+                    itemDiffs.push({
+                        key,
+                        value1,
+                        value2,
+                        reason: 'nested objects are not equal',
+                        nestedDifferences: nestedComparison.differences
+                    });
+                }
+            } else if (value1 !== value2) { // 直接比较值
+                itemDiffs.push({
+                    key,
+                    value1,
+                    value2
+                });
+            }
+        });
+
+        // 如果有差异，记录差异
+        if (itemDiffs.length > 0) {
+            differences.push({
+                index,
+                differences: itemDiffs
+            });
+        }
+    });
+
+    return {
+        isEqual: differences.length === 0,
+        differences
+    };
+}
