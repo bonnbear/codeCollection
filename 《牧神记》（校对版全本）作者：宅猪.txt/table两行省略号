@@ -1,104 +1,137 @@
 <template>
-  <div class="table-container">
-    <!-- 搜索区域 -->
-    <div class="search-area">
-      <el-input
-        v-model="searchQuery"
-        placeholder="请输入搜索内容"
-        @input="handleSearch"
-        clearable
+  <!-- 打开弹框的按钮 -->
+  <el-button type="primary" @click="dialogVisible = true">
+    打开表格
+  </el-button>
+
+  <!-- 弹框 -->
+  <el-dialog
+    v-model="dialogVisible"
+    title="表格数据"
+    width="90%"
+    :before-close="handleClose"
+    destroy-on-close
+  >
+    <div class="table-container">
+      <!-- 搜索区域 -->
+      <div class="search-area">
+        <el-input
+          v-model="searchQuery"
+          placeholder="请输入搜索内容"
+          @input="handleSearch"
+          clearable
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+      </div>
+
+      <!-- 表格区域 -->
+      <el-table
+        :data="filteredTableData"
+        style="width: 100%"
+        border
+        stripe
+        height="450"
+        @sort-change="handleSortChange"
       >
-        <template #prefix>
-          <el-icon><Search /></el-icon>
-        </template>
-      </el-input>
+        <el-table-column
+          prop="id"
+          label="ID"
+          sortable
+          width="80"
+          align="center"
+        />
+        <el-table-column
+          prop="name"
+          label="姓名"
+          width="120"
+          align="center"
+        />
+        <el-table-column
+          prop="age"
+          label="年龄"
+          sortable
+          width="100"
+          align="center"
+        />
+        <el-table-column
+          prop="content"
+          label="内容"
+          min-width="300"
+        >
+          <template #default="scope">
+            <el-tooltip
+              placement="top"
+              :content="scope.row.content"
+              :show-after="200"
+            >
+              <div class="content-cell">{{ scope.row.content }}</div>
+            </el-tooltip>
+          </template>
+        </el-table-column>
+        <el-table-column
+          prop="address"
+          label="地址"
+          min-width="200"
+        />
+        <el-table-column
+          label="操作"
+          width="160"
+          fixed="right"
+          align="center"
+        >
+          <template #default="scope">
+            <el-button
+              size="small"
+              @click="handleEdit(scope.row)"
+            >
+              编辑
+            </el-button>
+            <el-button
+              size="small"
+              type="danger"
+              @click="handleDelete(scope.row)"
+            >
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 分页区域 -->
+      <div class="pagination-area">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="total"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        />
+      </div>
     </div>
 
-    <!-- 表格区域 -->
-    <el-table
-      :data="filteredTableData"
-      style="width: 100%"
-      border
-      stripe
-      @sort-change="handleSortChange"
-    >
-      <el-table-column
-        prop="id"
-        label="ID"
-        sortable
-        width="100"
-      />
-      <el-table-column
-        prop="name"
-        label="姓名"
-        width="180"
-      />
-      <el-table-column
-        prop="age"
-        label="年龄"
-        sortable
-        width="120"
-      />
-      <el-table-column
-        prop="content"
-        label="内容"
-        width="300"
-      >
-        <template #default="scope">
-          <el-tooltip
-            placement="top"
-            :content="scope.row.content"
-            :show-after="200"
-          >
-            <div class="content-cell">{{ scope.row.content }}</div>
-          </el-tooltip>
-        </template>
-      </el-table-column>
-      <el-table-column
-        prop="address"
-        label="地址"
-      />
-      <el-table-column
-        label="操作"
-        width="180"
-      >
-        <template #default="scope">
-          <el-button
-            size="small"
-            @click="handleEdit(scope.row)"
-          >
-            编辑
-          </el-button>
-          <el-button
-            size="small"
-            type="danger"
-            @click="handleDelete(scope.row)"
-          >
-            删除
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <!-- 分页区域 -->
-    <div class="pagination-area">
-      <el-pagination
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
-        :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        :total="total"
-        @size-change="handleSizeChange"
-        @current-change="handleCurrentChange"
-      />
-    </div>
-  </div>
+    <template #footer>
+      <span class="dialog-footer">
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleConfirm">
+          确认
+        </el-button>
+      </span>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
+
+// 弹框控制
+const dialogVisible = ref(false)
 
 // 表格数据
 const tableData = ref([
@@ -122,8 +155,7 @@ const tableData = ref([
     age: 28,
     content: '第三条测试数据的内容，同样是一段很长的文本。第三条测试数据的内容，同样是一段很长的文本。第三条测试数据的内容，同样是一段很长的文本。',
     address: '广州市天河区'
-  },
-  // ... 更多数据
+  }
 ])
 
 // 搜索相关
@@ -176,37 +208,85 @@ const handleEdit = (row) => {
 }
 
 const handleDelete = (row) => {
-  ElMessage.warning(`删除行：${row.id}`)
-  const index = tableData.value.findIndex(item => item.id === row.id)
-  if (index !== -1) {
-    tableData.value.splice(index, 1)
-  }
+  ElMessageBox.confirm(
+    '确认删除该条数据吗？',
+    '警告',
+    {
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  )
+    .then(() => {
+      const index = tableData.value.findIndex(item => item.id === row.id)
+      if (index !== -1) {
+        tableData.value.splice(index, 1)
+        ElMessage.success('删除成功')
+      }
+    })
+    .catch(() => {
+      ElMessage.info('已取消删除')
+    })
+}
+
+// 处理弹框关闭
+const handleClose = (done) => {
+  ElMessageBox.confirm('确认关闭？')
+    .then(() => {
+      done()
+    })
+    .catch(() => {
+      // 取消关闭
+    })
+}
+
+// 确认按钮处理
+const handleConfirm = () => {
+  dialogVisible.value = false
+  ElMessage.success('操作成功')
 }
 </script>
 
 <style scoped>
 .table-container {
-  padding: 20px;
+  padding: 10px;
 }
 
 .search-area {
-  margin-bottom: 20px;
+  margin-bottom: 15px;
   width: 300px;
 }
 
 .pagination-area {
-  margin-top: 20px;
+  margin-top: 15px;
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .content-cell {
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
-  -webkit-line-clamp: 2; /* 限制在2行 */
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   line-height: 1.5;
-  max-height: 3em; /* 2行的高度 */
+  max-height: 3em;
+}
+
+:deep(.el-dialog) {
+  margin: 0 auto;
+  margin-top: 5vh;
+}
+
+:deep(.el-dialog__body) {
+  padding: 10px;
+  max-height: calc(90vh - 150px);
+  overflow-y: auto;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 </style>
