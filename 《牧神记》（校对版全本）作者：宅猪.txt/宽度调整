@@ -1,0 +1,83 @@
+<template>
+  <div class="container">
+    <div class="item-group">
+      <div class="item-label">姓名：</div>
+      <el-input v-model="form.name" placeholder="请输入姓名" />
+    </div>
+
+    <div class="item-group">
+      <div class="item-label">部门：</div>
+      <el-select v-model="form.department" placeholder="请选择部门">
+        <el-option
+          v-for="item in options"
+          :key="item.value"
+          :label="item.label"
+          :value="item.value"
+        />
+      </el-select>
+    </div>
+
+    <div class="item-group-small">
+      <div class="item-label">年龄：</div>
+      <el-input v-model="form.age" placeholder="年龄" />
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+
+const form = ref({
+  name: '',
+  department: '',
+  age: ''
+})
+
+const options = [
+  { value: '1', label: '技术部' },
+  { value: '2', label: '产品部' },
+  { value: '3', label: '运营部' }
+]
+</script>
+
+<style scoped>
+.container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;  /* 容器宽度可变 */
+  min-width: 600px;  /* 设置最小宽度，防止过度压缩 */
+  gap: 12px;  /* 最小间距 */
+}
+
+.item-group,
+.item-group-small {
+  display: flex;
+  align-items: center;
+  /* 设置最大和最小宽度，允许自适应调整 */
+  min-width: 200px;
+  max-width: 280px;
+  width: 32%;  /* 弹性宽度，随容器变化 */
+}
+
+.item-group-small {
+  min-width: 150px;
+  max-width: 200px;
+  width: 25%;
+}
+
+.item-label {
+  white-space: nowrap;
+  margin-right: 8px;
+  color: #606266;
+  width: 60px;
+  text-align: right;
+  flex-shrink: 0;  /* 防止标签被压缩 */
+}
+
+:deep(.el-input),
+:deep(.el-select) {
+  flex: 1;
+  min-width: 0;  /* 允许输入框被压缩 */
+}
+</style>
