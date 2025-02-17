@@ -1,0 +1,221 @@
+<template>
+  <el-dialog
+    v-model="dialogVisible"
+    title="数据分析"
+    :fullscreen="false"
+    :close-on-click-modal="false"
+    destroy-on-close
+    class="custom-dialog"
+  >
+    <div class="analysis-container">
+      <!-- 上部分图表容器 -->
+      <div class="charts-container">
+        <div ref="chartRef1" class="chart"></div>
+        <div ref="chartRef2" class="chart"></div>
+      </div>
+      
+      <!-- 下部分表格 -->
+      <div class="table-container">
+        <el-table 
+          :data="tableData" 
+          border 
+          style="width: 100%"
+          :height="tableHeight"
+        >
+          <el-table-column prop="date" label="日期" width="180" fixed />
+          
+          <el-table-column label="配送信息">
+            <el-table-column prop="name" label="姓名" width="120" />
+            <el-table-column prop="address" label="地址" />
+          </el-table-column>
+          
+          <el-table-column label="商品信息">
+            <el-table-column prop="product" label="商品名称" width="120" />
+            <el-table-column prop="count" label="数量" width="120" />
+          </el-table-column>
+        </el-table>
+      </div>
+    </div>
+  </el-dialog>
+</template>
+
+<script setup>
+import { ref, onMounted, nextTick } from 'vue'
+import * as echarts from 'echarts'
+
+const dialogVisible = ref(true)
+const chartRef1 = ref(null)
+const chartRef2 = ref(null)
+const tableHeight = ref('300px')
+let chart1Instance = null
+let chart2Instance = null
+
+// 表格数据
+const tableData = ref([
+  {
+    date: '2024-02-17',
+    name: '张三',
+    address: '北京市朝阳区',
+    product: '笔记本电脑',
+    count: 1
+  },
+  {
+    date: '2024-02-17',
+    name: '李四',
+    address: '上海市浦东新区',
+    product: '手机',
+    count: 2
+  },
+  {
+    date: '2024-02-17',
+    name: '王五',
+    address: '广州市天河区',
+    product: '平板电脑',
+    count: 1
+  },
+  {
+    date: '2024-02-17',
+    name: '赵六',
+    address: '深圳市南山区',
+    product: '耳机',
+    count: 3
+  }
+])
+
+// 初始化第一个图表
+const initChart1 = () => {
+  if (chart1Instance) {
+    chart1Instance.dispose()
+  }
+  chart1Instance = echarts.init(chartRef1.value)
+  const option = {
+    title: {
+      text: '销售数据'
+    },
+    tooltip: {},
+    grid: {
+      top: '15%',
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      data: ['1月', '2月', '3月', '4月', '5月', '6月']
+    },
+    yAxis: {},
+    series: [{
+      name: '销量',
+      type: 'bar',
+      data: [5, 20, 36, 10, 10, 20]
+    }]
+  }
+  chart1Instance.setOption(option)
+}
+
+// 初始化第二个图表
+const initChart2 = () => {
+  if (chart2Instance) {
+    chart2Instance.dispose()
+  }
+  chart2Instance = echarts.init(chartRef2.value)
+  const option = {
+    title: {
+      text: '收入数据'
+    },
+    tooltip: {},
+    grid: {
+      top: '15%',
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      data: ['1月', '2月', '3月', '4月', '5月', '6月']
+    },
+    yAxis: {},
+    series: [{
+      name: '收入',
+      type: 'bar',
+      data: [15, 25, 40, 20, 15, 30]
+    }]
+  }
+  chart2Instance.setOption(option)
+}
+
+// 计算表格高度
+const calculateTableHeight = () => {
+  const containerHeight = document.querySelector('.analysis-container')?.offsetHeight || 0
+  const chartsHeight = document.querySelector('.charts-container')?.offsetHeight || 0
+  const padding = 40 // 上下padding总和
+  const tableHeight = containerHeight - chartsHeight - padding
+  return `${Math.max(tableHeight, 200)}px` // 设置最小高度为200px
+}
+
+// 重新调整尺寸
+const handleResize = () => {
+  nextTick(() => {
+    chart1Instance?.resize()
+    chart2Instance?.resize()
+    tableHeight.value = calculateTableHeight()
+  })
+}
+
+// 组件挂载后初始化
+onMounted(async () => {
+  await nextTick()
+  initChart1()
+  initChart2()
+  tableHeight.value = calculateTableHeight()
+  
+  // 监听窗口调整
+  window.addEventListener('resize', handleResize)
+})
+</script>
+
+<style scoped>
+/* 自定义dialog样式 */
+:deep(.el-dialog) {
+  margin: 5vh auto;
+  height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+:deep(.el-dialog__body) {
+  flex: 1;
+  overflow: hidden;
+  padding: 10px 20px;
+}
+
+.analysis-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.charts-container {
+  display: flex;
+  gap: 20px;
+  height: 45%;
+  min-height: 300px;
+  margin-bottom: 20px;
+}
+
+.chart {
+  flex: 1;
+  min-width: 0; /* 防止flex子项溢出 */
+}
+
+.table-container {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* 适配表格样式 */
+:deep(.el-table) {
+  height: 100% !important;
+}
+</style>
