@@ -164,3 +164,238 @@ onUnmounted(() => {
 <style scoped>
 /* 如果需要添加自定义样式可以在这里添加 */
 </style>
+
+
+
+
+
+<template>
+  <div ref="chartRef" style="width: 100%; height: 400px;"></div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+import * as echarts from 'echarts'
+
+const chartRef = ref(null)
+let chart = null
+
+// 模拟数据
+const data = Array.from({ length: 50 }, (_, index) => ({
+  name: `类别${index + 1}`,
+  value: Math.floor(Math.random() * 1000)
+}))
+
+const initChart = () => {
+  if (chart) {
+    chart.dispose()
+  }
+
+  chart = echarts.init(chartRef.value)
+  
+  const containerWidth = chartRef.value.clientWidth
+  const barWidth = 20
+  const barGap = '30%'
+  const totalBars = data.length
+  const minBarSpace = barWidth * 1.3
+  
+  const needScroll = (totalBars * minBarSpace) > containerWidth
+  
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'shadow'
+      },
+      backgroundColor: 'rgba(255,255,255,0.9)',
+      borderWidth: 0,
+      shadowColor: 'rgba(0,0,0,0.1)',
+      shadowBlur: 10,
+      textStyle: {
+        color: '#666',
+      },
+      padding: 0,
+      position: function (point, params, dom, rect, size) {
+        // 获取鼠标坐标
+        let x = point[0]
+        let y = point[1]
+        
+        // tooltip 的宽高
+        const tooltipWidth = dom.offsetWidth
+        const tooltipHeight = dom.offsetHeight
+        
+        // 获取图表容器的位置信息
+        const chartRect = chart.getDom().getBoundingClientRect()
+        
+        // 计算最大x和y坐标（防止超出右侧和底部）
+        const maxX = chartRect.width - tooltipWidth - 20
+        const maxY = chartRect.height - tooltipHeight - 20
+        
+        // 调整x坐标
+        if (x + tooltipWidth > chartRect.width) {
+          x = x - tooltipWidth - 20
+        }
+        if (x < 0) {
+          x = 0
+        }
+        if (x > maxX) {
+          x = maxX
+        }
+        
+        // 调整y坐标
+        if (y < 20) {
+          y = 20
+        }
+        if (y > maxY) {
+          y = maxY
+        }
+        
+        return { left: x, top: y }
+      },
+      renderMode: 'html',
+      formatter: function(params) {
+        const param = params[0]
+        return `
+          <div style="
+            min-width: 180px;
+            padding: 10px;
+            border-radius: 4px;
+            box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
+            background: rgba(255,255,255,0.9);
+            border: 1px solid #ebeef5;
+          ">
+            <div style="
+              font-size: 14px;
+              color: #333;
+              font-weight: 500;
+              margin-bottom: 8px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            ">
+              <span>${param.name}</span>
+              <span style="
+                background: #188df0;
+                color: white;
+                padding: 2px 6px;
+                border-radius: 3px;
+                font-size: 12px;
+              ">${param.seriesName}</span>
+            </div>
+            <div style="
+              display: flex;
+              align-items: center;
+              padding: 3px 0;
+            ">
+              <span style="
+                display: inline-block;
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: ${param.color};
+                margin-right: 8px;
+              "></span>
+              <span style="
+                font-size: 20px;
+                font-weight: bold;
+                color: #333;
+              ">${param.value}</span>
+            </div>
+            <div style="
+              font-size: 12px;
+              color: #999;
+              margin-top: 4px;
+            ">更新时间：${new Date().toLocaleString()}</div>
+          </div>
+        `
+      },
+      extraCssText: 'pointer-events: none;' // 防止 tooltip 影响鼠标事件
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: needScroll ? '60' : '10',
+      containLabel: true
+    },
+    dataZoom: needScroll ? [
+      {
+        type: 'slider',
+        show: true,
+        start: 0,
+        end: (containerWidth / (totalBars * minBarSpace)) * 100,
+        height: 20,
+        bottom: 10,
+        borderColor: 'transparent',
+        backgroundColor: '#f5f5f5',
+        fillerColor: '#e6e6e6',
+        handleStyle: {
+          color: '#fff',
+          borderColor: '#ACB8D1',
+          borderWidth: 1,
+          shadowBlur: 2,
+          shadowColor: 'rgba(0,0,0,0.2)',
+        }
+      },
+      {
+        type: 'inside',
+        start: 0,
+        end: (containerWidth / (totalBars * minBarSpace)) * 100
+      }
+    ] : [],
+    xAxis: {
+      type: 'category',
+      data: data.map(item => item.name),
+      axisLabel: {
+        interval: 0,
+        rotate: 30
+      }
+    },
+    yAxis: {
+      type: 'value',
+      name: '数值'
+    },
+    series: [
+      {
+        name: '数值',
+        type: 'bar',
+        barWidth: barWidth,
+        barGap: barGap,
+        data: data.map(item => item.value),
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#83bff6' },
+            { offset: 0.5, color: '#188df0' },
+            { offset: 1, color: '#188df0' }
+          ])
+        },
+        emphasis: {
+          itemStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: '#2378f7' },
+              { offset: 0.7, color: '#2378f7' },
+              { offset: 1, color: '#83bff6' }
+            ])
+          }
+        }
+      }
+    ]
+  }
+
+  chart.setOption(option)
+}
+
+// 处理窗口大小变化
+const handleResize = () => {
+  chart && initChart()
+}
+
+onMounted(() => {
+  initChart()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  chart && chart.dispose()
+})
+</script>
