@@ -654,3 +654,231 @@ onUnmounted(() => {
   chart && chart.dispose()
 })
 </script>
+
+
+
+
+<template>
+  <div ref="chartRef" style="width: 100%; height: 400px;"></div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+import * as echarts from 'echarts'
+
+const chartRef = ref(null)
+let chart = null
+
+const MAX_VALUE = 9
+
+// 模拟数据
+const data = [
+  {
+    category: '类型A',
+    items: [
+      { name: '项目A1', value: 3 },
+      { name: '项目A2', value: 4 },
+      { name: '项目A3', value: 2 },
+    ]
+  },
+  {
+    category: '类型B',
+    items: [
+      { name: '项目B1', value: 5 },
+      { name: '项目B2', value: 3 },
+      { name: '项目B3', value: 6 },
+      { name: '项目B4', value: 4 },
+    ]
+  },
+  {
+    category: '类型C',
+    items: [
+      { name: '项目C1', value: 2 },
+      { name: '项目C2', value: 3 },
+    ]
+  }
+]
+
+const initChart = () => {
+  if (chart) {
+    chart.dispose()
+  }
+
+  chart = echarts.init(chartRef.value)
+  
+  const containerWidth = chartRef.value.clientWidth
+  const barWidth = 20
+  const barGap = '-100%'
+  const totalBars = data.length
+  const minBarSpace = barWidth * 1.3
+  
+  const needScroll = (totalBars * minBarSpace) > containerWidth
+  
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'shadow'
+      },
+      backgroundColor: 'rgba(255,255,255,0.9)',
+      borderWidth: 0,
+      shadowColor: 'rgba(0,0,0,0.1)',
+      shadowBlur: 10,
+      textStyle: {
+        color: '#666',
+      },
+      padding: 0,
+      formatter: function(params) {
+        // 只显示实际数据的 tooltip
+        const dataParam = params.find(param => param.seriesIndex === 1)
+        if (!dataParam) return ''
+        
+        const categoryData = data.find(d => d.category === dataParam.name)
+        if (!categoryData) return ''
+        
+        const itemsHtml = categoryData.items
+          .sort((a, b) => b.value - a.value)
+          .map(item => `
+            <div style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 4px 0;
+              font-size: 13px;
+              border-bottom: 1px dashed #eee;
+            ">
+              <span style="color: #666;">${item.name}</span>
+              <span style="color: #188df0; font-weight: 500;">${item.value}</span>
+            </div>
+          `).join('')
+
+        return `
+          <div style="
+            min-width: 200px;
+            padding: 12px;
+            border-radius: 4px;
+            box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
+            background: rgba(255,255,255,0.9);
+            border: 1px solid #ebeef5;
+          ">
+            <div style="
+              font-size: 14px;
+              color: #333;
+              font-weight: 500;
+              margin-bottom: 8px;
+              padding-bottom: 8px;
+              border-bottom: 1px solid #ebeef5;
+            ">
+              ${dataParam.name}
+            </div>
+            <div style="max-height: 200px; overflow-y: auto;">
+              ${itemsHtml}
+            </div>
+          </div>
+        `
+      }
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: needScroll ? '60' : '10',
+      top: '40',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: data.map(item => item.category),
+      axisLabel: {
+        interval: 0,
+        rotate: 30
+      }
+    },
+    yAxis: {
+      type: 'value',
+      max: MAX_VALUE,
+      splitNumber: 9,
+      axisLabel: {
+        formatter: '{value}'
+      }
+    },
+    series: [
+      // 背景柱状图
+      {
+        name: '背景',
+        type: 'bar',
+        barWidth: barWidth,
+        barGap: barGap,
+        z: 1,
+        data: data.map(item => ({
+          name: item.category,
+          value: MAX_VALUE
+        })),
+        itemStyle: {
+          color: 'rgba(200, 200, 200, 0.15)',
+          borderColor: 'rgba(200, 200, 200, 0.3)',
+          borderWidth: 1,
+          borderType: 'dashed'
+        },
+        tooltip: {
+          show: false
+        }
+      },
+      // 实际数据柱状图
+      {
+        name: '数值',
+        type: 'bar',
+        barWidth: barWidth,
+        z: 2,
+        label: {
+          show: true,
+          position: 'top',
+          distance: 10,
+          color: '#666',
+          fontSize: 14,
+          formatter: function(params) {
+            const categoryData = data.find(d => d.category === params.name)
+            return categoryData.items.reduce((sum, item) => sum + item.value, 0)
+          }
+        },
+        data: data.map(item => ({
+          name: item.category,
+          value: item.items.reduce((sum, i) => sum + i.value, 0)
+        })),
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#83bff6' },
+            { offset: 0.5, color: '#188df0' },
+            { offset: 1, color: '#188df0' }
+          ])
+        },
+        emphasis: {
+          itemStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: '#2378f7' },
+              { offset: 0.7, color: '#2378f7' },
+              { offset: 1, color: '#83bff6' }
+            ])
+          }
+        }
+      }
+    ]
+  }
+
+  chart.setOption(option)
+}
+
+// 处理窗口大小变化
+const handleResize = () => {
+  chart && initChart()
+}
+
+onMounted(() => {
+  initChart()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  chart && chart.dispose()
+})
+</script>
