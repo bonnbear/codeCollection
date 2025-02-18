@@ -640,3 +640,201 @@ onBeforeUnmount(() => {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 </style>
+
+
+
+
+
+
+<template>
+  <div class="chart-container">
+    <div ref="chartRef" class="chart"></div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import * as echarts from 'echarts'
+
+const chartRef = ref(null)
+let chartInstance = null
+
+const data = [
+  { name: '状态1', value: 400 },
+  { name: '状态2', value: 300 },
+  { name: '状态3', value: 500 },
+  { name: '状态4', value: 200 },
+  { name: '状态5', value: 278 },
+  { name: '状态6', value: 189 },
+  { name: '状态7', value: 239 },
+  { name: '状态8', value: 349 },
+  { name: '状态9', value: 428 },
+  { name: '状态10', value: 568 }
+]
+
+const initChart = () => {
+  if (chartInstance) {
+    chartInstance.dispose()
+  }
+  
+  chartInstance = echarts.init(chartRef.value)
+  
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'shadow'
+      }
+    },
+    legend: {
+      top: '2%',
+      right: '2%',
+      orient: 'vertical',
+      itemWidth: 10,
+      itemHeight: 10,
+      icon: 'rect',
+      formatter: function(name) {
+        const item = data.find(item => item.name === name)
+        if (item) {
+          return `${name}  {value|${item.value}}`
+        }
+        return name
+      },
+      textStyle: {
+        rich: {
+          value: {
+            color: '#999',
+            fontSize: 12,
+            padding: [0, 0, 0, 10]
+          }
+        }
+      }
+    },
+    grid: {
+      top: '15%',
+      left: '3%',
+      right: '15%',
+      bottom: '15%', // 为底部dataZoom留出空间
+      containLabel: true
+    },
+    dataZoom: [
+      {
+        show: true,
+        type: 'slider',
+        bottom: '3%',
+        height: 20,
+        start: 0,
+        end: 100,
+        borderColor: 'transparent',
+        backgroundColor: '#f5f5f5',
+        fillerColor: '#e6e6e6',
+        handleStyle: {
+          color: '#fff',
+          borderColor: '#9f9f9f'
+        },
+        moveHandleStyle: {
+          color: '#fff',
+          borderColor: '#9f9f9f'
+        },
+        selectedDataBackground: {
+          lineStyle: {
+            color: '#5470c6'
+          },
+          areaStyle: {
+            color: '#5470c6'
+          }
+        },
+        emphasis: {
+          handleStyle: {
+            borderColor: '#777'
+          },
+          moveHandleStyle: {
+            borderColor: '#777'
+          }
+        }
+      },
+      {
+        type: 'inside', // 启用内部缩放
+        start: 0,
+        end: 100,
+        zoomOnMouseWheel: true,  // 鼠标滚轮缩放
+        moveOnMouseMove: true    // 鼠标移动平移
+      }
+    ],
+    xAxis: {
+      type: 'category',
+      data: data.map(item => item.name),
+      axisTick: {
+        show: false
+      },
+      axisLine: {
+        show: false
+      }
+    },
+    yAxis: {
+      type: 'value',
+      name: '数量',
+      splitLine: {
+        lineStyle: {
+          type: 'dashed'
+        }
+      },
+      axisTick: {
+        show: false
+      },
+      axisLine: {
+        show: false
+      }
+    },
+    series: [
+      {
+        name: '状态1',
+        type: 'bar',
+        barWidth: 16,
+        barGap: '80%',
+        itemStyle: {
+          borderRadius: [2, 2, 0, 0],
+          color: '#5470c6'
+        },
+        data: data.map(item => ({
+          value: item.value,
+          label: {
+            show: true,
+            position: 'top',
+            fontSize: 16
+          }
+        }))
+      }
+    ]
+  }
+
+  chartInstance.setOption(option)
+}
+
+// 处理窗口缩放
+const handleResize = () => {
+  chartInstance?.resize()
+}
+
+onMounted(() => {
+  initChart()
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  chartInstance?.dispose()
+  window.removeEventListener('resize', handleResize)
+})
+</script>
+
+<style scoped>
+.chart-container {
+  width: 100%;
+  position: relative;
+}
+
+.chart {
+  height: 400px;
+  min-width: 800px;
+}
+</style>
