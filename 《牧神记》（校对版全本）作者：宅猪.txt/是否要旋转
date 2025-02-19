@@ -1,0 +1,106 @@
+// AdaptiveChart.vue
+<template>
+  <div ref="chartContainer" class="chart-container"></div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import * as echarts from 'echarts'
+
+const chartContainer = ref(null)
+let chart = null
+
+// 模拟数据
+const chartData = {
+  xData: ['非常长的标签名称1', '非常长的标签名称2', '非常长的标签名称3', 
+          '非常长的标签名称4', '非常长的标签名称5', '非常长的标签名称6'],
+  yData: [120, 200, 150, 80, 70, 110]
+}
+
+// 计算是否需要旋转标签
+const calculateRotation = () => {
+  if (!chart) return 0
+  
+  const containerWidth = chartContainer.value.clientWidth
+  const labelCount = chartData.xData.length
+  
+  // 估算每个标签所需的最小宽度（假设每个中文字符宽度为20px）
+  const maxLabelWidth = Math.max(...chartData.xData.map(label => label.length * 20))
+  
+  // 计算所有标签总共需要的宽度（加上一些间距）
+  const totalWidth = (maxLabelWidth + 10) * labelCount
+  
+  // 如果总宽度超过容器宽度，则需要旋转标签
+  return totalWidth > (containerWidth * 0.8) ? 45 : 0
+}
+
+const updateChart = () => {
+  if (!chart) return
+  
+  const rotation = calculateRotation()
+  
+  const option = {
+    tooltip: {
+      trigger: 'axis'
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: rotation > 0 ? '15%' : '10%', // 根据是否旋转调整底部间距
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: chartData.xData,
+      axisLabel: {
+        interval: 0,
+        rotate: rotation, // 动态设置旋转角度
+        textStyle: {
+          align: rotation > 0 ? 'right' : 'center'
+        }
+      }
+    },
+    yAxis: {
+      type: 'value'
+    },
+    series: [{
+      data: chartData.yData,
+      type: 'bar',
+      barWidth: '40%'
+    }]
+  }
+  
+  chart.setOption(option)
+}
+
+const initChart = () => {
+  if (!chartContainer.value) return
+  chart = echarts.init(chartContainer.value)
+  updateChart()
+}
+
+// 处理窗口大小变化
+const handleResize = () => {
+  if (!chart) return
+  chart.resize()
+  updateChart() // 重新计算是否需要旋转
+}
+
+onMounted(async () => {
+  await nextTick()
+  initChart()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  chart?.dispose()
+})
+</script>
+
+<style scoped>
+.chart-container {
+  width: 100%;
+  height: 400px;
+}
+</style>
