@@ -418,3 +418,342 @@ onMounted(() => {
 <style scoped>
 /* 样式部分如果需要，可以添加自定义内容 */
 </style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<template>
+  <div>
+    <button 
+      @click="showDialog = true"
+      class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+    >
+      显示用户统计
+    </button>
+
+    <div v-if="showDialog" class="dialog-overlay">
+      <div class="dialog-content">
+        <div class="dialog-header">
+          <h3>用户类型分析</h3>
+          <button 
+            @click="showDialog = false"
+            class="close-btn"
+          >
+            ×
+          </button>
+        </div>
+
+        <div class="dialog-body">
+          <div ref="chartRef" class="chart-container"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import * as echarts from 'echarts'
+
+const showDialog = ref(false)
+const chartRef = ref(null)
+let myChart = null
+
+// 用户数据
+const items = [
+  { name: 'Alice', type: 'admin' },
+  { name: 'Bob', type: 'user' },
+  { name: 'Charlie', type: 'guest' },
+  { name: 'David', type: 'admin' },
+  { name: 'Eve', type: 'user' },
+  { name: 'Frank', type: 'guest' },
+  { name: 'Grace', type: 'admin' },
+  { name: 'Hank', type: 'user' },
+  { name: 'Ivy', type: 'guest' },
+  { name: 'Jack', type: 'admin' },
+  { name: 'Karen', type: 'user' },
+  { name: 'Leo', type: 'guest' },
+  { name: 'Mandy', type: 'admin' },
+  { name: 'Nina', type: 'user' },
+  { name: 'Oscar', type: 'guest' },
+  { name: 'Paul', type: 'admin' },
+  { name: 'Quincy', type: 'user' },
+  { name: 'Rita', type: 'guest' },
+  { name: 'Steve', type: 'admin' },
+  { name: 'Tina', type: 'user' },
+]
+
+// 类型映射表
+const typeMapping = {
+  admin: '管理员',
+  user: '用户',
+  guest: '访客',
+}
+
+// 数据处理
+const groupedData = items.reduce((acc, item) => {
+  if (!acc[item.type]) acc[item.type] = []
+  acc[item.type].push(item.name)
+  return acc
+}, {})
+
+const xAxisData = Object.keys(groupedData).map(type => typeMapping[type])
+const yAxisData = Object.keys(groupedData).map(type => groupedData[type].length)
+
+const initChart = () => {
+  if (!chartRef.value) return
+  
+  myChart = echarts.init(chartRef.value)
+  
+  const option = {
+    title: {
+      text: '用户类型分布',
+      left: 'center',
+      top: 20,
+      textStyle: {
+        fontSize: 16,
+        fontWeight: 'bold'
+      }
+    },
+    
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(50, 50, 50, 0.9)',
+      borderRadius: 4,
+      padding: [10, 15],
+      textStyle: {
+        fontSize: 13,
+        lineHeight: 20
+      },
+      extraCssText: 'box-shadow: 0 0 8px rgba(0, 0, 0, 0.3);',
+      formatter: function (params) {
+        const originalType = Object.keys(typeMapping).find(
+          key => typeMapping[key] === params[0].name
+        )
+        const names = groupedData[originalType]
+        return `
+          <div style="text-align: left;">
+            <strong>${typeMapping[originalType]}:</strong> ${names.length}人<br/>
+            <span style="color: #61dafb;">成员: ${names.join(', ')}</span>
+          </div>
+        `
+      }
+    },
+    
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '15%',
+      containLabel: true
+    },
+    
+    xAxis: {
+      type: 'category',
+      data: xAxisData,
+      axisLabel: {
+        formatter: (value) => value.length > 8 ? value.substr(0, 8) + '...' : value,
+        margin: 15,
+        color: '#666',
+        fontSize: 12,
+        interval: 0,
+        rotate: 30
+      },
+      axisPointer: {
+        show: true,
+        type: 'none',
+        label: {
+          show: true,
+          backgroundColor: '#666',
+          color: '#fff',
+          fontSize: 12,
+          formatter: ({ value }) => {
+            const originalType = Object.keys(typeMapping).find(
+              key => typeMapping[key] === value.replace('...', '')
+            )
+            return originalType ? typeMapping[originalType] : value
+          }
+        }
+      }
+    },
+    
+    yAxis: {
+      type: 'value',
+      name: '人数',
+      nameTextStyle: {
+        color: '#666',
+        fontSize: 12,
+        padding: [0, 30, 0, 0]
+      },
+      axisLabel: {
+        color: '#666',
+        fontSize: 12
+      },
+      splitLine: {
+        lineStyle: {
+          type: 'dashed'
+        }
+      }
+    },
+    
+    dataZoom: [{
+      type: 'inside',
+      start: 0,
+      end: 100,
+      zoomLock: false
+    }, {
+      type: 'slider',
+      show: true,
+      start: 0,
+      end: 100,
+      height: 20,
+      bottom: 0
+    }],
+    
+    animation: true,
+    animationDuration: 300,
+    animationEasing: 'cubicOut',
+    
+    series: [{
+      name: '用户数量',
+      type: 'bar',
+      data: yAxisData,
+      itemStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: '#83bff6' },
+          { offset: 0.5, color: '#188df0' },
+          { offset: 1, color: '#188df0' }
+        ])
+      },
+      emphasis: {
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#2378f7' },
+            { offset: 0.7, color: '#2378f7' },
+            { offset: 1, color: '#83bff6' }
+          ])
+        }
+      },
+      barWidth: '40%'
+    }]
+  }
+
+  myChart.setOption(option)
+  
+  // 添加图表点击事件处理
+  myChart.on('click', (params) => {
+    if (params.componentType === 'xAxis') {
+      myChart.dispatchAction({
+        type: 'showTip',
+        seriesIndex: 0,
+        dataIndex: xAxisData.indexOf(params.value)
+      })
+    }
+  })
+}
+
+// 处理窗口大小变化
+const handleResize = () => {
+  myChart && myChart.resize()
+}
+
+// 监听对话框显示状态
+watch(showDialog, (newVal) => {
+  if (newVal) {
+    // 等待 DOM 更新后初始化图表
+    setTimeout(() => {
+      initChart()
+      window.addEventListener('resize', handleResize)
+    }, 100)
+  } else {
+    // 清理事件监听和图表实例
+    window.removeEventListener('resize', handleResize)
+    myChart && myChart.dispose()
+    myChart = null
+  }
+})
+
+// 组件卸载时清理
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  myChart && myChart.dispose()
+})
+</script>
+
+<style scoped>
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.dialog-content {
+  background-color: white;
+  border-radius: 8px;
+  width: 80%;
+  max-width: 800px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog-header {
+  padding: 16px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dialog-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+}
+
+.close-btn {
+  border: none;
+  background: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  padding: 4px;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.close-btn:hover {
+  color: #000;
+}
+
+.dialog-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.chart-container {
+  width: 100%;
+  height: 500px;
+  background-color: #fff;
+}
+</style>
