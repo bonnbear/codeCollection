@@ -293,3 +293,128 @@ onUnmounted(() => {
   background-color: #fff;
 }
 </style>
+
+
+
+
+
+
+
+
+
+<template>
+  <div ref="chart" style="width: 100%; height: 400px;"></div>
+</template>
+
+<script setup>
+import { onMounted, ref } from 'vue';
+import * as echarts from 'echarts';
+
+const chart = ref(null);
+
+const items = [
+  { name: 'Alice', type: 'admin' },
+  { name: 'Bob', type: 'user' },
+  { name: 'Charlie', type: 'guest' },
+  { name: 'David', type: 'admin' },
+  { name: 'Eve', type: 'user' },
+  { name: 'Frank', type: 'guest' },
+  { name: 'Grace', type: 'admin' },
+  { name: 'Hank', type: 'user' },
+  { name: 'Ivy', type: 'guest' },
+  { name: 'Jack', type: 'admin' },
+  { name: 'Karen', type: 'user' },
+  { name: 'Leo', type: 'guest' },
+  { name: 'Mandy', type: 'admin' },
+  { name: 'Nina', type: 'user' },
+  { name: 'Oscar', type: 'guest' },
+  { name: 'Paul', type: 'admin' },
+  { name: 'Quincy', type: 'user' },
+  { name: 'Rita', type: 'guest' },
+  { name: 'Steve', type: 'admin' },
+  { name: 'Tina', type: 'user' },
+];
+
+// 类型映射表（英文 -> 中文）
+const typeMapping = {
+  admin: '管理员',
+  user: '用户',
+  guest: '访客',
+};
+
+// 数据处理
+const groupedData = items.reduce((acc, item) => {
+  if (!acc[item.type]) acc[item.type] = [];
+  acc[item.type].push(item.name);
+  return acc;
+}, {});
+
+const xAxisData = Object.keys(groupedData).map(type => typeMapping[type]); // 根据映射表转换为中文
+const yAxisData = Object.keys(groupedData).map(type => groupedData[type].length); // [7, 7, 6]
+
+onMounted(() => {
+  const chartInstance = echarts.init(chart.value);
+
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#333', // 背景颜色
+      borderColor: '#aaa', // 边框颜色
+      borderWidth: 1, // 边框宽度
+      borderRadius: 10, // 圆角
+      textStyle: {
+        fontSize: 14,
+        color: '#fff', // 文字颜色
+        fontWeight: 'bold',
+      },
+      formatter: function (params) {
+        const originalType = Object.keys(typeMapping).find(
+          key => typeMapping[key] === params[0].name
+        ); // 根据中文找到对应的英文类型
+        const names = groupedData[originalType];
+        return `
+          <div style="text-align: left;">
+            <strong>${typeMapping[originalType]}:</strong> ${names.length}<br/>
+            <span style="color: #61dafb;">${names.join(', ')}</span>
+          </div>
+        `;
+      },
+    },
+    xAxis: {
+      type: 'category',
+      data: xAxisData, // 使用中文标签
+      axisLabel: {
+        fontSize: 14,
+      },
+    },
+    yAxis: {
+      type: 'value',
+      name: '数量', // Y 轴标题改为中文
+      axisLabel: {
+        fontSize: 14,
+      },
+    },
+    series: [
+      {
+        data: yAxisData,
+        type: 'bar',
+        barWidth: '50%',
+        itemStyle: {
+          color: '#5470C6',
+        },
+      },
+    ],
+  };
+
+  chartInstance.setOption(option);
+
+  // 监听窗口大小变化，自动调整图表大小
+  window.addEventListener('resize', () => {
+    chartInstance.resize();
+  });
+});
+</script>
+
+<style scoped>
+/* 样式部分如果需要，可以添加自定义内容 */
+</style>
