@@ -75,13 +75,22 @@ const initChart = () => {
   
   const option = {
     tooltip: {
-      trigger: 'axis',
+      trigger: 'item',
       axisPointer: {
         type: 'shadow'
       },
       formatter: function(params) {
-        const dataIndex = params[0].dataIndex
-        const item = processedData[dataIndex]
+        if (!params || params.dataIndex === undefined) {
+          return ''; // 如果没有有效的参数，返回空字符串
+        }
+
+        const dataIndex = params.dataIndex; // 直接从params对象中获取dataIndex
+        const item = processedData[dataIndex];
+
+        if (!item) {
+          return ''; // 如果item未定义，返回空字符串
+        }
+
         const completedLines = item.completed.reduce((acc, prop, index) => {
           if (index % 2 === 0) {
             acc.push([propertyMap[prop]]) // 新行
