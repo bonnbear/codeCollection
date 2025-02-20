@@ -1,0 +1,113 @@
+<template>
+  <div ref="chart" style="width: 100%; height: 400px;"></div>
+</template>
+
+<script setup>
+import { onMounted, ref } from 'vue';
+import * as echarts from 'echarts';
+
+const chart = ref(null);
+
+const items = [
+  { name: 'Alice', type: 'admin' },
+  { name: 'Bob', type: 'user' },
+  { name: 'Charlie', type: 'guest' },
+  { name: 'David', type: 'admin' },
+  { name: 'Eve', type: 'user' },
+  { name: 'Frank', type: 'guest' },
+  { name: 'Grace', type: 'admin' },
+  { name: 'Hank', type: 'user' },
+  { name: 'Ivy', type: 'guest' },
+  { name: 'Jack', type: 'admin' },
+  { name: 'Karen', type: 'user' },
+  { name: 'Leo', type: 'guest' },
+  { name: 'Mandy', type: 'admin' },
+  { name: 'Nina', type: 'user' },
+  { name: 'Oscar', type: 'guest' },
+  { name: 'Paul', type: 'admin' },
+  { name: 'Quincy', type: 'user' },
+  { name: 'Rita', type: 'guest' },
+  { name: 'Steve', type: 'admin' },
+  { name: 'Tina', type: 'user' },
+];
+
+// Group data by type
+const groupedData = items.reduce((acc, item) => {
+  if (!acc[item.type]) acc[item.type] = [];
+  acc[item.type].push(item.name);
+  return acc;
+}, {});
+
+const xAxisData = Object.keys(groupedData); // ['admin', 'user', 'guest']
+const yAxisData = xAxisData.map(type => groupedData[type].length); // [7, 7, 6]
+
+onMounted(() => {
+  const chartInstance = echarts.init(chart.value);
+
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#333', // Background color
+      borderColor: '#aaa', // Border color
+      borderWidth: 1, // Border width
+      borderRadius: 10, // Border radius
+      textStyle: {
+        fontSize: 14,
+        color: '#fff', // Text color
+        fontWeight: 'bold',
+      },
+      formatter: function (params) {
+        const type = params[0].name;
+        const names = groupedData[type];
+
+        // Break names into lines with two per line
+        const formattedNames = names.map((name, index) => {
+          return (index % 2 === 0 ? '<br/>' : '') + name;
+        }).join(', ');
+
+        return `
+          <div style="text-align: left;">
+            <strong>${type.toUpperCase()}:</strong> ${names.length}<br/>
+            <span style="color: #61dafb;">${formattedNames}</span>
+          </div>
+        `;
+      },
+    },
+    xAxis: {
+      type: 'category',
+      data: xAxisData,
+      axisLabel: {
+        fontSize: 14,
+      },
+    },
+    yAxis: {
+      type: 'value',
+      name: 'Count',
+      axisLabel: {
+        fontSize: 14,
+      },
+    },
+    series: [
+      {
+        data: yAxisData,
+        type: 'bar',
+        barWidth: '50%',
+        itemStyle: {
+          color: '#5470C6',
+        },
+      },
+    ],
+  };
+
+  chartInstance.setOption(option);
+
+  // Adjust chart size on window resize
+  window.addEventListener('resize', () => {
+    chartInstance.resize();
+  });
+});
+</script>
+
+<style scoped>
+/* Add custom styles here if needed */
+</style>
