@@ -1,0 +1,155 @@
+<template>
+  <div ref="chartContainer" style="width: 100%; height: 400px;"></div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+import * as echarts from 'echarts'
+
+const chartContainer = ref(null)
+let chart = null
+
+// 定义需要统计的属性映射
+const typeProperties = {
+  numeric: ['typeA', 'typeB', 'typeC', 'typeD', 'typeE'],
+  status: ['typeF', 'typeH']
+}
+
+// 中文映射
+const propertyMap = {
+  typeA: '类型A',
+  typeB: '类型B',
+  typeC: '类型C',
+  typeD: '类型D',
+  typeE: '类型E',
+  typeF: '已刷新',
+  typeH: '未刷新'
+}
+
+const data = [
+  { name: "Object1", typeA: 0, typeB: 20, typeC: 30, typeD: 0, typeE: 50, typeF: "已刷新", typeH: "未刷新", status: "状态1" },
+  { name: "Object2", typeA: 15, typeB: 0, typeC: 35, typeD: 45, typeE: 0, typeF: "已刷新", typeH: "未刷新", status: "状态2" },
+  { name: "Object3", typeA: 20, typeB: 30, typeC: 0, typeD: 50, typeE: 60, typeF: "已刷新", typeH: "未刷新", status: "状态3" },
+]
+
+const processData = (items) => {
+  return items.map(item => {
+    let completed = []
+    let incomplete = []
+
+    // 处理数值类型的属性
+    typeProperties.numeric.forEach(prop => {
+      if (item[prop] === 0) {
+        incomplete.push(prop)
+      } else {
+        completed.push(prop)
+      }
+    })
+
+    // 处理状态类型的属性
+    typeProperties.status.forEach(prop => {
+      if (item[prop] === '已刷新') {
+        completed.push(prop)
+      } else if (item[prop] === '未刷新') {
+        incomplete.push(prop)
+      }
+    })
+
+    return {
+      name: item.name,
+      status: item.status,
+      completed,
+      incomplete
+    }
+  })
+}
+
+const initChart = () => {
+  if (chart) {
+    chart.dispose()
+  }
+
+  const processedData = processData(data)
+  
+  chart = echarts.init(chartContainer.value)
+  
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'shadow'
+      },
+      formatter: function(params) {
+        const dataIndex = params[0].dataIndex
+        const item = processedData[dataIndex]
+        const completedLines = item.completed.reduce((acc, prop, index) => {
+          if (index % 2 === 0) {
+            acc.push([propertyMap[prop]]) // 新行
+          } else {
+            acc[acc.length - 1].push(propertyMap[prop]) // 同一行添加
+          }
+          return acc
+        }, []).map(line => line.join(', ')).join('<br/>')
+
+        const incompleteLines = item.incomplete.reduce((acc, prop, index) => {
+          if (index % 2 === 0) {
+            acc.push([propertyMap[prop]]) // 新行
+          } else {
+            acc[acc.length - 1].push(propertyMap[prop]) // 同一行添加
+          }
+          return acc
+        }, []).map(line => line.join(', ')).join('<br/>')
+
+        return `${item.name}<br/>
+                当前状态: ${item.status}<br/>
+                <span style="color: #91cc75;">■</span> 已作业: <br/>${completedLines}<br/>
+                <span style="color: #ee6666;">■</span> 未作业: <br/>${incompleteLines}`
+      }
+    },
+    legend: {
+      data: ['已作业', '未作业']
+    },
+    xAxis: {
+      type: 'category',
+      data: processedData.map(item => item.name)
+    },
+    yAxis: {
+      type: 'value'
+    },
+    series: [
+      {
+        name: '已作业',
+        type: 'bar',
+        stack: 'total',
+        data: processedData.map(item => item.completed.length),
+        itemStyle: {
+          color: '#91cc75'
+        }
+      },
+      {
+        name: '未作业',
+        type: 'bar',
+        stack: 'total',
+        data: processedData.map(item => item.incomplete.length),
+        itemStyle: {
+          color: '#ee6666'
+        }
+      }
+    ]
+  }
+
+  chart.setOption(option)
+}
+
+onMounted(() => {
+  initChart()
+  window.addEventListener('resize', initChart)
+})
+
+onUnmounted(() => {
+  if (chart) {
+    chart.dispose()
+  }
+  window.removeEventListener('resize', initChart)
+})
+</script>
