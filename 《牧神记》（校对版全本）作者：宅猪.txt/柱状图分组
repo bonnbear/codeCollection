@@ -162,3 +162,174 @@ onUnmounted(() => {
   window.removeEventListener('resize', initChart)
 })
 </script>
+
+
+
+
+
+
+
+<template>
+  <div ref="chartContainer" style="width: 100%; height: 400px;"></div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import * as echarts from 'echarts'
+
+const chartContainer = ref(null)
+let chart = null
+
+// 定义需要统计的属性映射
+const typeProperties = {
+  numeric: ['typeA', 'typeB', 'typeC', 'typeD', 'typeE'],
+  status: ['typeF', 'typeH']
+}
+
+// 中文映射
+const propertyMap = {
+  typeA: '类型A',
+  typeB: '类型B',
+  typeC: '类型C',
+  typeD: '类型D',
+  typeE: '类型E',
+  typeF: 'typeF',
+  typeH: 'typeH'
+}
+
+const data = [
+  { name: "Object1", typeA: 0, typeB: 20, typeC: 30, typeD: 0, typeE: 50, typeF: "已刷新", typeH: "未刷新", status: "状态1" },
+  { name: "Object2", typeA: 15, typeB: 0, typeC: 35, typeD: 45, typeE: 0, typeF: "已刷新", typeH: "未刷新", status: "状态2" },
+  { name: "Object3", typeA: 20, typeB: 30, typeC: 0, typeD: 50, typeE: 60, typeF: "已刷新", typeH: "未刷新", status: "状态3" }
+]
+
+const processData = (items) => {
+  return items.map(item => {
+    let completed = []
+    let incomplete = []
+
+    // 处理数值类型的属性
+    typeProperties.numeric.forEach(prop => {
+      if (item[prop] === 0) {
+        incomplete.push(prop)
+      } else {
+        completed.push(prop)
+      }
+    })
+
+    // 处理状态类型的属性
+    typeProperties.status.forEach(prop => {
+      if (item[prop] === '已刷新') {
+        completed.push(prop)
+      } else if (item[prop] === '未刷新') {
+        incomplete.push(prop)
+      }
+    })
+
+    return { name: item.name, status: item.status, completed, incomplete }
+  })
+}
+
+const formatItemsTwoPerRow = (items) => {
+  if (!items.length) return '<div style="color: #999;">无</div>'
+  
+  const rows = []
+  for (let i = 0; i < items.length; i += 2) {
+    const first = `<span style="margin-right: 20px;">${propertyMap[items[i]]}</span>`
+    const second = items[i + 1] ? `<span>${propertyMap[items[i + 1]]}</span>` : ''
+
+    rows.push(`<div style="display: flex;">${first}${second}</div>`)
+  }
+  return rows.join('')
+}
+
+const initChart = () => {
+  if (chart) {
+    chart.dispose()
+  }
+
+  const processedData = processData(data)
+  chart = echarts.init(chartContainer.value)
+
+  const option = {
+    tooltip: {
+      trigger: 'item',
+      axisPointer: { type: 'shadow' },
+      formatter: function (params) {
+        nextTick(()=>{
+          debugger
+        })
+        if (!params || params.dataIndex === undefined) {
+          return ''
+        }
+
+        const dataIndex = params.dataIndex
+        const item = processedData[dataIndex]
+
+        if (!item) {
+          return ''
+        }
+
+        return `
+          <div style="font-size: 14px;">
+            <div><strong>${item.name}</strong></div>
+            <div>当前状态: ${item.status}</div>
+
+            <div style="margin-top: 5px; display: flex; align-items: center;">
+              <span style="display: inline-block; width: 10px; height: 10px; background-color: #91cc75; margin-right: 5px;"></span>
+              <span style="font-weight: bold;">已作业</span>
+            </div>
+            ${formatItemsTwoPerRow(item.completed)}
+
+            <div style="margin-top: 5px; display: flex; align-items: center;">
+              <span style="display: inline-block; width: 10px; height: 10px; background-color: #ee6666; margin-right: 5px;"></span>
+              <span style="font-weight: bold;">未作业</span>
+            </div>
+            ${formatItemsTwoPerRow(item.incomplete)}
+          </div>
+        `
+      }
+    },
+    legend: {
+      data: ['已作业', '未作业']
+    },
+    xAxis: {
+      type: 'category',
+      data: processedData.map(item => item.name)
+    },
+    yAxis: {
+      type: 'value'
+    },
+    series: [
+      {
+        name: '已作业',
+        type: 'bar',
+        stack: 'total',
+        data: processedData.map(item => item.completed.length),
+        itemStyle: { color: '#91cc75' }
+      },
+      {
+        name: '未作业',
+        type: 'bar',
+        stack: 'total',
+        data: processedData.map(item => item.incomplete.length),
+        itemStyle: { color: '#ee6666' }
+      }
+    ]
+  }
+
+  chart.setOption(option)
+}
+
+onMounted(() => {
+  initChart()
+  window.addEventListener('resize', initChart)
+})
+
+onUnmounted(() => {
+  if (chart) {
+    chart.dispose()
+  }
+  window.removeEventListener('resize', initChart)
+})
+</script>
