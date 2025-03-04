@@ -1,0 +1,123 @@
+<template>
+  <div 
+    class="resizable-container" 
+    :style="{ width: containerWidth + 'px', height: containerHeight + 'px' }"
+  >
+    <div class="cards">
+      <div class="card" v-for="(card, index) in cards" :key="index">
+        {{ card }}
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref } from "vue";
+
+const containerWidth = ref(400);
+const containerHeight = ref(300);
+
+const cards = ref([
+  "卡片 1", "卡片 2", "卡片 3",
+  "卡片 4", "卡片 5", "卡片 6",
+  "卡片 7", "卡片 8", "卡片 9"
+]);
+</script>
+
+<style scoped>
+.resizable-container {
+  background: white;
+  border: 2px solid #ccc;
+  padding: 10px;
+  box-sizing: border-box;
+  resize: both;
+  overflow: auto;
+  position: relative;
+  min-width: 300px;
+  min-height: 200px;
+  max-width: 90vw;
+  max-height: 80vh;
+}
+
+.cards {
+  display: grid;
+  /* 使用 auto-fit 让列数随容器宽度变化 */
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 10px;
+}
+
+.card {
+  background: #007bff;
+  color: white;
+  padding: 20px;
+  text-align: center;
+  font-size: 16px;
+  border-radius: 5px;
+}
+</style>s
+
+
+
+
+
+
+<template>
+  <div class="chart-container" ref="chartContainer"></div>
+</template>
+
+<script>
+import { onMounted, onUnmounted, ref, watch, nextTick } from "vue";
+import * as echarts from "echarts";
+
+export default {
+  setup() {
+    const chartContainer = ref(null);
+    let chartInstance = null;
+
+    // 初始化 ECharts
+    const initChart = () => {
+      if (chartContainer.value) {
+        chartInstance = echarts.init(chartContainer.value);
+        chartInstance.setOption({
+          title: { text: "ECharts 自适应示例" },
+          tooltip: {},
+          xAxis: { type: "category", data: ["A", "B", "C", "D", "E"] },
+          yAxis: { type: "value" },
+          series: [{ type: "bar", data: [10, 22, 28, 43, 49] }],
+        });
+      }
+    };
+
+    // 监听窗口大小变化
+    const resizeChart = () => {
+      if (chartInstance) {
+        chartInstance.resize();
+      }
+    };
+
+    onMounted(() => {
+      nextTick(() => {
+        initChart();
+        window.addEventListener("resize", resizeChart);
+      });
+    });
+
+    onUnmounted(() => {
+      window.removeEventListener("resize", resizeChart);
+      if (chartInstance) {
+        chartInstance.dispose();
+        chartInstance = null;
+      }
+    });
+
+    return { chartContainer };
+  },
+};
+</script>
+
+<style scoped>
+.chart-container {
+  width: 100%;
+  height: 400px;
+}
+</style>
