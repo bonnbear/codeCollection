@@ -1,0 +1,250 @@
+<template>
+  <div>
+    <h2>详情信息</h2>
+    <div v-if="loading">加载中...</div>
+    <div v-else-if="error" class="error">{{ error }}</div>
+    <div v-else>
+      <p><strong>ID:</strong> {{ detail.id }}</p>
+      <p><strong>名称:</strong> {{ detail.name }}</p>
+      <p><strong>描述:</strong> {{ detail.description }}</p>
+
+      <!-- 发布按钮 -->
+      <el-button type="primary" @click="publish" :loading="publishing">
+        {{ published ? "重新发布" : "发布" }}
+      </el-button>
+    </div>
+  </div>
+</template>
+
+<script>
+import { ref, onMounted, watch } from "vue";
+import { useRoute } from "vue-router";
+import axios from "axios";
+import { ElMessage } from "element-plus"; // 导入 Element Plus 消息组件
+
+export default {
+  setup() {
+    const route = useRoute();
+    const stid = ref(route.query.stid); // 获取 query 参数
+    const detail = ref({});
+    const loading = ref(true);
+    const error = ref(null);
+    const publishing = ref(false);
+    const published = ref(false); // 是否已发布
+
+    // 获取详情数据
+    const fetchDetails = async () => {
+      if (!stid.value) {
+        error.value = "缺少 stid 参数";
+        loading.value = false;
+        return;
+      }
+
+      loading.value = true;
+      error.value = null;
+
+      try {
+        const response = await axios.get(`https://api.example.com/details/${stid.value}`);
+        detail.value = response.data;
+      } catch (err) {
+        error.value = "加载详情失败，请稍后再试";
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    // 监听 query 参数变化（如用户修改 URL）
+    watch(() => route.query.stid, (newStid) => {
+      stid.value = newStid;
+      fetchDetails();
+    });
+
+    // 发布操作
+    const publish = async () => {
+      if (!stid.value) {
+        ElMessage.error("缺少 stid，无法发布");
+        return;
+      }
+
+      publishing.value = true;
+
+      try {
+        await axios.post(`https://api.example.com/publish`, { stid: stid.value });
+        ElMessage.success("发布成功！");
+        published.value = true; // 更新按钮状态
+      } catch (err) {
+        ElMessage.error("发布失败，请稍后再试");
+      } finally {
+        publishing.value = false;
+      }
+    };
+
+    onMounted(fetchDetails);
+
+    return { detail, loading, error, publish, publishing, published };
+  }
+};
+</script>
+
+<style scoped>
+.error {
+  color: red;
+}
+</style>
+
+
+
+
+
+
+
+<script setup>
+  import { ref, computed, onMounted } from "vue";
+  
+  // 选中的类型
+  const selectedType = ref("");
+  
+  // 字段处理逻辑（不同字段有不同的处理方式）
+  const fieldProcessors = {
+    name: (value) => (Array.isArray(value) ? value.join(", ") : value || "暂无数据"),
+    age: (value) => (value ? `${value} 岁` : "未知年龄"),
+    price: (value) => (value ? `¥${value.toLocaleString()}` : "暂无价格"),
+    warranty: (value) => (value ? `${value} 年` : "无保修"),
+    phone: (value) => (value ? value.replace(/(\d{3})(\d{4})(\d{4})/, "$1-$2-$3") : "无电话信息"),
+    email: (value) => (value ? value.toLowerCase() : "无邮箱"),
+    year: (value) => (value ? `${value} 年` : "未知年份"),
+    fuelType: (value) => (value ? `燃料类型: ${value}` : "未知燃料"),
+  };
+  
+  // 定义不同类型对应的字段映射
+  const typeConfig = {
+    person: {
+      label: "人",
+      fields: [
+        { key: "name", label: "名字" },
+        { key: "age", label: "年龄" },
+        { key: "gender", label: "性别" },
+        { key: "email", label: "邮箱" },
+        { key: "phone", label: "电话" }
+      ]
+    },
+    item: {
+      label: "物品",
+      fields: [
+        { key: "itemName", label: "物品名称" },
+        { key: "itemType", label: "物品类型" },
+        { key: "price", label: "价格" },
+        { key: "manufacturer", label: "制造商" },
+        { key: "warranty", label: "保修期" }
+      ]
+    },
+    vehicle: {
+      label: "车辆",
+      fields: [
+        { key: "brand", label: "品牌" },
+        { key: "model", label: "型号" },
+        { key: "year", label: "出厂年份" },
+        { key: "engine", label: "发动机类型" },
+        { key: "fuelType", label: "燃料类型" }
+      ]
+    }
+  };
+  
+  // 存储 API 返回的数据
+  const apiData = ref(null);
+  const loading = ref(false);
+  
+  // 计算当前选中类型对应的字段
+  const currentFields = computed(() => {
+    return typeConfig[selectedType.value]?.fields || [];
+  });
+  
+  // 模拟 API 返回数据
+  const mockApiData = {
+    person: {
+      name: ["张三", "李四"], // 这里改成数组，模拟接口返回的情况
+      age: 30,
+      gender: "男",
+      email: "ZHANGSAN@EXAMPLE.COM",
+      phone: "12345678901"
+    },
+    item: {
+      itemName: "苹果手机",
+      itemType: "电子设备",
+      price: 5999,
+      manufacturer: "Apple",
+      warranty: 2
+    },
+    vehicle: {
+      brand: "丰田",
+      model: "卡罗拉",
+      year: 2022,
+      engine: "1.8L",
+      fuelType: "汽油"
+    }
+  };
+  
+  // 统一处理数据的方法
+  const processApiData = (rawData) => {
+    let processedData = {};
+    for (let key in rawData) {
+      if (fieldProcessors[key]) {
+        processedData[key] = fieldProcessors[key](rawData[key]); // 使用对应的处理函数
+      } else {
+        processedData[key] = rawData[key] || "暂无数据"; // 默认处理
+      }
+    }
+    return processedData;
+  };
+  
+  // 获取数据的函数（模拟 API 请求）
+  const fetchData = async () => {
+    if (!selectedType.value) return;
+  
+    loading.value = true; // 开始加载
+    apiData.value = null; // 清空旧数据
+  
+    setTimeout(() => {
+      let data = mockApiData[selectedType.value] || {};
+      apiData.value = processApiData(data); // 处理数据
+      loading.value = false; // 加载完成
+    }, 1000); // 模拟 1 秒的网络请求延迟
+  };
+  
+  // 监听类型变化，重新获取数据
+  const handleTypeChange = () => {
+    fetchData();
+  };
+  
+  // 组件挂载时调用
+  onMounted(() => {
+    selectedType.value = "person"; // 默认选中 "人"
+    fetchData();
+  });
+  </script>
+  
+  <template>
+    <div class="p-4 max-w-md mx-auto">
+      <label for="typeSelect" class="block mb-2 font-bold">选择类型:</label>
+      <select v-model="selectedType" @change="handleTypeChange" id="typeSelect" class="border p-2 w-full rounded">
+        <option value="person">人</option>
+        <option value="item">物品</option>
+        <option value="vehicle">车辆</option>
+      </select>
+  
+      <!-- 数据展示 -->
+      <div v-if="loading" class="mt-4 text-gray-500">正在加载数据...</div>
+  
+      <div v-if="apiData && !loading" class="mt-4 border p-4 rounded">
+        <h2 class="text-lg font-bold mb-2">{{ typeConfig[selectedType]?.label }} 信息</h2>
+        <div v-for="field in currentFields" :key="field.key" class="mb-2">
+          <span class="font-semibold">{{ field.label }}:</span>
+          <span class="ml-2">{{ apiData[field.key] || "暂无数据" }}</span>
+        </div>
+      </div>
+    </div>
+  </template>
+  
+  <style scoped>
+  /* 可选的额外样式 */
+  </style>
