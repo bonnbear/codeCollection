@@ -1,0 +1,145 @@
+<template>
+  <div class="list-container">
+    <h2>任务列表</h2>
+
+    <div class="input-row">
+      <input v-model="newItem" @keyup.enter="addItem" placeholder="添加新任务..." />
+      <el-button type="primary" @click="addItem" size="small">添加</el-button>
+    </div>
+
+    <div v-if="list.length > 0" class="list">
+      <!-- 第一项 -->
+      <div class="list-item">
+        <span>{{ list[0] }}</span>
+        <!-- 折叠图标（仅当 isCollapse 生效且有多项时显示） -->
+        <el-icon
+          v-if="isCollapse && list.length > 1"
+          class="toggle-icon"
+          @click="toggleExpand"
+        >
+          <component :is="expanded ? ExpandLessIcon : ExpandMoreIcon" />
+        </el-icon>
+      </div>
+
+      <!-- 展开部分 -->
+      <transition name="fade">
+        <div v-if="!isCollapse || expanded">
+          <div
+            v-for="(item, index) in restItems"
+            :key="index"
+            class="list-item"
+          >
+            <span>{{ item }}</span>
+            <el-button
+              type="danger"
+              size="small"
+              @click="removeItem(index + 1)"
+              plain
+            >
+              删除
+            </el-button>
+          </div>
+        </div>
+      </transition>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, defineProps } from 'vue'
+import { ElButton, ElIcon } from 'element-plus'
+import 'element-plus/es/components/button/style/css'
+import 'element-plus/es/components/icon/style/css'
+
+// 图标
+import {
+  ArrowDownBold as ExpandMoreIcon,
+  ArrowUpBold as ExpandLessIcon
+} from '@element-plus/icons-vue'
+
+// Props
+const props = defineProps({
+  isCollapse: {
+    type: Boolean,
+    default: true
+  }
+})
+
+// 状态
+const list = ref(['学习 Vue 3', '写一个组件', '测试折叠功能'])
+const newItem = ref('')
+const expanded = ref(false)
+
+const addItem = () => {
+  if (newItem.value.trim()) {
+    list.value.push(newItem.value.trim())
+    newItem.value = ''
+  }
+}
+
+const removeItem = (index) => {
+  list.value.splice(index, 1)
+}
+
+const toggleExpand = () => {
+  expanded.value = !expanded.value
+}
+
+const restItems = computed(() => list.value.slice(1))
+</script>
+
+<style scoped>
+.list-container {
+  max-width: 420px;
+  margin: 2rem auto;
+  padding: 1rem;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
+
+.input-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+input {
+  flex: 1;
+  padding: 0.4rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+  padding: 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+}
+
+.toggle-icon {
+  cursor: pointer;
+  margin-left: 0.5rem;
+}
+
+/* 动画 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: all 0.3s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-5px);
+}
+</style>
