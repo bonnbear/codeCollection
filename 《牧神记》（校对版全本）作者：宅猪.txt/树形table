@@ -1,0 +1,227 @@
+<template>
+  <div class="app-container">
+    <h2>模拟API交互的树形表格</h2>
+    <p>组件加载后会自动请求数据。修改 Checkbox 后，点击下方按钮模拟保存。</p>
+
+    <div class="controls">
+      <el-button
+        type="primary"
+        @click="handleFetchData"
+        :loading="isLoading"
+        :disabled="isSaving"
+      >
+        刷新数据
+      </el-button>
+      <el-button
+        type="success"
+        @click="handleSaveData"
+        :loading="isSaving"
+        :disabled="isLoading"
+      >
+        保存当前修改
+      </el-button>
+    </div>
+
+    <!-- 
+      使用 v-loading 指令来显示加载动画。
+      它会覆盖在绑定的元素上。
+      当 isLoading 为 true 时显示。
+    -->
+    <el-table
+      v-loading="isLoading"
+      :data="tableData"
+      style="width: 100%; margin-top: 20px"
+      row-key="id"
+      border
+      default-expand-all
+      :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
+    >
+      <!-- 第一列：名字 (移除了 sortable) -->
+      <el-table-column prop="name" label="名字" width="250" />
+
+      <!-- 第二列：视图控制（自定义列） -->
+      <el-table-column label="视图控制">
+        <template #default="scope">
+          <div class="checkbox-group">
+            <el-checkbox
+              v-model="scope.row.adminTemplate"
+              label="管理模版"
+              size="large"
+              :disabled="isLoading || isSaving"
+            />
+            <el-checkbox
+              v-model="scope.row.jobTemplate"
+              label="作业模版"
+              size="large"
+              :disabled="isLoading || isSaving"
+            />
+            <el-checkbox
+              v-model="scope.row.normalTemplate"
+              label="普通模版"
+              size="large"
+              :disabled="isLoading || isSaving"
+            />
+          </div>
+        </template>
+      </el-table-column>
+    </el-table>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue';
+// 引入 ElMessage 用于消息提示
+import { ElMessage } from 'element-plus';
+
+// --- 状态定义 ---
+const tableData = ref([]); // 表格数据，初始为空
+const isLoading = ref(false); // 控制表格加载状态
+const isSaving = ref(false); // 控制保存按钮的加载状态
+
+// --- 模拟后端 API ---
+// 在真实项目中，这里会是 import axios from 'axios' 以及相关的请求封装
+const mockApi = {
+  /**
+   * 模拟从服务器获取数据
+   * @returns {Promise<Array>}
+   */
+  fetchData: () => {
+    console.log('API: 开始获取数据...');
+    return new Promise((resolve) => {
+      // 模拟 1.5 秒的网络延迟
+      setTimeout(() => {
+        console.log('API: 数据获取成功！');
+        const data = [
+          // ... 这里的结构和之前一样
+          { id: 1, name: '系统管理', adminTemplate: true, jobTemplate: false, normalTemplate: false, children: [
+              { id: 11, name: '用户管理', adminTemplate: true, jobTemplate: false, normalTemplate: true },
+              { id: 12, name: '角色权限', adminTemplate: true, jobTemplate: true, normalTemplate: false },
+            ]
+          },
+          { id: 2, name: '作业中心', adminTemplate: false, jobTemplate: true, normalTemplate: true, children: [
+              { id: 21, name: '我的作业', adminTemplate: false, jobTemplate: true, normalTemplate: true },
+              { id: 22, name: '作业模板市场', adminTemplate: false, jobTemplate: false, normalTemplate: true },
+            ]
+          },
+          { id: 3, name: '个人设置', adminTemplate: false, jobTemplate: false, normalTemplate: true },
+        ];
+        resolve(data);
+      }, 1500);
+    });
+  },
+
+  /**
+   * 模拟向服务器保存数据
+   * @param {Array} dataToSave - 要保存的数据
+   * @returns {Promise<{success: boolean}>}
+   */
+  saveData: (dataToSave) => {
+    console.log('API: 开始保存数据...', dataToSave);
+    return new Promise((resolve, reject) => {
+      // 模拟 1 秒的网络延迟
+      setTimeout(() => {
+        // 模拟一个可能失败的场景，例如 80% 成功率
+        if (Math.random() < 0.8) {
+          console.log('API: 数据保存成功！');
+          resolve({ success: true, message: '数据已成功更新到服务器！' });
+        } else {
+          console.error('API: 数据保存失败！');
+          reject({ success: false, message: '网络错误，保存失败，请重试。' });
+        }
+      }, 1000);
+    });
+  },
+};
+
+// --- 逻辑处理方法 ---
+
+/**
+ * 处理获取数据的逻辑
+ */
+const handleFetchData = async () => {
+  isLoading.value = true; // 开始加载，显示 loading
+  try {
+    // 调用模拟的 API
+    const data = await mockApi.fetchData();
+    tableData.value = data; // 将获取到的数据赋值给 tableData
+  } catch (error) {
+    ElMessage.error('获取数据失败，请检查网络或联系管理员。');
+    console.error(error);
+  } finally {
+    isLoading.value = false; // 结束加载，隐藏 loading
+  }
+};
+
+/**
+ * 处理保存数据的逻辑
+ */
+const handleSaveData = async () => {
+  isSaving.value = true; // 开始保存，按钮显示 loading
+  try {
+    // 将当前 tableData 的值（深拷贝一份以防意外修改）传递给 API
+    const response = await mockApi.saveData(JSON.parse(JSON.stringify(tableData.value)));
+    if (response.success) {
+      ElMessage.success('保存成功！');
+    }
+  } catch (error) {
+    // API 的 reject 会在这里被捕获
+    ElMessage.error(error.message || '保存时发生未知错误。');
+    console.error(error);
+  } finally {
+    isSaving.value = false; // 结束保存，恢复按钮状态
+  }
+};
+
+// --- 生命周期钩子 ---
+
+// onMounted 会在组件挂载完成后执行一次
+onMounted(() => {
+  handleFetchData(); // 页面加载时自动获取一次数据
+});
+</script>
+
+<style scoped>
+/* --- 控制占位：您原有的样式 --- */
+.app-container {
+  padding: 24px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+.controls {
+  margin-bottom: 20px;
+}
+.checkbox-group {
+  display: flex;
+  gap: 20px;
+}
+
+/* --- 新增样式穿透规则 --- */
+
+/* 
+  使用 :deep() 伪类来穿透 scoped 限制，修改 Element Plus 组件的内部样式 
+*/
+
+/* 1. 修改表头样式 */
+:deep(.el-table__header th.el-table__cell) {
+  background-color: #f2f6fc !important; /* 设置一个更柔和的蓝色作为背景 */
+  color: #303133 !important; /* 表头文字颜色 */
+  height: 60px; /* 增加表头高度 */
+  font-weight: bold;
+}
+
+/* 2. 修改表格主体单元格样式 */
+:deep(.el-table__body td.el-table__cell) {
+  background-color: #ffffff; /* 设置单元格背景为白色 */
+  padding: 12px 0; /* 调整单元格的垂直内边距 */
+}
+
+/* 3. (可选) 修改斑马纹行的颜色，使其更和谐 */
+:deep(.el-table .el-table__row--striped td.el-table__cell) {
+    background-color: #fafcff;
+}
+
+/* 4. (可选) 修改鼠标悬浮在行上时的背景色 */
+:deep(.el-table__body tr:hover > td.el-table__cell) {
+  background-color: #ecf5ff !important;
+}
+
+</style>
