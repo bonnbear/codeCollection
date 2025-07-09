@@ -1,0 +1,138 @@
+/**
+ * 深度比较两个对象，并找出所有差异，能处理循环引用、日期和函数。
+ *
+ * @param {any} obj1 第一个要比较的对象
+ * @param {any} obj2 第二个要比较的对象
+ * @param {object} [options] 可选配置
+ * @param {boolean} [options.compareFunctions=false] 是否比较函数（基于其字符串表示）。默认为 false（忽略）。
+ * @returns {{areSame: boolean, differences: Array<{path: string, value1: any, value2: any}>}}
+ * 返回一个对象，包含是否相同的布尔值和差异详情数组。
+ */
+function compareObjects(obj1, obj2, options = {}) {
+  const { compareFunctions = false } = options;
+  const differences = [];
+  
+  // 使用 WeakMap 来跟踪已访问的对象对，以防止循环引用。
+  // WeakMap 不会阻止垃圾回收，是处理对象引用的理想选择。
+  const visited = new WeakMap();
+
+  function findDifferences(val1, val2, path = []) {
+    // 如果值严格相等，无需继续比较
+    if (Object.is(val1, val2)) {
+      return;
+    }
+
+    // --- 循环引用检查 ---
+    // 检查 val1 是否是对象，并且是否已经与 val2 比较过
+    if (typeof val1 === 'object' && val1 !== null) {
+      if (visited.has(val1) && visited.get(val1).has(val2)) {
+        return; // 已经访问过这个对象对，跳过以避免循环
+      }
+      // 记录访问过的对象对
+      if (!visited.has(val1)) {
+        visited.set(val1, new WeakSet());
+      }
+      visited.get(val1).add(val2);
+    }
+
+    // --- 特殊类型处理：函数 ---
+    if (typeof val1 === 'function' && typeof val2 === 'function') {
+      if (compareFunctions) {
+        if (val1.toString() !== val2.toString()) {
+          differences.push({ path: path.join('.'), value1: 'Function()', value2: 'Function()' });
+        }
+      }
+      return; // 默认或比较后都直接返回，不深入
+    }
+    
+    // --- 特殊类型处理：日期 ---
+    const isDate1 = val1 instanceof Date;
+    const isDate2 = val2 instanceof Date;
+    if (isDate1 && isDate2) {
+      if (val1.getTime() !== val2.getTime()) {
+        differences.push({ path: path.join('.'), value1: val1, value2: val2 });
+      }
+      return; // 比较后直接返回
+    }
+    
+    // 处理 null 和非对象类型，或者类型不一致的情况
+    if (
+      val1 === null || val2 === null ||
+      typeof val1 !== 'object' || typeof val2 !== 'object' ||
+      Array.isArray(val1) !== Array.isArray(val2) ||
+      isDate1 !== isDate2 // 一个是日期另一个不是
+    ) {
+      differences.push({ path: path.join('.'), value1: val1, value2: val2 });
+      return;
+    }
+
+    // 此时 val1 和 val2 都应该是对象或数组
+    const keys1 = Object.keys(val1);
+    const keys2 = Object.keys(val2);
+    const allKeys = new Set([...keys1, ...keys2]);
+
+    for (const key of allKeys) {
+      const newPath = [...path, key];
+      findDifferences(val1[key], val2[key], newPath);
+    }
+  }
+
+  findDifferences(obj1, obj2);
+
+  return {
+    areSame: differences.length === 0,
+    differences: differences,
+  };
+}
+
+
+// --- 包含循环引用、日期和函数的复杂示例 ---
+
+// 对象1
+const user1 = { name: 'Alice' };
+const obj1 = {
+  id: 1,
+  user: user1,
+  createdAt: new Date('2024-01-01T12:00:00Z'),
+  update: function() { console.log('Updating 1...'); },
+  metadata: {
+    source: 'system'
+  }
+};
+// 创建循环引用
+obj1.self = obj1;
+user1.parent = obj1;
+
+// 对象2
+const user2 = { name: 'Alice' };
+const obj2 = {
+  id: 1,
+  user: user2,
+  createdAt: new Date('2024-01-01T12:00:01Z'), // <-- 1秒之差
+  update: function() { console.log('Updating 2...'); }, // <-- 不同的函数
+  metadata: {
+    source: 'user' // <-- 不同的值
+  }
+};
+// 创建与 obj1 结构相同的循环引用
+obj2.self = obj2;
+user2.parent = obj2;
+
+
+// --- 执行比较 ---
+
+console.log('--- 测试 1: 默认行为 (忽略函数比较) ---');
+const result1 = compareObjects(obj1, obj2);
+console.log('是否相同:', result1.areSame);
+console.log('差异点 (' + result1.differences.length + '处):');
+result1.differences.forEach(diff => {
+  console.log(`  - 路径: ${diff.path}, 值1: ${JSON.stringify(diff.value1)}, 值2: ${JSON.stringify(diff.value2)}`);
+});
+
+console.log('\n--- 测试 2: 开启函数比较 ---');
+const result2 = compareObjects(obj1, obj2, { compareFunctions: true });
+console.log('是否相同:', result2.areSame);
+console.log('差异点 (' + result2.differences.length + '处):');
+result2.differences.forEach(diff => {
+  console.log(`  - 路径: ${diff.path}, 值1: ${JSON.stringify(diff.value1)}, 值2: ${JSON.stringify(diff.value2)}`);
+});
