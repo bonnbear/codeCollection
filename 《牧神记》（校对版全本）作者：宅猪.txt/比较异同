@@ -306,3 +306,196 @@ const resultAC = compareObjects(expertObjA, expertObjC);
 console.log('是否相同:', resultAC.areSame);
 console.log('差异点:');
 resultAC.differences.forEach(diff => console.log(`  - ${JSON.stringify(diff, null, 2)}`));
+
+
+
+
+
+
+
+
+/**
+ * [终极版 v2] 深度比较两个值，并找出所有语义上的差异。
+ *
+ * 新增功能：通过选项 `compareArraysAsSets` 支持数组的无序比较。
+ *
+ * @param {*} value 第一个要比较的值。
+ * @param {*} other 第二个要比较的值。
+ * @param {object} [options] 可选配置。
+ * @param {boolean} [options.compareArraysAsSets=false] 如果为 true，则将数组视为无序集合进行比较。
+ * @returns {{areSame: boolean, differences: Array<{path: string, value1: any, value2: any}>}}
+ */
+function findDifferences(value, other, options = {}) {
+  const { compareArraysAsSets = false } = options;
+  const differences = [];
+  const visited = new WeakMap();
+
+  // 内部 isEqual 辅助函数，用于快速判断相等性，供数组无序比较使用。
+  function _isEqual(a, b) {
+    if (Object.is(a, b)) return true;
+    if (a && typeof a === 'object' && b && typeof b === 'object') {
+      if (visited.has(a) && visited.get(a) === b) return true;
+      // 注意：这里我们不设置 visited，因为主函数会处理。
+      // 我们只检查，避免在 isEqual 的递归中陷入死循环。
+      const tempResult = findDifferences(a, b, options);
+      return tempResult.areSame;
+    }
+    return false;
+  }
+
+  function _find(a, b, path = []) {
+    if (Object.is(a, b)) return;
+
+    if (a && typeof a === 'object' && b && typeof b === 'object') {
+      if (visited.has(a) && visited.get(a) === b) return;
+      visited.set(a, b);
+      visited.set(b, a);
+    }
+    
+    // 如果一个是数组而另一个不是，它们肯定不同。
+    const isArrayA = Array.isArray(a);
+    const isArrayB = Array.isArray(b);
+    if (isArrayA !== isArrayB) {
+        differences.push({ path: path.join('.'), value1: a, value2: b });
+        return;
+    }
+    
+    // 如果选项开启且两者都是数组，使用无序比较
+    if (isArrayA && isArrayB && compareArraysAsSets) {
+        findArrayDifferencesAsSet(a, b, path);
+        return;
+    }
+
+    // --- 其他类型的处理逻辑保持不变 ---
+    const tagA = Object.prototype.toString.call(a);
+    const tagB = Object.prototype.toString.call(b);
+
+    if (tagA !== tagB) {
+      differences.push({ path: path.join('.'), value1: a, value2: b });
+      return;
+    }
+
+    switch (tagA) {
+      case '[object Array]':
+        findArrayDifferences(a, b, path);
+        break;
+      // ... 其他 case 保持不变 ...
+      case '[object RegExp]':
+        if (a.source !== b.source || a.flags !== b.flags) {
+          differences.push({ path: path.join('.'), value1: a, value2: b });
+        }
+        break;
+      case '[object Date]':
+        if (a.getTime() !== b.getTime()) {
+          differences.push({ path: path.join('.'), value1: a, value2: b });
+        }
+        break;
+      case '[object Map]':
+        // ... (代码与上一版相同)
+        break;
+      case '[object Set]':
+        // ... (代码与上一版相同)
+        break;
+      case '[object Object]':
+        if (Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) {
+             differences.push({ path: path.join('.'), value1: a, value2: b, reason: 'Prototype Mismatch' });
+             break;
+         }
+        findObjectDifferences(a, b, path);
+        break;
+      default:
+        differences.push({ path: path.join('.'), value1: a, value2: b });
+        break;
+    }
+  }
+
+  // --- 辅助函数 ---
+
+  // 默认的、顺序敏感的数组比较
+  function findArrayDifferences(a, b, path) {
+    const len = Math.max(a.length, b.length);
+    for (let i = 0; i < len; i++) {
+      _find(a[i], b[i], [...path, i]);
+    }
+  }
+
+  // 新增的、顺序无关的数组比较 (作为集合/bag比较)
+  function findArrayDifferencesAsSet(a, b, path) {
+    const bCopy = [...b];
+    const unmatchedInA = [];
+
+    // 遍历 a，尝试在 bCopy 中找到匹配并消耗它
+    for (const valA of a) {
+      const matchIndex = bCopy.findIndex(valB => _isEqual(valA, valB));
+
+      if (matchIndex > -1) {
+        // 找到了，从 bCopy 中移除，避免重复匹配
+        bCopy.splice(matchIndex, 1);
+      } else {
+        // 在 bCopy 中没找到匹配项
+        unmatchedInA.push(valA);
+      }
+    }
+
+    // 报告差异
+    // unmatchedInA 中是 a 有但 b 没有的元素
+    for (const item of unmatchedInA) {
+      differences.push({
+        path: path.join('.'),
+        value1: item,
+        value2: '[Missing from Array 2 (Set comparison)]'
+      });
+    }
+    // bCopy 中剩下的是 b 有但 a 没有的元素
+    for (const item of bCopy) {
+      differences.push({
+        path: path.join('.'),
+        value1: '[Missing from Array 1 (Set comparison)]',
+        value2: item
+      });
+    }
+  }
+
+  function findObjectDifferences(a, b, path) {
+    const keysA = Object.keys(a);
+    const keysB = Object.keys(b);
+    const allKeys = new Set([...keysA, ...keysB]);
+
+    for (const key of allKeys) {
+      _find(a[key], b[key], [...path, key]);
+    }
+  }
+  
+  // Map 和 Set 的比较函数需要从上一版复制过来，这里为简洁省略
+  // ... findMapDifferences, findSetDifferences ...
+
+  // --- 执行 ---
+  _find(value, other);
+  return {
+    areSame: differences.length === 0,
+    differences: differences,
+  };
+}
+
+
+// --- 测试对比 ---
+
+const arr1 = [1, { id: 100 }, 3];
+const arr2 = [{ id: 100 }, 3, 1];
+const arr3 = [1, 1, 2];
+const arr4 = [1, 2, 2];
+
+console.log("--- 默认（顺序敏感）比较 ---");
+const resDefault = findDifferences(arr1, arr2);
+console.log(`[1, {id:100}, 3] vs [{id:100}, 3, 1] 是否相同: ${resDefault.areSame}`);
+console.log("差异:", resDefault.differences);
+
+console.log("\n--- 数组作为集合（顺序无关）比较 ---");
+const resAsSet = findDifferences(arr1, arr2, { compareArraysAsSets: true });
+console.log(`[1, {id:100}, 3] vs [{id:100}, 3, 1] 是否相同: ${resAsSet.areSame}`);
+console.log("差异:", resAsSet.differences);
+
+console.log("\n--- 集合比较（存在真实差异）---");
+const resRealDiff = findDifferences(arr3, arr4, { compareArraysAsSets: true });
+console.log(`[1, 1, 2] vs [1, 2, 2] 是否相同: ${resRealDiff.areSame}`);
+console.log("差异:", resRealDiff.differences);
