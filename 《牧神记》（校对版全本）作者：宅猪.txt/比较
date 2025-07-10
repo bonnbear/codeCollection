@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>通用对象比较函数</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.6; padding: 20px; background-color: #f8f9fa; color: #333; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1, h2, h3 { color: #0056b3; border-bottom: 2px solid #e9ecef; padding-bottom: 10px; }
+        code { background-color: #e9ecef; padding: 2px 6px; border-radius: 4px; font-family: "Courier New", Courier, monospace; }
+        pre { background-color: #e9ecef; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; }
+        .result { margin-top: 15px; padding: 10px; border-left: 4px solid; border-radius: 4px; }
+        .true { border-color: #28a745; background-color: #e9f7ef; }
+        .false { border-color: #dc3545; background-color: #fbebed; }
+        .explanation { font-size: 0.9em; color: #6c757d; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>通用对象比较函数</h1>
+    <p>此函数接收两个对象和一个键数组 <code>keysToCompare</code>。它会遍历这个键数组，智能地比较两个对象中对应键的值：</p>
+    <ul>
+        <li>如果值是普通类型（字符串、数字等），则直接比较。</li>
+        <li>如果值是数组，则进行顺序无关的内容比较。</li>
+    </ul>
+
+    <h2>函数定义</h2>
+    <pre><code id="function-code">
+/**
+ * 比较两个数组，忽略元素顺序，但确保内容基于指定的键匹配。
+ * 这是一个辅助函数。
+ * @param {Array} arr1 - 第一个数组。
+ * @param {Array} arr2 - 第二个数组。
+ * @param {string[]} itemKeys - 用于比较数组内对象的键。
+ * @returns {boolean} - 如果数组内容匹配则返回 true。
+ */
+function compareUnorderedArrays(arr1, arr2, itemKeys) {
+  if (arr1.length !== arr2.length) {
+    return false;
+  }
+  if (arr1.length === 0) {
+    return true;
+  }
+
+  const arr2Copy = [...arr2];
+
+  for (const item1 of arr1) {
+    let foundMatch = false;
+    let matchIndex = -1;
+
+    for (let i = 0; i < arr2Copy.length; i++) {
+      const item2 = arr2Copy[i];
+      // 这里的比较逻辑是核心：我们假设数组内的元素是对象，
+      // 并使用一个递归的思路，用 compareObjects 函数自身来比较它们。
+      // 注意：为了避免无限递归，实际应用中可能需要更复杂的键管理。
+      // 但根据当前需求，我们直接比较 itemKeys。
+      const areItemsEqual = itemKeys.every(key => {
+          // 确保比较的 item 也是对象且拥有 key
+          if (typeof item1 === 'object' && item1 !== null && typeof item2 === 'object' && item2 !== null) {
+              return item1[key] === item2[key];
+          }
+          // 如果 item 不是对象，则直接比较
+          return item1 === item2;
+      });
+
+      if (areItemsEqual) {
+        foundMatch = true;
+        matchIndex = i;
+        break;
+      }
+    }
+
+    if (foundMatch) {
+      arr2Copy.splice(matchIndex, 1);
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * 根据一个键数组，深度比较两个对象。
+ * @param {object} obj1 - 第一个对象。
+ * @param {object} obj2 - 第二个对象。
+ * @param {string[]} keysToCompare - 要比较的键的数组。
+ * @returns {boolean} - 如果所有指定的键都匹配，则返回 true。
+ */
+function compareObjects(obj1, obj2, keysToCompare) {
+  // 遍历需要比较的每一个键
+  for (const key of keysToCompare) {
+    const val1 = obj1[key];
+    const val2 = obj2[key];
+
+    const isVal1Array = Array.isArray(val1);
+    const isVal2Array = Array.isArray(val2);
+
+    // 情况1: 两个值都是数组
+    if (isVal1Array && isVal2Array) {
+      // 使用辅助函数进行顺序无关的比较
+      // 注意：我们传递 `keysToCompare` 作为比较数组内部对象的键列表
+      if (!compareUnorderedArrays(val1, val2, keysToCompare)) {
+        return false; // 如果数组不匹配，则整个对象不匹配
+      }
+    } 
+    // 情况2: 两个值都不是数组 (原始类型或对象)
+    else if (!isVal1Array && !isVal2Array) {
+      // 进行严格相等比较
+      if (val1 !== val2) {
+        return false; // 如果原始值不匹配，则整个对象不匹配
+      }
+    }
+    // 情况3: 一个是数组，另一个不是
+    else {
+      return false; // 类型不同，肯定不匹配
+    }
+  }
+
+  // 如果循环完成都没有返回 false，说明所有键都匹配成功
+  return true;
+}
+    </code></pre>
+
+    <h2>测试用例</h2>
+    <div id="test-results"></div>
+</div>
+
+<script>
+// 函数定义 (同上)
+function compareUnorderedArrays(arr1, arr2, itemKeys) {
+  if (arr1.length !== arr2.length) return false;
+  if (arr1.length === 0) return true;
+  const arr2Copy = [...arr2];
+  for (const item1 of arr1) {
+    let foundMatch = false;
+    let matchIndex = -1;
+    for (let i = 0; i < arr2Copy.length; i++) {
+      const item2 = arr2Copy[i];
+      const areItemsEqual = itemKeys.every(key => {
+          if (typeof item1 === 'object' && item1 !== null && typeof item2 === 'object' && item2 !== null) {
+              return item1[key] === item2[key];
+          }
+          return item1 === item2;
+      });
+      if (areItemsEqual) {
+        foundMatch = true;
+        matchIndex = i;
+        break;
+      }
+    }
+    if (foundMatch) {
+      arr2Copy.splice(matchIndex, 1);
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+function compareObjects(obj1, obj2, keysToCompare) {
+  for (const key of keysToCompare) {
+    const val1 = obj1[key];
+    const val2 = obj2[key];
+    const isVal1Array = Array.isArray(val1);
+    const isVal2Array = Array.isArray(val2);
+    if (isVal1Array && isVal2Array) {
+      if (!compareUnorderedArrays(val1, val2, keysToCompare)) {
+        return false;
+      }
+    } else if (!isVal1Array && !isVal2Array) {
+      if (val1 !== val2) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+// --- 准备测试数据 ---
+const baseObj1 = {
+    companyId: 101,
+    companyName: 'TechCorp',
+    departments: [
+        { id: 1, name: 'Engineering' },
+        { id: 2, name: 'Marketing' }
+    ]
+};
+
+const testCases = [
+    {
+        title: "测试1: 完全相同 (混合属性)",
+        obj1: baseObj1,
+        obj2: {
+            companyId: 101,
+            companyName: 'TechCorp',
+            departments: [ { id: 1, name: 'Engineering' }, { id: 2, name: 'Marketing' } ]
+        },
+        keysToCompare: ['companyId', 'departments'],
+        explanation: "比较 'companyId' (原始值) 和 'departments' (数组)。两者都相同，应为 true。"
+    },
+    {
+        title: "测试2: 数组顺序不同，但内容相同",
+        obj1: baseObj1,
+        obj2: {
+            companyId: 101,
+            companyName: 'TechCorp',
+            departments: [ { id: 2, name: 'Marketing' }, { id: 1, name: 'Engineering' } ]
+        },
+        keysToCompare: ['companyId', 'departments', 'id', 'name'],
+        explanation: "数组顺序不同但内容匹配，'companyId' 也相同，应为 true。注意：keysToCompare 现在也包含了数组内对象的比较键。"
+    },
+    {
+        title: "测试3: 原始属性值不同",
+        obj1: baseObj1,
+        obj2: {
+            companyId: 102, // <-- 不同
+            companyName: 'TechCorp',
+            departments: [ { id: 1, name: 'Engineering' }, { id: 2, name: 'Marketing' } ]
+        },
+        keysToCompare: ['companyId', 'departments'],
+        explanation: "'companyId' 的值不同 (101 vs 102)，应为 false。"
+    },
+    {
+        title: "测试4: 数组内容不同",
+        obj1: baseObj1,
+        obj2: {
+            companyId: 101,
+            companyName: 'TechCorp',
+            departments: [ { id: 1, name: 'Engineering' }, { id: 3, name: 'Sales' } ] // <-- 不同
+        },
+        keysToCompare: ['companyId', 'departments', 'id', 'name'],
+        explanation: "数组 'departments' 的内容不匹配 (Marketing vs Sales)，应为 false。"
+    },
+    {
+        title: "测试5: 数组长度不同",
+        obj1: baseObj1,
+        obj2: {
+            companyId: 101,
+            companyName: 'TechCorp',
+            departments: [ { id: 1, name: 'Engineering' } ] // <-- 长度不同
+        },
+        keysToCompare: ['departments'],
+        explanation: "数组 'departments' 的长度不同，应为 false。"
+    },
+    {
+        title: "测试6: 键对应的值类型不同",
+        obj1: baseObj1,
+        obj2: {
+            companyId: 101,
+            companyName: 'TechCorp',
+            departments: "This is not an array" // <-- 类型不同
+        },
+        keysToCompare: ['departments'],
+        explanation: "一个对象的 'departments' 是数组，另一个是字符串，类型不匹配，应为 false。"
+    }
+];
+
+// --- 渲染测试结果 ---
+const resultsContainer = document.getElementById('test-results');
+testCases.forEach(test => {
+    const result = compareObjects(test.obj1, test.obj2, test.keysToCompare);
+    const resultDiv = document.createElement('div');
+    resultDiv.className = `result ${result}`;
+    resultDiv.innerHTML = `
+        <h3>${test.title}</h3>
+        <p>比较结果: <code>${result}</code></p>
+        <p class="explanation">${test.explanation}</p>
+    `;
+    resultsContainer.appendChild(resultDiv);
+});
+</script>
+
+</body>
+</html>
