@@ -209,3 +209,302 @@ onBeforeUnmount(() => {
   font-weight: bold;
 }
 </style>
+
+
+
+
+
+<template>
+  <div
+    class="centered-arrow-dropdown"
+    ref="dropdownRef"
+    :class="{ 'is-open': isOpen }"
+  >
+    <!-- 触发器 -->
+    <button
+      type="button"
+      class="dropdown-trigger"
+      ref="triggerRef"
+      @click="toggleDropdown"
+      @keydown.down.prevent="handleKeydown"
+      @keydown.up.prevent="handleKeydown"
+      @keydown.enter.prevent="selectFocusedItem"
+      @keydown.space.prevent="selectFocusedItem"
+      @keydown.esc.prevent="closeMenu"
+      :aria-expanded="isOpen"
+      aria-haspopup="listbox"
+      :aria-controls="menuId"
+    >
+      <span class="trigger-text">{{ selectedItem?.label ?? '请选择' }}</span>
+      <svg class="arrow-icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M104.704 338.752a64 64 0 0 1 90.496 0l316.8 316.8 316.8-316.8a64 64 0 0 1 90.496 90.496L557.248 791.296a64 64 0 0 1-90.496 0L104.704 429.248a64 64 0 0 1 0-90.496z"></path></svg>
+    </button>
+
+    <!-- 下拉菜单 -->
+    <div
+      v-if="isOpen"
+      class="dropdown-popper"
+      ref="menuRef"
+    >
+      <div class="popper-arrow"></div>
+      <ul
+        :id="menuId"
+        class="menu-list"
+        role="listbox"
+        :aria-activedescendant="activeDescendant"
+      >
+        <li
+          v-for="(item, index) in items"
+          :key="item.value"
+          :id="`${menuId}-${index}`"
+          class="menu-item"
+          :class="{ 
+            'is-active': item.value === modelValue,
+            'is-focused': index === focusedIndex
+          }"
+          role="option"
+          :aria-selected="item.value === modelValue"
+          @click="handleItemClick(item)"
+        >
+          {{ item.label }}
+        </li>
+      </ul>
+    </div>
+  </div>
+</template>
+
+<!-- 
+  核心改动 1: 使用一个常规 <script> 块来定义模块作用域的常量
+  这个块中的代码会被最先执行，并且其顶级变量对 <script setup> 可见。
+-->
+<script>
+export const defaultMenuItems = [
+  { label: '黄金糕', value: 'gold-cake' },
+  { label: '狮子头', value: 'lion-head' },
+  { label: '螺蛳粉', value: 'snail-noodle' },
+  { label: '双皮奶', value: 'double-milk' },
+  { label: '蚵仔煎', value: 'oyster-omelette' },
+];
+</script>
+
+<!-- 
+  核心改动 2: <script setup> 现在可以安全地引用在上面定义的常量
+-->
+<script setup>
+import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue';
+
+// Props & Model
+const props = defineProps({
+  items: {
+    type: Array,
+    // 现在这样写是绝对安全的，因为 defaultMenuItems 来自模块作用域
+    default: () => defaultMenuItems,
+  },
+});
+
+const modelValue = defineModel({ 
+  type: [String, Number],
+  // 默认值也引用模块作用域的常量
+  default: defaultMenuItems[0].value,
+});
+
+// --- 剩余的逻辑代码与之前完全相同，无需改动 ---
+
+// Refs
+const dropdownRef = ref(null);
+const triggerRef = ref(null);
+const menuRef = ref(null);
+const isOpen = ref(false);
+const focusedIndex = ref(-1);
+
+// Computed Properties
+const selectedItem = computed(() => props.items.find(item => item.value === modelValue.value));
+const menuId = `dropdown-menu-${Math.random().toString(36).substring(2, 9)}`;
+const activeDescendant = computed(() => 
+  focusedIndex.value >= 0 ? `${menuId}-${focusedIndex.value}` : ''
+);
+
+// Methods
+const toggleDropdown = () => {
+  isOpen.value = !isOpen.value;
+};
+
+const closeMenu = () => {
+  isOpen.value = false;
+  focusedIndex.value = -1; 
+};
+
+const handleItemClick = (item) => {
+  modelValue.value = item.value;
+  closeMenu();
+  triggerRef.value?.focus();
+};
+
+const handleClickOutside = (event) => {
+  if (dropdownRef.value && !dropdownRef.value.contains(event.target)) {
+    closeMenu();
+  }
+};
+
+// Accessibility: Keyboard Navigation
+const handleKeydown = (event) => {
+  if (!isOpen.value) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      isOpen.value = true;
+    }
+    return;
+  }
+
+  const itemsCount = props.items.length;
+  if (itemsCount === 0) return;
+
+  switch (event.key) {
+    case 'ArrowDown':
+      focusedIndex.value = (focusedIndex.value + 1) % itemsCount;
+      break;
+    case 'ArrowUp':
+      focusedIndex.value = (focusedIndex.value - 1 + itemsCount) % itemsCount;
+      break;
+    case 'Escape':
+      closeMenu();
+      triggerRef.value?.focus();
+      break;
+  }
+  
+  nextTick(() => {
+    const focusedEl = menuRef.value?.querySelector('.is-focused');
+    focusedEl?.scrollIntoView({ block: 'nearest' });
+  });
+};
+
+const selectFocusedItem = () => {
+  if (!isOpen.value) {
+    isOpen.value = true;
+    return;
+  }
+  if (focusedIndex.value !== -1) {
+    handleItemClick(props.items[focusedIndex.value]);
+  }
+};
+
+// Lifecycle & Watchers
+watch(isOpen, (isNowOpen) => {
+  if (isNowOpen) {
+    focusedIndex.value = props.items.findIndex(item => item.value === modelValue.value);
+    document.addEventListener('click', handleClickOutside, true);
+  } else {
+    document.removeEventListener('click', handleClickOutside, true);
+  }
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickOutside, true);
+});
+</script>
+
+<style scoped>
+/* 样式部分无需改动 */
+.centered-arrow-dropdown {
+  position: relative;
+  display: inline-block;
+  width: 200px;
+  user-select: none;
+}
+
+.dropdown-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #606266;
+  background-color: #ffffff;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  text-align: left;
+}
+
+.centered-arrow-dropdown.is-open .dropdown-trigger,
+.dropdown-trigger:hover,
+.dropdown-trigger:focus {
+  border-color: #409eff;
+  outline: none;
+}
+
+.trigger-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arrow-icon {
+  flex-shrink: 0;
+  margin-left: 8px;
+  width: 12px;
+  height: 12px;
+  transition: transform 0.3s;
+  color: #909399;
+}
+
+.centered-arrow-dropdown.is-open .arrow-icon {
+  transform: rotate(180deg);
+}
+
+.dropdown-popper {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+  z-index: 10;
+  background-color: #ffffff;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+.popper-arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  top: -7px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  background: #ffffff;
+  border-top: 1px solid #e4e7ed;
+  border-left: 1px solid #e4e7ed;
+}
+
+.menu-list {
+  list-style: none;
+  padding: 6px 0;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.menu-item {
+  padding: 8px 20px;
+  font-size: 14px;
+  color: #606266;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.menu-item.is-focused,
+.menu-item:hover {
+  background-color: #f5f7fa;
+}
+
+.menu-item.is-active {
+  color: #409eff;
+  font-weight: 500;
+}
+
+.menu-item.is-active.is-focused {
+  color: #409eff;
+  background-color: #f5f7fa;
+}
+</style>
