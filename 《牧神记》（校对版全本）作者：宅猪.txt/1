@@ -1,103 +1,173 @@
-<template>
-  <div ref="chartRef" style="height: 400px;"></div>
-</template>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>标准 Zoom 换算器 (基于 1920x1080@1.0)</title>
+  <style>
+    body { background-color: #f0f2f5; color: #333; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 1rem; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; }
+    #app { width: 100%; max-width: 800px; margin-top: 2rem; padding: 2rem; background-color: #fff; border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.07); }
+    h1 { text-align: center; color: #1a1a1a; margin-bottom: 2rem; }
+    h2 { color: #42b983; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; margin-bottom: 1rem; }
+    .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    .panel { background-color: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 8px; padding: 1.5rem; }
+    .full-width { grid-column: 1 / -1; }
+    .standard-panel { background-color: #fffbe6; border-color: #ffe58f; }
+    .standard-panel .value { font-weight: bold; color: #fa8c16; }
+    .form-group { margin-bottom: 1.5rem; }
+    label { font-weight: bold; display: block; margin-bottom: 0.5rem; }
+    .input-container { display: flex; align-items: center; gap: 1rem; }
+    input[type="range"] { flex-grow: 1; cursor: pointer; }
+    input[type="number"] { width: 80px; padding: 0.5rem; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem; text-align: center; }
+    .value-display { font-weight: bold; font-size: 1.1rem; color: #1a1a1a; background-color: #eee; padding: 0.5rem 1rem; border-radius: 6px; min-width: 50px; text-align: center; }
+    small { color: #7f8c8d; margin-top: 0.5rem; display: block; }
+    .action-button { background-color: #42b983; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: background-color 0.2s; }
+    .action-button:hover { background-color: #36a476; }
+    .result-panel { text-align: center; background-color: #e8f5e9; border-color: #a5d6a7; }
+    .result-panel .formula { background-color: #fff; padding: 0.8rem; border-radius: 4px; margin: 1rem 0; font-family: 'Courier New', Courier, monospace; font-size: 1.1rem; word-wrap: break-word; color: #333; }
+    .result-panel .final-result { font-size: 2.5rem; font-weight: bold; color: #2e7d32; margin-top: 0.5rem; margin-bottom: 1rem; }
+    .context-panel p { margin: 1rem 0; }
+    .context-panel strong { color: #1565c0; font-size: 1.1em; }
+    @media (max-width: 768px) {
+      .grid-container { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
 
-<script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import * as echarts from 'echarts'
+  <div id="app">
+    <h1>标准 Zoom 换算器</h1>
 
-const chartRef = ref(null)
-let myChart = null
+    <div class="grid-container">
+      <!-- 1. 标准环境 (固定) -->
+      <div class="panel standard-panel full-width">
+        <h2>基准标准环境 (固定)</h2>
+        <p>所有计算都基于这个绝对不变的标准：一个分辨率为 <span class="value">1920x1080</span>、设备像素比 (DPR) 为 <span class="value">1.0</span> 的显示设备。</p>
+      </div>
 
-onMounted(() => {
-  myChart = echarts.init(chartRef.value)
-  
-  const option = {
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      containLabel: true,
-      show: true,
-      backgroundColor: 'rgba(0, 0, 0, 0.05)'
-    },
-    tooltip: {
-      show: false // 关闭默认的 tooltip
-    },
-    xAxis: {
-      type: 'category',
-      data: ['很长的文字测试一下省略号1', '很长的文字测试一下省略号2', '很长的文字测试一下省略号3', 
-             '很长的文字测试一下省略号4', '很长的文字测试一下省略号5', '很长的文字测试一下省略号6', 
-             '很长的文字测试一下省略号7'],
-      axisLabel: {
-        interval: 0,
-        width: 80,
-        overflow: 'truncate',
-        ellipsis: '...'
-      },
-      axisPointer: {
-        show: true,
-        type: 'none', // 不显示指示线
-        label: {
-          show: true,
-          backgroundColor: '#555',
-          padding: [5, 8],
-          formatter: function(params) {
-            return params.value;
+      <!-- 2. 归一化 Zoom 输入 -->
+      <div class="panel full-width">
+        <h2>1. 定义归一化 Zoom</h2>
+        <div class="form-group">
+          <label for="normalized-zoom-input">设置您期望在“标准环境”中应用的 Zoom 值</label>
+          <div class="input-container">
+            <input id="normalized-zoom-input" type="range" v-model.number="normalizedZoom" min="0.1" max="5" step="0.01" />
+            <span class="value-display">{{ formatNumber(normalizedZoom, 2) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. 您的设备参数 -->
+      <div class="panel full-width">
+        <h2>2. 输入您的目标设备参数</h2>
+        <div class="input-container" style="gap: 1.5rem; justify-content: space-around; flex-wrap: wrap;">
+          <div>
+            <label for="user-dpr-input" style="font-weight:normal;">您的DPR</label>
+            <input id="user-dpr-input" type="number" v-model.number="userDevice.dpr" step="0.01" />
+          </div>
+          <div>
+            <label for="user-width-input" style="font-weight:normal;">您的屏幕宽度 (px)</label>
+            <input id="user-width-input" type="number" v-model.number="userDevice.width" step="1" />
+          </div>
+          <div>
+            <label for="user-height-input" style="font-weight:normal;">您的屏幕高度 (px)</label>
+            <input id="user-height-input" type="number" v-model.number="userDevice.height" step="1" />
+          </div>
+          <button class="action-button" @click="detectDevice">自动检测我的设备</button>
+        </div>
+      </div>
+      
+      <!-- 4. 计算结果 -->
+      <div class="panel result-panel">
+        <h2>3. 核心计算结果</h2>
+        <p>为了在您的设备上获得相同的物理视觉尺寸，应应用的 CSS Zoom 是：</p>
+        <div class="formula">
+          {{ formatNumber(normalizedZoom, 2) }} (归一化Zoom) / {{ userDevice.dpr }} (您的DPR)
+        </div>
+        <div class="final-result">{{ formatNumber(appliedZoom, 4) }}</div>
+      </div>
+
+      <!-- 5. 上下文分析 -->
+      <div class="panel context-panel">
+        <h2>4. 上下文分析</h2>
+        <p>一个在标准屏上视觉宽度为 <strong>300px</strong> 的元素...</p>
+        <p>在您的设备上，应用换算后的 Zoom，其最终视觉宽度将占据 <strong>{{ formatNumber(context.physicalPixels, 0) }}</strong> 个物理像素。</p>
+        <p>这将占据您屏幕宽度的 <strong>{{ formatNumber(context.screenPercentage, 2) }}%</strong>。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vue.js 库 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+  <script>
+    const { createApp, ref, reactive, computed } = Vue;
+
+    createApp({
+      setup() {
+        // --- 状态定义 ---
+        const normalizedZoom = ref(1.5);
+        
+        const userDevice = reactive({
+          dpr: window.devicePixelRatio || 1,
+          width: window.screen.width,
+          height: window.screen.height,
+        });
+        
+        // --- 核心计算 ---
+        // 公式：应用Zoom = 归一化Zoom / 目标设备DPR
+        const appliedZoom = computed(() => {
+          if (userDevice.dpr > 0) {
+            return normalizedZoom.value / userDevice.dpr;
           }
-        }
-      },
-      axisLine: {
-        lineStyle: {
-          color: '#999'
-        }
+          return 0;
+        });
+
+        // --- 上下文计算 (使用像素参数) ---
+        const context = computed(() => {
+          // 1. 定义一个在标准环境中的基准元素视觉尺寸
+          const elementVisualWidthOnStandardScreen = 300; // px
+
+          // 2. 在标准环境中，它占据的物理像素数 (因为DPR=1, 所以视觉像素=物理像素)
+          const physicalPixelsOnStandardScreen = elementVisualWidthOnStandardScreen * 1.0;
+
+          // 3. 在用户设备上，要达到相同的物理尺寸，它也需要占据这么多物理像素
+          const physicalPixelsOnUserDevice = physicalPixelsOnStandardScreen;
+          
+          // 4. 计算这个物理尺寸占据用户屏幕宽度的百分比
+          let screenPercentage = 0;
+          if (userDevice.width > 0) {
+            screenPercentage = (physicalPixelsOnUserDevice / userDevice.width) * 100;
+          }
+          
+          return {
+            physicalPixels: physicalPixelsOnUserDevice,
+            screenPercentage: screenPercentage,
+          };
+        });
+
+        // --- 方法 ---
+        const detectDevice = () => {
+          userDevice.dpr = window.devicePixelRatio || 1;
+          userDevice.width = window.screen.width;
+          userDevice.height = window.screen.height;
+        };
+
+        const formatNumber = (num, digits) => {
+          return typeof num === 'number' ? num.toFixed(digits) : 'N/A';
+        };
+        
+        return {
+          normalizedZoom,
+          userDevice,
+          appliedZoom,
+          context,
+          detectDevice,
+          formatNumber,
+        };
       }
-    },
-    yAxis: {
-      type: 'value',
-      max: 9,
-      splitLine: {
-        lineStyle: {
-          type: 'dashed'
-        }
-      },
-      axisLine: {
-        show: true,
-        lineStyle: {
-          color: '#999'
-        }
-      },
-      axisPointer: {
-        show: false
-      }
-    },
-    series: [
-      {
-        data: [3, 7, 5, 8, 4, 6, 2],
-        type: 'bar',
-        barWidth: '40%',
-        itemStyle: {
-          color: '#5470c6'
-        },
-        showBackground: true,
-        backgroundStyle: {
-          color: 'rgba(180, 180, 180, 0.2)'
-        }
-      }
-    ]
-  }
+    }).mount('#app');
+  </script>
 
-  myChart.setOption(option)
-})
-
-const handleResize = () => {
-  myChart?.resize()
-}
-
-window.addEventListener('resize', handleResize)
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-  myChart?.dispose()
-})
-</script>
+</body>
+</html>
