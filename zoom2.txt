@@ -1,0 +1,444 @@
+*Thinking...*
+
+> **Analyzing User Requests**
+> 
+> I've been dissecting the user's new requirement. The core issue appears to be a conceptual shift in how they interact with visual zoom. My current model focuses on the user directly adjusting zoom on the `baseDevice`, but I'm considering alternate approaches to refine this user interaction.
+> 
+> 
+> **Revising the Zoom Model**
+> 
+> I'm adapting the existing zoom calculation logic to accommodate the new input. The user's setting of `normalizedZoom` directly necessitates changes. The `normalizedZoom` will become a direct input, and the zoom value applied to the devices become calculated properties instead, derived from the user input and each device's pixel density. The `useZoomCalculator.js` file will be significantly altered.
+> 
+> 
+> **Calculating Applied Zooms**
+> 
+> Now, I'm moving into the specifics of the `useZoomCalculator.js` file. The main change involves transitioning from a `computed` property to `normalizedZoom` a ref, driven by the user input. The `baseDevice` and `targetDevice`'s zoom values are now `computed`, derived from `normalizedZoom` and their respective device pixel densities. I'm carefully considering the edge case of a zero DPR.
+> 
+> 
+> **Restructuring Zoom Calculations**
+> 
+> I'm now mapping the user's input to calculated zoom values for each device. The `normalizedZoom` now directly reflects user actions via the slider. My focus is now squarely on updating the broadcast channel to transmit the new `baseAppliedZoom` and `targetAppliedZoom` values, replacing the older method of sending the zoom value of the `baseDevice`.
+> 
+> 
+> **Implementing the UI Adjustments**
+> 
+> My next step involves updates to the Vue component. The `<script setup>` needs adjustment to reflect the new return values from `useZoomCalculator`, specifically the ref for `normalizedZoom` and the new computed properties. I'm also reframing the UI panels, creating a better separation between user input (normalized zoom) and the resulting applied zoom on each device. The UI panels now include both the slider and display the final calculation.
+> 
+> 
+> **Mapping the Data Flow**
+> 
+> I'm now tackling the new data flow. The `normalizedZoom` input will drive calculated applied zooms for each device. I'm ensuring the UI reflects this change, with direct binding of the slider and the updated display of the applied zoom values. The existing helper window is unchanged.
+> 
+> 
+> **Defining Data Structures**
+> 
+> I'm now defining the updated data structures within `useZoomCalculator.js`. I've removed the zoom property from the devices and introduced `normalizedZoom` as a `ref`. Then I have two new computed properties: `baseAppliedZoom` and `targetAppliedZoom`, to replace the previous method, which is now deprecated. I am also handling potential `dpr` edge cases.
+> 
+> 
+> **Finalizing Data Structures**
+> 
+> I'm now completely updating the internal structures. The zoom value is eliminated on each device. A `normalizedZoom` ref is created to be driven by the slider. The applied zoom is now derived using `computed` properties for each device, handling edge cases for pixel density. I'm on the verge of implementing the UI.
+> 
+> 
+好的，我完全理解您的新需求。这是一个非常棒的逻辑优化，它让“归一化 Zoom”成为了真正的“单一事实来源 (Single Source of Truth)”。
+
+您的意思是：
+
+1.  用户在主控制器上通过滑块调整的**不再是基准窗口的视觉 Zoom**，而是**直接调整“归一化 Zoom”这个抽象值**。
+2.  因此，**基准窗口 (`baseDevice`) 的实际 Zoom 值也需要被计算出来**，就像目标窗口一样。它的计算公式是：`base_applied_zoom = normalized_zoom / base_device_dpr`。
+3.  目标窗口的 Zoom 计算方式不变：`target_applied_zoom = normalized_zoom / target_device_dpr`。
+
+这个模型更加优雅和一致。现在，两个窗口的 Zoom 都派生自同一个标准值，逻辑上更加清晰。
+
+我们来修改代码以实现这个新模型。
+
+---
+
+### 优化后的实现方案
+
+我们将对 `useZoomCalculator.js` 和 `ZoomController.vue` 进行调整。`display.html` 的逻辑足够健壮，无需任何修改。
+
+#### 1. `src/composables/useZoomCalculator.js` (已更新逻辑)
+
+我们将修改 Composable 的核心：`normalizedZoom` 现在是输入源 (`ref`)，而两个窗口的实际应用 Zoom 都是计算属性 (`computed`)。
+
+```javascript
+// src/composables/useZoomCalculator.js
+
+import { reactive, computed, onMounted, onUnmounted, watchEffect, ref } from 'vue';
+
+/**
+ * @description 一个 Vue Composable，用于跨窗口同步和计算自适应的缩放值。
+ * @logic_update 现在的核心输入是 `normalizedZoom`，所有窗口的实际 Zoom 都由它派生。
+ */
+export function useZoomCalculator() {
+  // --- 状态定义 ---
+
+  // 新模型：normalizedZoom 是用户直接控制的响应式引用 (ref)，是所有计算的源头。
+  // 初始值设为 1.5，可以代表一个典型的初始缩放级别。
+  const normalizedZoom = ref(1.5);
+
+  // 基准设备状态 (只关心其物理属性)
+  const baseDevice = reactive({
+    width: 0,
+    height: 0,
+    dpr: 0,
+  });
+
+  // 目标设备状态
+  const targetDevice = reactive({
+    width: 0,
+    height: 0,
+    dpr: 0,
+  });
+
+  // --- 核心计算逻辑 (新) ---
+
+  /**
+   * 计算需要应用到【基准窗口】的实际 CSS Zoom 值。
+   * 公式: baseAppliedZoom = normalizedZoom / baseDevice.dpr
+   */
+  const baseAppliedZoom = computed(() => {
+    if (normalizedZoom.value > 0 && baseDevice.dpr > 0) {
+      return normalizedZoom.value / baseDevice.dpr;
+    }
+    return 0;
+  });
+
+  /**
+   * 计算需要应用到【目标窗口】的实际 CSS Zoom 值。
+   * 公式: targetAppliedZoom = normalizedZoom / targetDevice.dpr
+   */
+  const targetAppliedZoom = computed(() => {
+    if (normalizedZoom.value > 0 && targetDevice.dpr > 0) {
+      return normalizedZoom.value / targetDevice.dpr;
+    }
+    return 0;
+  });
+
+  // --- 跨窗口通信逻辑 (BroadcastChannel) ---
+
+  const channelName = 'zoom_auto_demo_channel';
+  let channel = null;
+
+  const setupChannel = () => {
+    if (channel) channel.close();
+    channel = new BroadcastChannel(channelName);
+    
+    channel.onmessage = (event) => {
+      const { messageType, payload } = event.data;
+      if (messageType === 'report') {
+        const { windowType, width, height, dpr } = payload;
+        if (windowType === 'base') {
+          baseDevice.width = width;
+          baseDevice.height = height;
+          baseDevice.dpr = dpr;
+        } else if (windowType === 'target') {
+          targetDevice.width = width;
+          targetDevice.height = height;
+          targetDevice.dpr = dpr;
+        }
+      }
+    };
+  };
+
+  // 监听计算结果的变化，并广播给所有子窗口
+  watchEffect(() => {
+    if (channel) {
+      channel.postMessage({
+        messageType: 'updateZoom',
+        payload: {
+          // 现在两个窗口都发送计算后的值
+          baseZoom: baseAppliedZoom.value,
+          targetZoom: targetAppliedZoom.value,
+        },
+      });
+    }
+  });
+
+  // --- 公开方法 ---
+
+  const openWindows = () => {
+    window.open('/display.html?type=base', 'baseWindow', 'width=400,height=300,left=0,top=0,resizable=yes');
+    window.open('/display.html?type=target', 'targetWindow', 'width=400,height=300,left=450,top=0,resizable=yes');
+  };
+
+  const reDetect = () => {
+    if (channel) {
+      channel.postMessage({ messageType: 'requestReport' });
+    }
+  };
+
+  // --- 生命周期钩子 ---
+
+  onMounted(() => {
+    setupChannel();
+    setTimeout(reDetect, 100); 
+  });
+
+  onUnmounted(() => {
+    if (channel) {
+      channel.close();
+      channel = null;
+    }
+  });
+
+  // 返回所有需要在组件中使用的状态和方法
+  return {
+    baseDevice,
+    targetDevice,
+    normalizedZoom, // 用户输入的源头
+    baseAppliedZoom,  // 计算出的基准窗口 Zoom
+    targetAppliedZoom, // 计算出的目标窗口 Zoom
+    openWindows,
+    reDetect,
+  };
+}
+```
+
+#### 2. `src/components/ZoomController.vue` (已更新UI和逻辑)
+
+组件现在直接绑定到 `normalizedZoom`，并分别展示两个窗口的计算过程和结果。
+
+```vue
+<!-- src/components/ZoomController.vue -->
+<script setup>
+import { useZoomCalculator } from '../composables/useZoomCalculator';
+
+// 获取更新后的状态和方法
+const {
+  baseDevice,
+  targetDevice,
+  normalizedZoom, // 这是用户现在直接控制的值
+  baseAppliedZoom,
+  targetAppliedZoom,
+  openWindows,
+  reDetect,
+} = useZoomCalculator();
+
+const formatNumber = (num) => (typeof num === 'number' ? num.toFixed(3) : 'N/A');
+</script>
+
+<template>
+  <div class="zoom-controller">
+    <header>
+      <h1>跨设备 Zoom 自动换算器 (新模型)</h1>
+      <div class="actions">
+        <button @click="openWindows">打开控制/目标窗口</button>
+        <button @click="reDetect">重新检测设备</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <!-- 全局控制区域 -->
+      <div class="panel input-panel full-width">
+        <h2>1. 全局归一化 Zoom 控制</h2>
+        <div class="form-group">
+          <label for="normalized-zoom-input">
+            设置归一化 Zoom (Normalized Zoom):
+          </label>
+          <!-- v-model 现在直接绑定到 normalizedZoom -->
+          <input
+            id="normalized-zoom-input"
+            type="range"
+            v-model.number="normalizedZoom"
+            min="0.2"
+            max="5"
+            step="0.05"
+          />
+          <span class="zoom-value">{{ formatNumber(normalizedZoom) }}</span>
+        </div>
+        <small>这是一个与设备无关的“标准缩放值”，所有窗口的实际 Zoom 都将基于此值计算。</small>
+      </div>
+
+      <!-- 基准窗口应用 -->
+      <div class="panel result-panel">
+        <h2>2. 应用到基准窗口</h2>
+        <div class="device-info">
+          <strong>基准窗口检测到的状态:</strong>
+          <p>分辨率: <span>{{ baseDevice.width }} x {{ baseDevice.height }}</span></p>
+          <p>设备像素比 (DPR): <span>{{ baseDevice.dpr || '等待...' }}</span></p>
+        </div>
+        <div class="calculation-step">
+          <p>基准窗口应用 Zoom</p>
+          <div class="formula">
+            <code>{{ formatNumber(normalizedZoom) }} (归一化Zoom) / {{ baseDevice.dpr || '?' }} (基准DPR)</code>
+          </div>
+          <p class="result">= {{ formatNumber(baseAppliedZoom) }}</p>
+        </div>
+      </div>
+
+      <!-- 目标窗口应用 -->
+      <div class="panel result-panel">
+        <h2>3. 应用到目标窗口</h2>
+        <div class="device-info">
+          <strong>目标窗口检测到的状态:</strong>
+          <p>分辨率: <span>{{ targetDevice.width }} x {{ targetDevice.height }}</span></p>
+          <p>设备像素比 (DPR): <span>{{ targetDevice.dpr || '等待...' }}</span></p>
+        </div>
+        <div class="calculation-step">
+          <p>目标窗口应用 Zoom</p>
+          <div class="formula">
+            <code>{{ formatNumber(normalizedZoom) }} (归一化Zoom) / {{ targetDevice.dpr || '?' }} (目标DPR)</code>
+          </div>
+          <p class="result">= {{ formatNumber(targetAppliedZoom) }}</p>
+        </div>
+      </div>
+    </main>
+  </div>
+</template>
+
+<style scoped>
+/* 样式与之前版本类似，但为新布局做了一些调整 */
+.zoom-controller {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  color: #333;
+  background-color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.07);
+}
+header {
+  border-bottom: 2px solid #eee;
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+h1 {
+  font-size: 1.8rem;
+  color: #1a1a1a;
+  margin: 0;
+}
+.actions button {
+  background-color: #42b983;
+  color: white;
+  border: none;
+  padding: 0.8rem 1.2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  margin-left: 0.5rem;
+  transition: background-color 0.2s, transform 0.2s;
+}
+.actions button:hover {
+  background-color: #36a476;
+  transform: translateY(-2px);
+}
+.content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+.panel {
+  background-color: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+}
+.full-width {
+  grid-column: 1 / -1; /* 让输入面板占据整行 */
+}
+h2 {
+  margin-top: 0;
+  color: #42b983;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+.form-group {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+label {
+  font-weight: bold;
+}
+input[type="range"] {
+  flex-grow: 1;
+  min-width: 200px;
+  cursor: pointer;
+}
+.zoom-value {
+  width: 60px;
+  text-align: center;
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: #1a1a1a;
+  background-color: #eee;
+  padding: 4px 0;
+  border-radius: 4px;
+}
+.device-info {
+  margin-top: 1.5rem;
+  background-color: #fff;
+  padding: 1rem;
+  border-radius: 6px;
+  border: 1px solid #eee;
+}
+.device-info p {
+  margin: 0.5rem 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.device-info span {
+  font-weight: bold;
+  color: #e67e22;
+  background-color: #fdf2e2;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.calculation-step {
+  margin-top: 1.5rem;
+  text-align: center;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.formula {
+  background-color: #e9ecef;
+  padding: 0.8rem;
+  border-radius: 4px;
+  margin: 0.5rem 0;
+  font-family: 'Courier New', Courier, monospace;
+  word-wrap: break-word;
+}
+.result {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #2c3e50;
+  margin-top: 0.5rem;
+}
+small {
+  color: #7f8c8d;
+  margin-top: 0.5rem;
+  display: block;
+  text-align: center;
+}
+</style>
+```
+
+#### 3. `public/display.html` (无需修改)
+
+这个文件保持不变。它的消息监听逻辑 (`channel.onmessage`) 已经足够通用，可以正确处理新模型发送的 `{ baseZoom, targetZoom }` 负载。
+
+### 总结与优势
+
+您提出的这个新模型具有以下显著优势：
+
+*   **逻辑更纯粹**：用户控制的是一个抽象的、与设备无关的核心值。这完全符合“归一化”的初衷。
+*   **代码更对称**：基准窗口和目标窗口的处理逻辑现在是完全对称的。它们都从 `normalizedZoom` 派生出自己的应用值，消除了之前基准窗口的“特殊”地位。
+*   **可扩展性更强**：如果未来有第三个、第四个窗口（`target2`, `target3`），只需为它们添加新的设备状态和计算属性即可，而核心输入 `normalizedZoom` 保持不变。
+
+这套更新后的代码现在完全反映了您期望的、更加优雅的逻辑模型。
