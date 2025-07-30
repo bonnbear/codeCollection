@@ -1,0 +1,295 @@
+<!-- src/components/ZoomSimulator.vue -->
+<script setup>
+import { ref, reactive, computed } from 'vue';
+
+// --- 1. 核心状态定义 ---
+
+// “归一化 Zoom”是用户通过滑块直接控制的“单一事实来源”。
+// 初始值设为 1.5，作为一个合理的默认值。
+const normalizedZoom = ref(1.5);
+
+// 模拟设备 1 (基准设备) 的状态。
+// 我们预置了常见桌面显示器的参数，用户可以手动修改。
+const baseDevice = reactive({
+  name: '桌面显示器',
+  width: 1920,
+  height: 1080,
+  dpr: 1, // 标准显示器的 DPR 通常是 1
+});
+
+// 模拟设备 2 (目标设备) 的状态。
+// 我们预置了常见移动设备（如 Retina 屏）的参数。
+const targetDevice = reactive({
+  name: '移动设备',
+  width: 390,
+  height: 844,
+  dpr: 3, // 高分屏手机的 DPR 通常是 2 或 3
+});
+
+
+// --- 2. 核心计算逻辑 ---
+
+/**
+ * 计算需要应用到【基准设备】的实际 CSS Zoom 值。
+ * 公式: appliedZoom = normalizedZoom / dpr
+ */
+const baseAppliedZoom = computed(() => {
+  if (normalizedZoom.value > 0 && baseDevice.dpr > 0) {
+    return normalizedZoom.value / baseDevice.dpr;
+  }
+  return 0;
+});
+
+/**
+ * 计算需要应用到【目标设备】的实际 CSS Zoom 值。
+ * 公式: appliedZoom = normalizedZoom / dpr
+ */
+const targetAppliedZoom = computed(() => {
+  if (normalizedZoom.value > 0 && targetDevice.dpr > 0) {
+    return normalizedZoom.value / targetDevice.dpr;
+  }
+  return 0;
+});
+
+
+// --- 3. 辅助函数 ---
+
+// 格式化数字以便显示，保留三位小数。
+const formatNumber = (num) => (typeof num === 'number' ? num.toFixed(3) : 'N/A');
+</script>
+
+<template>
+  <div class="zoom-simulator">
+    <header>
+      <h1>归一化 Zoom 概念模拟器</h1>
+      <p class="subtitle">在一个统一的控制器下，观察不同设备参数如何影响最终的视觉缩放值。</p>
+    </header>
+
+    <main class="content">
+      <!-- 全局控制区域 -->
+      <div class="panel input-panel full-width">
+        <h2>1. 全局归一化 Zoom 控制</h2>
+        <div class="form-group">
+          <label for="normalized-zoom-input">
+            调整归一化 Zoom (Normalized Zoom):
+          </label>
+          <!-- v-model 直接绑定到 normalizedZoom -->
+          <input
+            id="normalized-zoom-input"
+            type="range"
+            v-model.number="normalizedZoom"
+            min="0.2"
+            max="5"
+            step="0.05"
+          />
+          <span class="zoom-value">{{ formatNumber(normalizedZoom) }}</span>
+        </div>
+        <small>这是一个与设备无关的“标准缩放值”，所有设备的实际 Zoom 都将基于此值计算。</small>
+      </div>
+
+      <!-- 模拟设备 1 -->
+      <div class="panel result-panel">
+        <h2>2. 模拟设备 1 (基准)</h2>
+        <div class="device-inputs">
+          <input type="text" v-model="baseDevice.name" class="device-name-input" />
+          <div class="device-prop">
+            <label>宽度 (px)</label>
+            <input type="number" v-model.number="baseDevice.width" />
+          </div>
+          <div class="device-prop">
+            <label>高度 (px)</label>
+            <input type="number" v-model.number="baseDevice.height" />
+          </div>
+          <div class="device-prop">
+            <label>设备像素比 (DPR)</label>
+            <input type="number" step="0.1" v-model.number="baseDevice.dpr" />
+          </div>
+        </div>
+        <div class="calculation-step">
+          <p>应用到【{{ baseDevice.name }}】的 Zoom</p>
+          <div class="formula">
+            <code>{{ formatNumber(normalizedZoom) }} (归一化Zoom) / {{ baseDevice.dpr || '?' }} (DPR)</code>
+          </div>
+          <p class="result">= {{ formatNumber(baseAppliedZoom) }}</p>
+        </div>
+      </div>
+
+      <!-- 模拟设备 2 -->
+      <div class="panel result-panel">
+        <h2>3. 模拟设备 2 (目标)</h2>
+        <div class="device-inputs">
+          <input type="text" v-model="targetDevice.name" class="device-name-input" />
+          <div class="device-prop">
+            <label>宽度 (px)</label>
+            <input type="number" v-model.number="targetDevice.width" />
+          </div>
+          <div class="device-prop">
+            <label>高度 (px)</label>
+            <input type="number" v-model.number="targetDevice.height" />
+          </div>
+          <div class="device-prop">
+            <label>设备像素比 (DPR)</label>
+            <input type="number" step="0.1" v-model.number="targetDevice.dpr" />
+          </div>
+        </div>
+        <div class="calculation-step">
+          <p>应用到【{{ targetDevice.name }}】的 Zoom</p>
+          <div class="formula">
+            <code>{{ formatNumber(normalizedZoom) }} (归一化Zoom) / {{ targetDevice.dpr || '?' }} (DPR)</code>
+          </div>
+          <p class="result">= {{ formatNumber(targetAppliedZoom) }}</p>
+        </div>
+      </div>
+    </main>
+  </div>
+</template>
+
+<style scoped>
+.zoom-simulator {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 2rem;
+  color: #333;
+  background-color: #fdfdfd;
+}
+header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+h1 {
+  font-size: 2.2rem;
+  color: #1a1a1a;
+  font-weight: 700;
+  margin: 0;
+}
+.subtitle {
+  font-size: 1.1rem;
+  color: #666;
+  max-width: 600px;
+  margin: 0.5rem auto 0;
+}
+.content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 2rem;
+}
+.panel {
+  background-color: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  transition: box-shadow 0.3s ease;
+}
+.panel:hover {
+  box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+}
+.full-width {
+  grid-column: 1 / -1;
+}
+h2 {
+  margin-top: 0;
+  color: #42b983;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 0.75rem;
+  margin-bottom: 1.5rem;
+  font-size: 1.3rem;
+}
+.form-group {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+label {
+  font-weight: 500;
+  color: #555;
+}
+input[type="range"] {
+  flex-grow: 1;
+  min-width: 200px;
+  cursor: pointer;
+}
+.zoom-value {
+  width: 70px;
+  text-align: center;
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: #1a1a1a;
+  background-color: #f0f0f0;
+  padding: 6px 0;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+}
+.device-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background-color: #f9f9f9;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid #eee;
+}
+.device-name-input {
+  font-weight: bold;
+  font-size: 1.1em;
+  border: none;
+  background-color: transparent;
+  padding: 4px;
+  border-bottom: 2px solid transparent;
+}
+.device-name-input:focus {
+  outline: none;
+  border-bottom-color: #42b983;
+}
+.device-prop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.device-prop input[type="number"] {
+  width: 100px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  text-align: right;
+}
+.calculation-step {
+  margin-top: 2rem;
+  text-align: center;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.calculation-step p {
+  font-size: 1.1rem;
+  color: #333;
+}
+.formula {
+  background-color: #e9ecef;
+  padding: 1rem;
+  border-radius: 4px;
+  margin: 0.5rem 0;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 1.1rem;
+  word-wrap: break-word;
+  color: #333;
+}
+.result {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #2c3e50;
+  margin-top: 0.5rem;
+}
+small {
+  color: #7f8c8d;
+  margin-top: 1rem;
+  display: block;
+  text-align: center;
+}
+</style>
