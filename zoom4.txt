@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSS Zoom 换算计算器</title>
+  <style>
+    body {
+      background-color: #f0f2f5;
+      color: #333;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 1rem;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+    }
+
+    #app {
+      width: 100%;
+      max-width: 600px;
+      margin-top: 2rem;
+      padding: 2rem;
+      background-color: #fff;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.07);
+    }
+
+    h1 {
+      text-align: center;
+      color: #1a1a1a;
+      margin-bottom: 2rem;
+    }
+
+    .panel {
+      background-color: #f9f9f9;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    label {
+      font-weight: bold;
+      display: block;
+      margin-bottom: 0.5rem;
+    }
+    
+    .input-container {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    input[type="range"] {
+      flex-grow: 1;
+      cursor: pointer;
+    }
+    
+    input[type="number"] {
+        width: 80px;
+        padding: 0.5rem;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+        font-size: 1rem;
+    }
+
+    .value-display {
+      font-weight: bold;
+      font-size: 1.1rem;
+      color: #1a1a1a;
+      background-color: #eee;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      min-width: 50px;
+      text-align: center;
+    }
+    
+    small {
+      color: #7f8c8d;
+      margin-top: 0.5rem;
+      display: block;
+    }
+
+    .result-panel {
+      text-align: center;
+      background-color: #e8f5e9; /* 柔和的绿色背景 */
+      border-color: #a5d6a7;
+    }
+    
+    .result-panel .formula {
+      background-color: #fff;
+      padding: 0.8rem;
+      border-radius: 4px;
+      margin: 1rem 0;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 1.1rem;
+      word-wrap: break-word;
+      color: #333;
+    }
+
+    .result-panel .final-result {
+      font-size: 2.5rem;
+      font-weight: bold;
+      color: #2e7d32; /* 深绿色 */
+      margin-top: 1rem;
+    }
+    
+    .action-button {
+      background-color: #42b983;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background-color 0.2s;
+    }
+    
+    .action-button:hover {
+      background-color: #36a476;
+    }
+    
+    .copy-button {
+        margin-left: 1rem;
+        background-color: #3498db;
+    }
+    .copy-button:hover {
+        background-color: #2980b9;
+    }
+
+  </style>
+</head>
+<body>
+
+  <div id="app">
+    <h1>CSS Zoom 换算计算器</h1>
+
+    <!-- 输入面板 -->
+    <div class="panel">
+      <div class="form-group">
+        <label for="normalized-zoom-input">1. 设置归一化 Zoom</label>
+        <div class="input-container">
+          <input id="normalized-zoom-input" type="range" v-model.number="normalizedZoom" min="0.1" max="5" step="0.01" />
+          <span class="value-display">{{ formatNumber(normalizedZoom, 2) }}</span>
+        </div>
+        <small>您期望在标准屏幕 (DPR=1) 上看到的视觉缩放效果。</small>
+      </div>
+
+      <div class="form-group">
+        <label for="user-dpr-input">2. 输入您设备的像素比 (DPR)</label>
+        <div class="input-container">
+          <input id="user-dpr-input" type="number" v-model.number="userDPR" step="0.01" />
+          <button class="action-button" @click="detectDPR">自动检测</button>
+        </div>
+        <small>DPR 是物理像素与设备独立像素的比率。高分屏 (如 Retina) 有更高的 DPR。</small>
+      </div>
+    </div>
+
+    <!-- 结果面板 -->
+    <div class="panel result-panel">
+      <h2>计算结果</h2>
+      <p>为了在您的设备上实现归一化的视觉效果，您应该应用以下 Zoom 值：</p>
+      
+      <div class="formula">
+        {{ formatNumber(normalizedZoom, 2) }} (归一化 Zoom) / {{ userDPR }} (您的 DPR)
+      </div>
+      
+      <div class="final-result">{{ formatNumber(appliedZoom, 4) }}</div>
+      
+      <button class="action-button copy-button" @click="copyResult">{{ copyButtonText }}</button>
+    </div>
+  </div>
+
+  <!-- Vue.js 库 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+  <script>
+    const { createApp, ref, computed } = Vue;
+
+    createApp({
+      setup() {
+        // --- 响应式状态 ---
+        const normalizedZoom = ref(1.0);
+        
+        // 自动检测初始DPR，并提供一个默认值
+        const userDPR = ref(window.devicePixelRatio || 1);
+        
+        const copyButtonText = ref('复制');
+
+        // --- 计算属性 ---
+        const appliedZoom = computed(() => {
+          if (userDPR.value > 0) {
+            return normalizedZoom.value / userDPR.value;
+          }
+          return 0; // 防止除以零
+        });
+
+        // --- 方法 ---
+        const detectDPR = () => {
+          userDPR.value = window.devicePixelRatio || 1;
+        };
+
+        const formatNumber = (num, digits) => {
+          return typeof num === 'number' ? num.toFixed(digits) : 'N/A';
+        };
+        
+        const copyResult = () => {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(appliedZoom.value.toFixed(4)).then(() => {
+              copyButtonText.value = '已复制!';
+              setTimeout(() => {
+                copyButtonText.value = '复制';
+              }, 2000);
+            });
+          }
+        };
+
+        return {
+          normalizedZoom,
+          userDPR,
+          appliedZoom,
+          copyButtonText,
+          detectDPR,
+          formatNumber,
+          copyResult,
+        };
+      }
+    }).mount('#app');
+  </script>
+
+</body>
+</html>
