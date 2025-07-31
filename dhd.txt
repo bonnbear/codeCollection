@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>像素对齐 Zoom 优化测试</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            width: 301px; /* 使用奇数宽度，使其子元素百分比宽度为小数 */
+            padding: 20px;
+            border: 1px solid #ccc;
+            background-color: #fff;
+        }
+        #my-element {
+            width: 50%; /* 宽度将是 150.5px */
+            height: 100px;
+            background-color: #e74c3c;
+            border: 2px solid #c0392b;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            /* 添加 transition 以便观察缩放效果 */
+            transition: transform 0.3s, zoom 0.3s;
+        }
+        .controls {
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 15px;
+            font-size: 16px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>像素对齐 Zoom 优化测试</h1>
+    <p>请打开开发者工具(F12)查看控制台输出。</p>
+
+    <div class="container">
+        <div id="my-element">测试元素</div>
+    </div>
+
+    <div class="controls">
+        <button id="btn-blurry">应用模糊的 Zoom (0.75)</button>
+        <button id="btn-optimal">应用优化的 Zoom (目标 0.75)</button>
+    </div>
+
+    <script>
+        /**
+         * 在计算前临时移除 transform/zoom，以获取真实的原始尺寸。
+         * @param {HTMLElement} element
+         * @returns {number} 元素的原始计算宽度（浮点数）
+         */
+        function getOriginalComputedWidth(element) {
+            // 1. 保存当前的 transform 和 zoom 值
+            const originalTransform = element.style.transform;
+            const originalZoom = element.style.zoom;
+
+            // 2. 临时重置它们以强制浏览器在读取前进行重排
+            element.style.transform = 'none';
+            element.style.zoom = '1';
+
+            // 3. 在这个“干净”的状态下获取精确的原始宽度
+            // 这一步会触发“强制同步布局”，浏览器会立即计算出 zoom:1 时的宽度
+            const originalWidth = parseFloat(getComputedStyle(element).width);
+
+            // 4. 立即恢复元素原有的样式
+            element.style.transform = originalTransform;
+            element.style.zoom = originalZoom;
+            
+            return originalWidth;
+        }
+
+        /**
+         * 计算用于像素对齐的最佳 zoom 值。
+         * @param {HTMLElement} element - 需要应用 zoom 的 DOM 元素。
+         * @param {number} targetZoom - 你期望的大致 zoom 值。
+         * @returns {number} - 计算出的最佳 zoom 值。
+         */
+        function findOptimalZoom_v4(element, targetZoom) {
+            const originalWidth = getOriginalComputedWidth(element);
+            console.log(`获取到的精确原始宽度: ${originalWidth}px`);
+
+            const dpr = window.devicePixelRatio || 1;
+            console.log(`当前设备像素比 (DPR): ${dpr}`);
+
+            const targetPhysicalWidth = originalWidth * targetZoom * dpr;
+            console.log(`理论目标物理像素宽度: ${targetPhysicalWidth}`);
+
+            const roundedPhysicalWidth = Math.round(targetPhysicalWidth);
+            console.log(`四舍五入到最近的物理像素: ${roundedPhysicalWidth}`);
+            
+            const optimalZoom = roundedPhysicalWidth / (originalWidth * dpr);
+
+            return optimalZoom;
+        }
+
+        // --- 事件监听和执行 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const element = document.getElementById('my-element');
+            const btnBlurry = document.getElementById('btn-blurry');
+            const btnOptimal = document.getElementById('btn-optimal');
+
+            const targetZoom = 0.75;
+
+            btnBlurry.addEventListener('click', () => {
+                console.clear();
+                console.log('--- 应用模糊的 Zoom ---');
+                element.style.zoom = targetZoom;
+                const originalWidth = getOriginalComputedWidth(element);
+                const dpr = window.devicePixelRatio || 1;
+                const physicalWidth = originalWidth * targetZoom * dpr;
+                console.log(`原始宽度: ${originalWidth}px, DPR: ${dpr}`);
+                console.log(`应用 Zoom: ${targetZoom}`);
+                console.warn(`最终渲染的物理像素: ${physicalWidth} (这是一个小数，会导致模糊)`);
+            });
+
+            btnOptimal.addEventListener('click', () => {
+                console.clear();
+                console.log('--- 计算并应用优化的 Zoom ---');
+                const optimalZoom = findOptimalZoom_v4(element, targetZoom);
+                element.style.zoom = optimalZoom;
+                
+                // 验证
+                const originalWidth = getOriginalComputedWidth(element);
+                const dpr = window.devicePixelRatio || 1;
+                const finalPhysicalWidth = originalWidth * optimalZoom * dpr;
+
+                console.log(`计算出的最优 Zoom: ${optimalZoom}`);
+                console.log(`应用最优 Zoom 后，最终渲染的物理像素: ${finalPhysicalWidth} (这是一个整数，会很清晰)`);
+            });
+        });
+    </script>
+
+</body>
+</html>
