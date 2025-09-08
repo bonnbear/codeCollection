@@ -300,3 +300,282 @@ const handleClick = () => {
   toggle();
 };
 </script>
+
+
+
+
+
+
+
+
+<template>
+  <div id="app-container">
+    <div class="sidebar-container" :class="{ collapsed: !isSidebarOpen }">
+      <div class="sidebar-header">文件浏览器</div>
+      <div class="sidebar-content">
+        <ul class="tree-node is-root">
+          <TreeNode
+            v-for="node in treeData"
+            :key="node.name"
+            :node="node"
+            :selected-id="selectedNodeId"
+            @node-click="handleNodeClick"
+          />
+        </ul>
+      </div>
+      <button @click="toggleSidebar" class="sidebar-toggle">
+        {{ isSidebarOpen ? '‹' : '›' }}
+      </button>
+    </div>
+
+    <div class="main-content" :class="{ 'sidebar-collapsed': !isSidebarOpen }">
+      <h1>主内容区域</h1>
+      <p>当左侧侧边栏收起时，这里的内容会平滑地占据更多空间。</p>
+      <div v-if="selectedNodeId">
+        <p>当前选中的文件/文件夹是: <strong>{{ selectedNodeId }}</strong></p>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive } from 'vue';
+import TreeNode from './TreeNode.vue'; // 导入我们之前修改过的子组件
+
+// 侧边栏的打开/关闭状态
+const isSidebarOpen = ref(true);
+
+// 树形结构数据
+const treeData = reactive([
+  {
+    name: '项目根目录',
+    isOpen: true,
+    children: [
+      {
+        name: 'src',
+        isOpen: true,
+        children: [
+          { name: 'App.vue' },
+          { name: 'main.js' },
+          { name: 'components', children: [{ name: 'Button.vue' }, { name: 'Modal.vue' }] }
+        ]
+      },
+      {
+        name: 'public',
+        children: [{ name: 'index.html' }, { name: 'favicon.ico' }]
+      },
+      { name: 'package.json' },
+      { name: 'README.md' }
+    ]
+  },
+  {
+    name: '另一个顶级文件夹',
+    children: [{ name: 'note.txt' }]
+  }
+]);
+
+// 【新增】: 用于存储当前被选中节点的 ID (这里用 name)
+const selectedNodeId = ref(null);
+
+// 【新增】: 事件处理函数，当 TreeNode 触发 node-click 事件时调用
+const handleNodeClick = (node) => {
+  selectedNodeId.value = node.name;
+};
+
+
+// 切换侧边栏状态的方法
+const toggleSidebar = () => {
+  isSidebarOpen.value = !isSidebarOpen.value;
+};
+</script>
+
+<style>
+/* 全局样式 (从原始 HTML 迁移而来) */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  margin: 0;
+  background-color: #f4f7f9;
+  overflow-x: hidden;
+}
+
+#app-container {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* 侧边栏容器 */
+.sidebar-container {
+  position: fixed;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 280px;
+  background-color: #ffffff;
+  border-right: 1px solid #e0e0e0;
+  z-index: 100;
+  transform: translateX(0);
+  transition: transform 0.3s ease-in-out;
+}
+
+.sidebar-container.collapsed {
+  transform: translateX(-100%);
+}
+
+.sidebar-header {
+  padding: 15px 20px;
+  font-weight: 600;
+  font-size: 18px;
+  border-bottom: 1px solid #e0e0e0;
+  color: #333;
+}
+
+.sidebar-content {
+  padding: 10px;
+  height: calc(100% - 56px);
+  overflow-y: auto;
+}
+
+/* 侧边栏切换按钮 */
+.sidebar-toggle {
+  position: absolute;
+  top: 14px;
+  left: 100%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 30px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  line-height: 1;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+  padding-bottom: 2px;
+}
+
+.sidebar-toggle:hover {
+  background-color: #0056b3;
+}
+
+/* 主内容区域 */
+.main-content {
+  flex-grow: 1;
+  padding: 20px;
+  margin-left: 280px;
+  transition: margin-left 0.3s ease-in-out;
+}
+
+.main-content.sidebar-collapsed {
+  margin-left: 0;
+}
+
+/* --- 树节点样式 (包含新增的连线样式) --- */
+.tree-node {
+  list-style: none;
+  padding-left: 22px; /* 增加内边距为连线留出空间 */
+  position: relative; /* 设定相对定位，为伪元素定位提供基准 */
+}
+/* 为顶级节点容器移除外层样式 */
+.tree-node.is-root {
+  padding-left: 0;
+}
+.tree-node.is-root::before {
+  display: none;
+}
+
+
+/* 【新增】: 绘制连接所有子节点的垂直线 */
+.tree-node::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 8px; /* 控制垂直线的位置 */
+  border-left: 1px solid #dcdcdc;
+}
+
+.tree-node-item {
+  position: relative; /* 为伪元素定位提供基准 */
+}
+
+
+/* 【新增】: 绘制每个节点的水平连接线 (├) */
+.tree-node-item::before {
+  content: '';
+  position: absolute;
+  top: 16px;  /* 使横线大致与节点文字垂直对齐 */
+  left: -14px; /* 将横线向左移动，与父级 ul 的垂直线相连 */
+  width: 14px;  /* 横线的长度 */
+  border-bottom: 1px solid #dcdcdc;
+}
+
+/* 【新增】: 对最后一个子节点特殊处理，使其显示为 (└) 形的拐角 */
+.tree-node .tree-node-item:last-child::after {
+  content: '';
+  position: absolute;
+  top: 17px; /* 从横线之后开始 */
+  bottom: 0;
+  left: -14px; /* 与垂直线对齐 */
+  width: 1px; /* 伪装成线的一部分 */
+  background-color: #ffffff; /* 使用背景色覆盖掉父级 ul 多余的垂直线 */
+}
+
+
+.node-item {
+  display: flex;
+  align-items: center;
+  padding: 5px 8px; 
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.node-item:hover {
+  background-color: #f0f0f0;
+}
+
+.node-item.selected {
+  background-color: #007bff;
+  color: white;
+}
+.node-item.selected:hover {
+  background-color: #0069d9;
+}
+.node-item.selected .node-icon {
+  color: white; 
+}
+
+.toggle-icon {
+  width: 20px;
+  height: 20px;
+  font-family: monospace;
+  font-size: 16px;
+  text-align: center;
+  line-height: 20px;
+  margin-right: 5px;
+  color: #888;
+}
+
+.toggle-icon.placeholder {
+  visibility: hidden;
+}
+
+.node-icon {
+  margin-right: 8px;
+  width: 20px;
+  height: 20px;
+  color: #555;
+  transition: color 0.2s;
+}
+
+.node-name {
+  font-size: 15px;
+}
+</style>
