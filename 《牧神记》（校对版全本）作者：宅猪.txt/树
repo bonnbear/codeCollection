@@ -1,0 +1,365 @@
+<template>
+  <li class="tree-node-item">
+    <!-- 节点本身，点击时触发 toggle 方法 -->
+    <div class="node-item" @click="toggle">
+      <!-- 折叠/展开图标 -->
+      <span class="toggle-icon" :class="{ placeholder: !isFolder }">
+        <template v-if="isFolder">{{ isOpen ? '−' : '+' }}</template> <!-- 使用更适合的减号 -->
+      </span>
+      <!-- 文件/文件夹图标 -->
+      <svg class="node-icon" viewBox="0 0 24 24" fill="currentColor">
+        <path v-if="isFolder" d="M10 4H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8c0-1.11-.9-2-2-2h-8l-2-2z"></path>
+        <path v-else d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"></path>
+      </svg>
+      <!-- 节点名称 -->
+      <span class="node-name">{{ node.name }}</span>
+    </div>
+    <!-- 如果是文件夹且处于打开状态，则递归渲染子节点 -->
+    <ul class="tree-node" v-if="isFolder && isOpen">
+      <!-- 递归调用自身来显示子节点 -->
+      <TreeNode v-for="child in node.children" :key="child.name" :node="child" />
+    </ul>
+  </li>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue';
+
+// 使用 defineProps 宏来定义组件的 props
+const props = defineProps({
+  node: {
+    type: Object,
+    required: true
+  }
+});
+
+// 控制节点是否展开的状态，初始值来自 prop
+const isOpen = ref(props.node.isOpen || false);
+
+// 计算属性，判断当前节点是否为文件夹
+const isFolder = computed(() => {
+  return props.node.children && props.node.children.length > 0;
+});
+
+// 点击时触发的方法，用于展开或折叠文件夹
+const toggle = () => {
+  if (isFolder.value) {
+    isOpen.value = !isOpen.value;
+  }
+};
+</script>
+
+<style scoped>
+/* 基础样式 */
+.node-item {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 4px 0;
+  color: #333;
+}
+
+.toggle-icon {
+  display: inline-block;
+  width: 1.2em;
+  text-align: center;
+  font-family: monospace;
+  font-size: 1.2em;
+  line-height: 1;
+  color: #888;
+  margin-right: 4px;
+}
+
+.toggle-icon.placeholder {
+  visibility: hidden;
+}
+
+.node-icon {
+  width: 1.2em;
+  height: 1.2em;
+  margin-right: 8px;
+  color: #888;
+}
+
+.node-name {
+  font-size: 14px;
+}
+
+/* 移除列表的默认样式 */
+.tree-node, .tree-node-item {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 
+ * 修正后的连接线核心样式 
+ */
+
+/* 子树（ul）不再需要自己的内边距 */
+.tree-node {
+  position: relative;
+}
+
+/* 
+ * 关键改动：将缩进和定位基准应用到 li 元素上
+ */
+.tree-node-item {
+  position: relative;
+  /* 为每个层级创建 24px 的缩进空间，用于绘制线条 */
+  padding-left: 24px;
+}
+
+/* 绘制连接到节点的水平线 (L 的横线) */
+.tree-node-item::before {
+  content: '';
+  position: absolute;
+  /* 从缩进区域的中点开始 */
+  left: 12px;
+  /* 垂直对齐到节点中间 */
+  top: 16px;
+  /* 线条宽度为缩进区域的一半 */
+  width: 12px;
+  height: 1px;
+  background-color: #d9d9d9;
+}
+
+/* 绘制贯穿节点的垂直线 (形成 ├ ) */
+.tree-node-item::after {
+  content: '';
+  position: absolute;
+  /* 定位在缩进区域的中点 */
+  left: 12px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: #d9d9d9;
+}
+
+/* 对于最后一个子节点，垂直线只延伸到节点处，形成 └ */
+.tree-node-item:last-child::after {
+  height: 16px;
+}
+
+/* 
+ * 可选：为了让根节点看起来更干净，可以给整个树的根 ul 一个特殊的类，
+ * 然后禁用其直接子元素的线条和缩进。
+ *
+ * 例如，在父组件中这样使用：
+ * <ul class="tree-root">
+ *   <TreeNode v-for="node in treeData" :node="node" />
+ * </ul>
+ */
+.tree-root > .tree-node-item {
+  padding-left: 0;
+}
+
+.tree-root > .tree-node-item::before,
+.tree-root > .tree-node-item::after {
+  display: none;
+}
+</style>
+
+
+
+<template>
+  <!-- 应用根容器 -->
+  <div id="app-container">
+    <!-- 侧边栏 -->
+    <div class="sidebar-container" :class="{ collapsed: !isSidebarOpen }">
+      <div class="sidebar-header">文件浏览器</div>
+      <div class="sidebar-content">
+        <ul style="padding-left: 0; margin: 0;">
+          <!-- 使用 TreeNode 组件来渲染树形数据 -->
+          <TreeNode v-for="node in treeData" :key="node.name" :node="node" />
+        </ul>
+      </div>
+      <!-- 侧边栏切换按钮 -->
+      <button @click="toggleSidebar" class="sidebar-toggle">
+        {{ isSidebarOpen ? '‹' : '›' }}
+      </button>
+    </div>
+
+    <!-- 主内容区域 -->
+    <div class="main-content" :class="{ 'sidebar-collapsed': !isSidebarOpen }">
+      <h1>主内容区域</h1>
+      <p>当左侧侧边栏收起时，这里的内容会平滑地占据更多空间。</p>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive } from 'vue';
+import TreeNode from './TreeNode.vue'; // 导入子组件
+
+// 侧边栏的打开/关闭状态
+const isSidebarOpen = ref(true);
+
+// 树形结构数据
+const treeData = reactive([
+  {
+    name: '项目根目录',
+    isOpen: true,
+    children: [
+      {
+        name: 'src',
+        isOpen: true,
+        children: [
+          { name: 'App.vue' },
+          { name: 'main.js' },
+          { name: 'components', children: [{ name: 'Button.vue' }, { name: 'Modal.vue' }] }
+        ]
+      },
+      {
+        name: 'public',
+        children: [{ name: 'index.html' }, { name: 'favicon.ico' }]
+      },
+      { name: 'package.json' },
+      { name: 'README.md' }
+    ]
+  },
+  {
+    name: '另一个顶级文件夹',
+    children: [{ name: 'note.txt' }]
+  }
+]);
+
+// 切换侧边栏状态的方法
+const toggleSidebar = () => {
+  isSidebarOpen.value = !isSidebarOpen.value;
+};
+</script>
+
+<style>
+/* 全局样式 (从原始 HTML 迁移而来) */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  margin: 0;
+  background-color: #f4f7f9;
+  overflow-x: hidden; /* 防止在侧边栏滑出时出现水平滚动条 */
+}
+
+#app-container {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* 侧边栏容器 */
+.sidebar-container {
+  position: fixed;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 280px;
+  background-color: #ffffff;
+  border-right: 1px solid #e0e0e0;
+  z-index: 100;
+  transform: translateX(0);
+  transition: transform 0.3s ease-in-out;
+}
+
+/* 收起状态：向左平移100% */
+.sidebar-container.collapsed {
+  transform: translateX(-100%);
+}
+
+.sidebar-header {
+  padding: 15px 20px;
+  font-weight: 600;
+  font-size: 18px;
+  border-bottom: 1px solid #e0e0e0;
+  color: #333;
+}
+
+.sidebar-content {
+  padding: 10px;
+  height: calc(100% - 56px); /* 减去头部的高度 */
+  overflow-y: auto;
+}
+
+/* 侧边栏切换按钮 */
+.sidebar-toggle {
+  position: absolute;
+  top: 14px;
+  left: 100%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 30px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  line-height: 1;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+  padding-bottom: 2px;
+}
+
+.sidebar-toggle:hover {
+  background-color: #0056b3;
+}
+
+/* 主内容区域 */
+.main-content {
+  flex-grow: 1;
+  padding: 20px;
+  margin-left: 280px; /* 默认留出侧边栏的宽度 */
+  transition: margin-left 0.3s ease-in-out;
+}
+
+/* 当侧边栏收起时，主内容区域的左边距变为0 */
+.main-content.sidebar-collapsed {
+  margin-left: 0;
+}
+
+/* --- 树节点样式 --- */
+.tree-node {
+  list-style: none;
+  padding-left: 20px;
+}
+
+.node-item {
+  display: flex;
+  align-items: center;
+  padding: 5px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.node-item:hover {
+  background-color: #f0f0f0;
+  border-radius: 4px;
+}
+
+.toggle-icon {
+  width: 20px;
+  height: 20px;
+  font-family: monospace;
+  font-size: 16px;
+  text-align: center;
+  line-height: 20px;
+  margin-right: 5px;
+  color: #888;
+}
+
+.toggle-icon.placeholder {
+  visibility: hidden;
+}
+
+.node-icon {
+  margin-right: 8px;
+  width: 20px;
+  height: 20px;
+  color: #555;
+}
+
+.node-name {
+  font-size: 15px;
+}
+</style>
