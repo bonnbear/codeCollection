@@ -1,0 +1,302 @@
+<template>
+  <div id="app-container">
+    <div class="sidebar-container" :class="{ collapsed: !isSidebarOpen }">
+      <div class="sidebar-header">文件浏览器</div>
+      <div class="sidebar-content">
+        <ul style="padding-left: 0; margin: 0;">
+          <TreeNode 
+            v-for="node in treeData" 
+            :key="node.name" 
+            :node="node"
+            :selected-id="selectedNodeId"
+            @node-click="handleNodeClick"
+          />
+        </ul>
+      </div>
+      <button @click="toggleSidebar" class="sidebar-toggle">
+        {{ isSidebarOpen ? '‹' : '›' }}
+      </button>
+    </div>
+
+    <div class="main-content" :class="{ 'sidebar-collapsed': !isSidebarOpen }">
+      <h1>主内容区域</h1>
+      <p>当左侧侧边栏收起时，这里的内容会平滑地占据更多空间。</p>
+      <div v-if="selectedNodeId">
+        <p>当前选中的文件/文件夹是: <strong>{{ selectedNodeId }}</strong></p>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive } from 'vue';
+import TreeNode from './TreeNode.vue'; // 导入我们之前修改过的子组件
+
+// 侧边栏的打开/关闭状态
+const isSidebarOpen = ref(true);
+
+// 树形结构数据
+const treeData = reactive([
+  {
+    name: '项目根目录',
+    isOpen: true,
+    children: [
+      {
+        name: 'src',
+        isOpen: true,
+        children: [
+          { name: 'App.vue' },
+          { name: 'main.js' },
+          { name: 'components', children: [{ name: 'Button.vue' }, { name: 'Modal.vue' }] }
+        ]
+      },
+      {
+        name: 'public',
+        children: [{ name: 'index.html' }, { name: 'favicon.ico' }]
+      },
+      { name: 'package.json' },
+      { name: 'README.md' }
+    ]
+  },
+  {
+    name: '另一个顶级文件夹',
+    children: [{ name: 'note.txt' }]
+  }
+]);
+
+// 【新增】: 用于存储当前被选中节点的 ID (这里用 name)
+const selectedNodeId = ref(null);
+
+// 【新增】: 事件处理函数，当 TreeNode 触发 node-click 事件时调用
+const handleNodeClick = (node) => {
+  selectedNodeId.value = node.name;
+};
+
+
+// 切换侧边栏状态的方法
+const toggleSidebar = () => {
+  isSidebarOpen.value = !isSidebarOpen.value;
+};
+</script>
+
+<style>
+/* 全局样式 (从原始 HTML 迁移而来) */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  margin: 0;
+  background-color: #f4f7f9;
+  overflow-x: hidden;
+}
+
+#app-container {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* 侧边栏容器 */
+.sidebar-container {
+  position: fixed;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 280px;
+  background-color: #ffffff;
+  border-right: 1px solid #e0e0e0;
+  z-index: 100;
+  transform: translateX(0);
+  transition: transform 0.3s ease-in-out;
+}
+
+.sidebar-container.collapsed {
+  transform: translateX(-100%);
+}
+
+.sidebar-header {
+  padding: 15px 20px;
+  font-weight: 600;
+  font-size: 18px;
+  border-bottom: 1px solid #e0e0e0;
+  color: #333;
+}
+
+.sidebar-content {
+  padding: 10px;
+  height: calc(100% - 56px);
+  overflow-y: auto;
+}
+
+/* 侧边栏切换按钮 */
+.sidebar-toggle {
+  position: absolute;
+  top: 14px;
+  left: 100%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 30px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  line-height: 1;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+  padding-bottom: 2px;
+}
+
+.sidebar-toggle:hover {
+  background-color: #0056b3;
+}
+
+/* 主内容区域 */
+.main-content {
+  flex-grow: 1;
+  padding: 20px;
+  margin-left: 280px;
+  transition: margin-left 0.3s ease-in-out;
+}
+
+.main-content.sidebar-collapsed {
+  margin-left: 0;
+}
+
+/* --- 树节点样式 --- */
+.tree-node {
+  list-style: none;
+  padding-left: 20px;
+}
+
+.node-item {
+  display: flex;
+  align-items: center;
+  padding: 5px 8px; /* 增加左右内边距，让选中效果更好看 */
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px; /* 移到这里，让选中效果也有圆角 */
+  transition: background-color 0.2s; /* 添加过渡效果 */
+}
+
+.node-item:hover {
+  background-color: #f0f0f0;
+}
+
+/* 【新增】: 节点选中时的样式
+*/
+.node-item.selected {
+  background-color: #007bff;
+  color: white;
+}
+.node-item.selected:hover {
+  background-color: #0069d9;
+}
+.node-item.selected .node-icon {
+  color: white; /* 选中时图标也变色 */
+}
+
+.toggle-icon {
+  width: 20px;
+  height: 20px;
+  font-family: monospace;
+  font-size: 16px;
+  text-align: center;
+  line-height: 20px;
+  margin-right: 5px;
+  color: #888;
+}
+
+.toggle-icon.placeholder {
+  visibility: hidden;
+}
+
+.node-icon {
+  margin-right: 8px;
+  width: 20px;
+  height: 20px;
+  color: #555;
+  transition: color 0.2s; /* 添加过渡效果 */
+}
+
+.node-name {
+  font-size: 15px;
+}
+</style>
+
+
+
+<template>
+  <li class="tree-node-item">
+    <div class="node-item" @click="handleClick" :class="{ selected: isSelected }">
+      <span class="toggle-icon" :class="{ placeholder: !isFolder }">
+        <template v-if="isFolder">{{ isOpen ? '-' : '+' }}</template>
+      </span>
+      <svg class="node-icon" viewBox="0 0 24 24" fill="currentColor">
+        <path v-if="isFolder" d="M10 4H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8c0-1.11-.9-2-2-2h-8l-2-2z"></path>
+        <path v-else d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"></path>
+      </svg>
+      <span class="node-name">{{ node.name }}</span>
+    </div>
+    <ul class="tree-node" v-if="isFolder && isOpen">
+      <TreeNode 
+        v-for="child in node.children" 
+        :key="child.name" 
+        :node="child" 
+        :selected-id="selectedId"
+        @node-click="$emit('node-click', $event)"
+      />
+    </ul>
+  </li>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue';
+
+// 使用 defineProps 宏来定义组件的 props
+const props = defineProps({
+  node: {
+    type: Object,
+    required: true
+  },
+  // 新增：接收当前被选中的节点 ID
+  selectedId: {
+    type: [String, Number, null],
+    default: null
+  }
+});
+
+// 新增：定义组件可以触发的事件
+const emit = defineEmits(['node-click']);
+
+// 控制节点是否展开的状态，初始值来自 prop
+const isOpen = ref(props.node.isOpen || false);
+
+// 计算属性，判断当前节点是否为文件夹
+const isFolder = computed(() => {
+  return props.node.children && props.node.children.length > 0;
+});
+
+// 新增：计算属性，判断当前节点是否被选中
+const isSelected = computed(() => {
+  // 使用节点的 name 作为其唯一标识符，实践中建议使用唯一的 id
+  return props.node.name === props.selectedId;
+});
+
+// 点击时触发的方法，用于展开或折叠文件夹
+const toggle = () => {
+  if (isFolder.value) {
+    isOpen.value = !isOpen.value;
+  }
+};
+
+// 新增：统一的点击处理函数
+const handleClick = () => {
+  // 触发事件，通知父组件此节点被点击
+  emit('node-click', props.node);
+  // 同时执行原有的折叠/展开逻辑
+  toggle();
+};
+</script>
