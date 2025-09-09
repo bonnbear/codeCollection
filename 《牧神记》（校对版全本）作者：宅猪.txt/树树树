@@ -1,0 +1,414 @@
+<template>
+  <div id="app-wrapper">
+    <div class="card-container" :class="{ 'sidebar-collapsed': !isSidebarOpen }">
+      <div class="sidebar-container">
+        <div class="sidebar-header">文件浏览器</div>
+        <div class="sidebar-content">
+          <ul class="tree-node is-root">
+            <TreeNode
+              v-for="node in treeData"
+              :key="node.name"
+              :node="node"
+              :selected-id="selectedNodeId"
+              @node-click="handleNodeClick"
+            />
+          </ul>
+        </div>
+      </div>
+      
+      <button @click="toggleSidebar" class="sidebar-toggle">
+        {{ isSidebarOpen ? '‹' : '›' }}
+      </button>
+
+      <div class="main-content">
+        <div class="main-header">
+          <h1>主内容区域</h1>
+        </div>
+        <div class="main-body">
+          <p>当左侧侧边栏收起时，这里的内容会平滑地占据更多空间。</p>
+          <div v-if="selectedNodeId">
+            <p>当前选中的文件/文件夹是: <strong>{{ selectedNodeId }}</strong></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive } from 'vue';
+import TreeNode from './TreeNode.vue';
+
+const isSidebarOpen = ref(true);
+const treeData = reactive([
+  {
+    name: '项目根目录',
+    isOpen: true,
+    children: [
+      {
+        name: 'src',
+        isOpen: true,
+        children: [
+          { name: 'App.vue' },
+          { name: 'main.js' },
+          { name: 'components', children: [{ name: 'Button.vue' }, { name: 'Modal.vue' }] }
+        ]
+      },
+      {
+        name: 'public',
+        children: [{ name: 'index.html' }, { name: 'favicon.ico' }]
+      },
+      { name: 'package.json' },
+      { name: 'README.md' }
+    ]
+  },
+  {
+    name: '另一个顶级文件夹',
+    children: [{ name: 'note.txt' }]
+  }
+]);
+const selectedNodeId = ref(null);
+
+const handleNodeClick = (node) => {
+  selectedNodeId.value = node.name;
+};
+
+const toggleSidebar = () => {
+  isSidebarOpen.value = !isSidebarOpen.value;
+};
+</script>
+
+<style lang="scss" scoped>
+/* 全局样式部分 */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  margin: 0;
+  background-color: #f4f7f9;
+  overflow-x: hidden;
+  display: flex; /* 让body也成为flex容器，居中卡片 */
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+#app-wrapper {
+  padding: 20px; /* 卡片外部的间距 */
+  width: 100%;
+  max-width: 1200px; /* 限制卡片的最大宽度 */
+}
+
+.card-container {
+  display: flex;
+  height: calc(100vh - 40px);
+  min-height: 600px;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  position: relative; /* 成为按钮定位的参照物 */
+
+  /* 左侧边栏 */
+  .sidebar-container {
+    width: 280px; /* 侧边栏展开时的固定宽度 */
+    flex-shrink: 0;
+    background-color: #ffffff;
+    border-right: 1px solid #e0e0e0;
+    transition: width 0.3s ease-in-out;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+
+    .sidebar-header {
+      padding: 15px 20px;
+      font-weight: 600;
+      font-size: 18px;
+      border-bottom: 1px solid #e0e0e0;
+      color: #333;
+      flex-shrink: 0;
+      white-space: nowrap; // 防止收起时文字换行
+    }
+
+    .sidebar-content {
+      padding: 10px;
+      flex-grow: 1;
+      overflow-y: auto;
+    }
+  }
+  
+  /* **关键改动**: 切换按钮的样式 */
+  .sidebar-toggle {
+    position: absolute;
+    top: 14px;
+    // 初始位置在侧边栏的右边缘
+    left: 280px; 
+    // 通过 transform 将按钮的中心对准边缘线
+    transform: translateX(-50%); 
+    width: 30px;
+    height: 30px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    line-height: 1;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+    z-index: 10;
+    padding-bottom: 2px;
+    // 平滑移动效果
+    transition: left 0.3s ease-in-out, background-color 0.2s;
+
+    &:hover {
+      background-color: #0056b3;
+    }
+  }
+
+  /* 右侧主内容区 */
+  .main-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #f8fafd;
+    // 过渡效果，让其宽度变化更平滑
+    transition: margin-left 0.3s ease-in-out;
+
+    .main-header {
+      padding: 15px 25px;
+      background-color: #ffffff;
+      border-bottom: 1px solid #e0e0e0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+      flex-shrink: 0;
+      h1 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 600;
+      }
+    }
+    .main-body {
+      padding: 25px;
+      flex-grow: 1;
+      overflow-y: auto;
+    }
+  }
+  
+  /* 当侧边栏收起时的样式变化 */
+  &.sidebar-collapsed {
+    .sidebar-container {
+      width: 0;
+      border-right-color: transparent;
+    }
+    .sidebar-toggle {
+      // 移动到靠近左侧边缘的位置，依然可见
+      left: 15px; 
+    }
+  }
+}
+
+/* --- 树节点样式 (带连接线，且顶级无连接线) --- */
+/* 注意：由于 style 是 scoped，深层组件的样式可能需要用 :deep() 或 >>> */
+:deep(.tree-node) {
+  list-style: none;
+  padding-left: 22px;
+  position: relative;
+
+  &.is-root {
+    padding-left: 0;
+    &::before {
+      display: none;
+    }
+  }
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 8px;
+    border-left: 1px solid #dcdcdc;
+  }
+}
+
+:deep(.tree-node-item) {
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 16px;
+    left: -14px;
+    width: 14px;
+    border-bottom: 1px solid #dcdcdc;
+  }
+}
+:deep(.tree-node .tree-node-item:last-child::after) {
+  content: '';
+  position: absolute;
+  top: 17px;
+  bottom: 0;
+  left: -14px;
+  width: 1px;
+  background-color: #ffffff; /* 使用侧边栏的背景色来覆盖 */
+}
+
+:deep(.is-root > .tree-node-item::before),
+:deep(.is-root > .tree-node-item::after) {
+  display: none;
+}
+
+/* 其他节点样式 */
+:deep(.node-item) {
+  display: flex;
+  align-items: center;
+  padding: 5px 8px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #f0f0f0;
+  }
+
+  &.selected {
+    background-color: #007bff;
+    color: white;
+
+    &:hover {
+      background-color: #0069d9;
+    }
+    .node-icon {
+      color: white;
+    }
+  }
+}
+
+:deep(.toggle-icon) {
+  width: 20px;
+  height: 20px;
+  font-family: monospace;
+  font-size: 16px;
+  text-align: center;
+  line-height: 20px;
+  margin-right: 5px;
+  color: #888;
+
+  &.placeholder {
+    visibility: hidden;
+  }
+}
+
+:deep(.node-icon) {
+  margin-right: 8px;
+  width: 20px;
+  height: 20px;
+  color: #555;
+  transition: color 0.2s;
+}
+
+:deep(.node-name) {
+  font-size: 15px;
+}
+</style>
+
+
+
+
+
+
+
+
+好的，这段代码中与 **“根节点线样式”** 相关的部分主要有以下几个 CSS 规则。
+
+核心思想是：**先为所有节点创建连接线，然后专门为根节点（顶级节点）把这些线隐藏掉。**
+
+以下是具体的代码块和解释：
+
+### 1\. 为所有节点创建“竖线”
+
+这部分代码为每个 `ul` (tree-node) 创建了左侧的垂直连接线，但通过 `.is-root` 排除了顶级 `ul`。
+
+```css
+:deep(.tree-node) {
+  list-style: none;
+  padding-left: 22px; /* 为连接线和图标留出空间 */
+  position: relative;
+
+  /* ★★★ 关键点 1: 排除根节点UL的竖线 ★★★ */
+  &.is-root {
+    padding-left: 0;
+    &::before {
+      display: none; /* 隐藏顶级UL的::before伪元素，即不显示最左侧的竖线 */
+    }
+  }
+
+  /* 为所有非顶级的UL创建左侧竖线 */
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 8px; /* 控制竖线的位置 */
+    border-left: 1px solid #dcdcdc; /* 竖线样式 */
+  }
+}
+```
+
+  - `.tree-node` 是 `ul` 元素。
+  - `&::before` 在 `ul` 的左侧创建了一条从上到下的垂直线。
+  - `&.is-root::before { display: none; }` 这句是关键，它明确指示：如果 `ul` 拥有 `is-root` 类（即最外层的那个 `ul`），则不显示这条垂直线。
+
+### 2\. 为所有节点创建“横线”
+
+这部分代码为每个 `li` (tree-node-item) 创建了连接到父级竖线的水平线。同样，它也有一条规则来隐藏根节点的这条线。
+
+```css
+:deep(.tree-node-item) {
+  position: relative;
+
+  /* 为所有LI创建指向父级竖线的横线 */
+  &::before {
+    content: '';
+    position: absolute;
+    top: 16px;      /* 控制横线垂直位置，对准文字中间 */
+    left: -14px;    /* 从LI向左延伸，连接到父级UL的竖线上 */
+    width: 14px;    /* 横线长度 */
+    border-bottom: 1px solid #dcdcdc; /* 横线样式 */
+  }
+}
+
+/* ★★★ 关键点 2: 隐藏根节点LI的横线 ★★★ */
+:deep(.is-root > .tree-node-item::before),
+:deep(.is-root > .tree-node-item::after) {
+  display: none;
+}
+```
+
+  - `.tree-node-item` 是 `li` 元素。
+  - `&::before` 创建了从节点文字左侧延伸出去的短横线。
+  - `:deep(.is-root > .tree-node-item::before)` 这个选择器非常精确，它表示：**选择 `is-root` 类的直接子元素 `.tree-node-item` 的 `::before` 伪元素，并将其隐藏**。这就确保了“项目根目录”和“另一个顶级文件夹”这两个顶级节点前面不会有横向连接线。
+
+### 总结
+
+所以，与“根节点线样式”直接相关的就是下面这两段 **隐藏样式** 的代码：
+
+1.  **隐藏根 `<ul>` 的竖线：**
+
+    ```css
+    :deep(.tree-node.is-root::before) {
+      display: none;
+    }
+    ```
+
+2.  **隐藏根 `<li>` 的横线和末端处理线：**
+
+    ```css
+    :deep(.is-root > .tree-node-item::before),
+    :deep(.is-root > .tree-node-item::after) {
+      display: none;
+    }
+    ```
+
+这两部分共同实现了“顶级节点（根节点）不显示连接线”的效果。
