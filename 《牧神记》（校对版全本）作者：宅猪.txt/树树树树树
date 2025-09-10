@@ -546,3 +546,146 @@ body {
 }
 </style>
 ```
+
+
+
+
+
+
+
+<template>
+  <li class="tree-node-item" :class="{ 'is-last': isLast, 'is-root': level === 0 }">
+    <div 
+      class="node-content" 
+      @click="handleClick"
+      :class="{ 
+        'is-selected': isSelected,
+        'is-folder': isFolder 
+      }"
+    >
+      <span class="node-indent" :style="{ width: indent + 'px' }"></span>
+      
+      <span v-if="isFolder" class="node-expand-icon" @click="toggle">
+        <svg class="expand-icon" :class="{ 'is-expanded': isOpen }" viewBox="0 0 24 24">
+          <path d="M7 10l5 5 5-5z" fill="currentColor"/>
+        </svg>
+      </span>
+
+      <span class="node-content-wrapper">
+        <svg class="node-icon" viewBox="0 0 24 24" fill="currentColor">
+          <path v-if="isFolder && isOpen" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h5l2 2h7a2 2 0 012 2v1M19 11v7a2 2 0 01-2 2H7a2 2 0 01-2-2v-7a2 2 0 012-2h10a2 2 0 012 2z"></path>
+          <path v-else-if="isFolder" d="M10 4H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8c0-1.11-.9-2-2-2h-8l-2-2z"></path>
+          <path v-else d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"></path>
+        </svg>
+        <span class="node-label">{{ node.name }}</span>
+      </span>
+    </div>
+    
+    <transition name="tree-node-expand">
+      <ul class="tree-node-children" v-if="isFolder && isOpen">
+        <TreeNode
+          v-for="(child, index) in node.children"
+          :key="child.name"
+          :node="child"
+          :selected-id="selectedId"
+          :level="level + 1"
+          @node-click="$emit('node-click', $event)"
+          :is-last="index === node.children.length - 1"
+        />
+      </ul>
+    </transition>
+  </li>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue';
+
+const props = defineProps({
+  node: {
+    type: Object,
+    required: true
+  },
+  selectedId: {
+    type: [String, Number, null],
+    default: null
+  },
+  level: {
+    type: Number,
+    default: 0
+  },
+  isLast: {
+    type: Boolean,
+    default: false
+  }
+});
+
+const emit = defineEmits(['node-click']);
+
+const isOpen = ref(props.node.isOpen || false);
+
+const isFolder = computed(() => {
+  return props.node.children && props.node.children.length > 0;
+});
+
+const isSelected = computed(() => {
+  return props.node.name === props.selectedId;
+});
+
+const indent = computed(() => {
+  return props.level * 18;
+});
+
+const toggle = () => {
+  if (isFolder.value) {
+    isOpen.value = !isOpen.value;
+  }
+};
+
+const handleClick = () => {
+  emit('node-click', props.node);
+};
+</script>
+
+<style lang="scss" scoped>
+.tree-node-item {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  position: relative;
+}
+
+/* 绘制非根节点的连接线 */
+.tree-node-item:not(.is-root) {
+  /* ::before 伪类用于绘制垂直线 | */
+  &::before {
+    content: '';
+    position: absolute;
+    /* 使用当前组件的 level prop 动态计算位置 */
+    left: calc(18px * (v-bind(level) - 1) + 12px);
+    top: 0;
+    width: 1px;
+    height: 100%;
+    background-color: #dcdfe6;
+  }
+
+  /* ::after 伪类用于绘制水平线 ─ */
+  &::after {
+    content: '';
+    position: absolute;
+    /* 使用当前组件的 level prop 动态计算位置 */
+    left: calc(18px * (v-bind(level) - 1) + 13px);
+    top: 16px;
+    width: 11px;
+    height: 1px;
+    background-color: #dcdfe6;
+  }
+}
+
+/* 对于最后一个子节点，垂直线不应该延伸到底部 */
+.tree-node-item.is-last::before {
+  height: 16px;
+}
+
+/* .is-leaf 相关的样式已不再需要，故删除 */
+</style>
