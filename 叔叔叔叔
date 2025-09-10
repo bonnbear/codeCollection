@@ -1,0 +1,449 @@
+我来帮你改造这个文件浏览器，参考 Element Plus 的 el-tree 样式，实现 hover 整行高亮和点击整行选中的效果。以下是完整的代码：
+
+**App.vue:**
+
+```vue
+<template>
+  <div id="app-wrapper">
+    <div class="card-container" :class="{ 'sidebar-collapsed': !isSidebarOpen }">
+      <div class="sidebar-container">
+        <div class="sidebar-header">文件浏览器</div>
+        <div class="sidebar-content">
+          <div class="tree-wrapper">
+            <TreeNode
+              v-for="node in treeData"
+              :key="node.name"
+              :node="node"
+              :selected-id="selectedNodeId"
+              :level="0"
+              @node-click="handleNodeClick"
+            />
+          </div>
+        </div>
+      </div>
+      
+      <button @click="toggleSidebar" class="sidebar-toggle">
+        {{ isSidebarOpen ? '‹' : '›' }}
+      </button>
+
+      <div class="main-content">
+        <div class="main-header">
+          <h1>主内容区域</h1>
+        </div>
+        <div class="main-body">
+          <p>当左侧侧边栏收起时，这里的内容会平滑地占据更多空间。</p>
+          <div v-if="selectedNodeId">
+            <p>当前选中的文件/文件夹是: <strong>{{ selectedNodeId }}</strong></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive } from 'vue';
+import TreeNode from './TreeNode.vue';
+
+const isSidebarOpen = ref(true);
+const treeData = reactive([
+  {
+    name: '项目根目录',
+    isOpen: true,
+    children: [
+      {
+        name: 'src',
+        isOpen: true,
+        children: [
+          { name: 'App.vue' },
+          { name: 'main.js' },
+          { name: 'components', children: [{ name: 'Button.vue' }, { name: 'Modal.vue' }] }
+        ]
+      },
+      {
+        name: 'public',
+        children: [{ name: 'index.html' }, { name: 'favicon.ico' }]
+      },
+      { name: 'package.json' },
+      { name: 'README.md' }
+    ]
+  },
+  {
+    name: '另一个顶级文件夹',
+    children: [{ name: 'note.txt' }]
+  }
+]);
+const selectedNodeId = ref(null);
+
+const handleNodeClick = (node) => {
+  selectedNodeId.value = node.name;
+};
+
+const toggleSidebar = () => {
+  isSidebarOpen.value = !isSidebarOpen.value;
+};
+</script>
+
+<style lang="scss" scoped>
+/* 全局样式部分 */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  margin: 0;
+  background-color: #f4f7f9;
+  overflow-x: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+#app-wrapper {
+  padding: 20px;
+  width: 100%;
+  max-width: 1200px;
+}
+
+.card-container {
+  display: flex;
+  height: calc(100vh - 40px);
+  min-height: 600px;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  position: relative;
+
+  .sidebar-container {
+    width: 280px;
+    flex-shrink: 0;
+    background-color: #ffffff;
+    border-right: 1px solid #e0e0e0;
+    transition: width 0.3s ease-in-out;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+
+    .sidebar-header {
+      padding: 15px 20px;
+      font-weight: 600;
+      font-size: 18px;
+      border-bottom: 1px solid #e0e0e0;
+      color: #333;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    .sidebar-content {
+      flex-grow: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      
+      .tree-wrapper {
+        padding: 8px 0;
+      }
+    }
+  }
+  
+  .sidebar-toggle {
+    position: absolute;
+    top: 14px;
+    left: 280px;
+    transform: translateX(-50%);
+    width: 30px;
+    height: 30px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    line-height: 1;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+    z-index: 10;
+    padding-bottom: 2px;
+    transition: left 0.3s ease-in-out, background-color 0.2s;
+
+    &:hover {
+      background-color: #0056b3;
+    }
+  }
+
+  .main-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #f8fafd;
+    transition: margin-left 0.3s ease-in-out;
+
+    .main-header {
+      padding: 15px 25px;
+      background-color: #ffffff;
+      border-bottom: 1px solid #e0e0e0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+      flex-shrink: 0;
+      
+      h1 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 600;
+      }
+    }
+    
+    .main-body {
+      padding: 25px;
+      flex-grow: 1;
+      overflow-y: auto;
+    }
+  }
+  
+  &.sidebar-collapsed {
+    .sidebar-container {
+      width: 0;
+      border-right-color: transparent;
+    }
+    
+    .sidebar-toggle {
+      left: 15px;
+    }
+  }
+}
+</style>
+```
+
+**TreeNode.vue:**
+
+```vue
+<template>
+  <div class="tree-node">
+    <div 
+      class="tree-node-content"
+      :class="{ 
+        'is-selected': isSelected,
+        'is-expandable': hasChildren
+      }"
+      :style="{ paddingLeft: `${level * 18 + 8}px` }"
+      @click="handleClick"
+    >
+      <!-- 展开/收起图标 -->
+      <span 
+        class="tree-node-arrow"
+        :class="{ 'is-expanded': isOpen }"
+        @click.stop="toggleExpand"
+      >
+        <svg v-if="hasChildren" viewBox="0 0 24 24" width="12" height="12">
+          <path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
+        </svg>
+      </span>
+      
+      <!-- 文件/文件夹图标 -->
+      <span class="tree-node-icon">
+        <svg v-if="hasChildren" viewBox="0 0 24 24" width="16" height="16">
+          <path v-if="isOpen" fill="currentColor" d="M10 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2h-8l-2-2z"/>
+          <path v-else fill="currentColor" d="M10 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2h-8l-2-2z"/>
+        </svg>
+        <svg v-else viewBox="0 0 24 24" width="16" height="16">
+          <path fill="currentColor" d="M13 9V3.5L18.5 9M6 2c-1.11 0-2 .89-2 2v16c0 1.11.89 2 2 2h12c1.11 0 2-.89 2-2V8l-6-6H6z"/>
+        </svg>
+      </span>
+      
+      <!-- 节点名称 -->
+      <span class="tree-node-label">{{ node.name }}</span>
+    </div>
+    
+    <!-- 子节点 -->
+    <div v-if="hasChildren && isOpen" class="tree-node-children">
+      <TreeNode
+        v-for="child in node.children"
+        :key="child.name"
+        :node="child"
+        :selected-id="selectedId"
+        :level="level + 1"
+        @node-click="$emit('node-click', $event)"
+      />
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, watch } from 'vue';
+
+const props = defineProps({
+  node: {
+    type: Object,
+    required: true
+  },
+  selectedId: {
+    type: String,
+    default: null
+  },
+  level: {
+    type: Number,
+    default: 0
+  }
+});
+
+const emit = defineEmits(['node-click']);
+
+const isOpen = ref(props.node.isOpen || false);
+const hasChildren = computed(() => props.node.children && props.node.children.length > 0);
+const isSelected = computed(() => props.selectedId === props.node.name);
+
+watch(() => props.node.isOpen, (newVal) => {
+  isOpen.value = newVal;
+});
+
+const toggleExpand = () => {
+  if (hasChildren.value) {
+    isOpen.value = !isOpen.value;
+    props.node.isOpen = isOpen.value;
+  }
+};
+
+const handleClick = () => {
+  emit('node-click', props.node);
+  if (hasChildren.value) {
+    toggleExpand();
+  }
+};
+</script>
+
+<style lang="scss" scoped>
+.tree-node {
+  font-size: 14px;
+  color: #606266;
+  
+  .tree-node-content {
+    display: flex;
+    align-items: center;
+    height: 26px;
+    cursor: pointer;
+    position: relative;
+    transition: background-color 0.15s;
+    
+    &:hover {
+      background-color: #f5f7fa;
+    }
+    
+    &.is-selected {
+      background-color: #f0f7ff;
+      
+      .tree-node-label {
+        color: #409eff;
+        font-weight: 500;
+      }
+      
+      .tree-node-icon {
+        color: #409eff;
+      }
+    }
+    
+    &.is-selected:hover {
+      background-color: #ecf5ff;
+    }
+  }
+  
+  .tree-node-arrow {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: transform 0.3s;
+    color: #c0c4cc;
+    
+    &.is-expanded {
+      transform: rotate(90deg);
+    }
+    
+    &:hover {
+      color: #909399;
+    }
+    
+    svg {
+      display: block;
+    }
+  }
+  
+  .tree-node-icon {
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-right: 8px;
+    color: #909399;
+    
+    svg {
+      display: block;
+    }
+  }
+  
+  .tree-node-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 26px;
+  }
+  
+  .tree-node-children {
+    // 子节点容器不需要额外的样式
+  }
+}
+
+// 连接线样式（可选，如果需要显示连接线可以启用）
+// .tree-node {
+//   .tree-node-content {
+//     &::before {
+//       content: '';
+//       position: absolute;
+//       left: 0;
+//       top: -7px;
+//       height: 100%;
+//       border-left: 1px dashed #dcdfe6;
+//     }
+//     
+//     &::after {
+//       content: '';
+//       position: absolute;
+//       left: 0;
+//       top: 12px;
+//       width: 20px;
+//       border-top: 1px dashed #dcdfe6;
+//     }
+//   }
+//   
+//   &:first-child > .tree-node-content::before {
+//     top: 0;
+//   }
+//   
+//   &:last-child > .tree-node-content::before {
+//     height: 13px;
+//   }
+// }
+</style>
+```
+
+主要改进点：
+
+1. **整行高亮效果**：hover 和选中状态都应用到整个 `tree-node-content` 容器上，实现整行的背景色变化
+2. **点击整行响应**：点击事件绑定在 `tree-node-content` 上，点击整行任意位置都能选中节点
+3. **样式优化**：
+   - 使用类似 Element Plus 的配色方案（hover: #f5f7fa，选中: #f0f7ff）
+   - 选中时文字和图标变为主题色 #409eff
+   - 添加了平滑的过渡动画
+4. **图标系统**：使用 SVG 图标，包括文件夹（展开/收起状态）和文件图标
+5. **缩进层级**：通过 `level` 属性动态计算每层的缩进距离
+6. **展开/收起**：点击箭头或文件夹都可以展开/收起，更符合用户习惯
+
+这个实现提供了更好的用户体验，整行都是可点击区域，视觉反馈清晰，符合现代 UI 设计规范。
