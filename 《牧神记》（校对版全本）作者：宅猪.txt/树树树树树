@@ -1,32 +1,40 @@
-好的，没问题。
+好的，您提了两个非常好的建议，这会让组件的结构更清晰、更易于维护。
 
-这是两份可以直接复制使用的完整文件代码，已经将所有修复和改进整合完毕。
+1.  **增加间隔**：在去掉图标后，文字确实离连接线/箭头太近了，我们会增加一个间距。
+2.  **封装样式**：将所有与 `TreeNode` 相关的样式从 `App.vue` 的 `:deep()` "穿透" 写法，全部移动到 `TreeNode.vue` 组件自己的 `<style scoped>` 中。这是一个非常棒的重构，能让 `TreeNode` 成为一个完全独立的、可移植的组件。
 
-### `TreeNode.vue`
+我们来执行这两项优化。
+
+-----
+
+### 代码修改
+
+以下是重构后的两个完整文件。`TreeNode.vue` 现在包含了它自己的全部样式，而 `App.vue` 的样式则被大大简化，只负责外部布局。
+
+### `TreeNode.vue` (完整代码)
+
+这个文件现在是“完全体”，包含了自身的模板、逻辑和**所有相关样式**。我们还在 `.node-content-wrapper` 上加了 `padding-left` 来创建间隔。
 
 ```vue
 <template>
   <li class="tree-node-item" :class="{ 'is-last': isLast, 'is-root': level === 0 }">
-    <div 
-      class="node-content" 
+    <div
+      class="node-content"
       @click="handleClick"
-      :class="{ 
+      :class="{
         'is-selected': isSelected,
-        'is-folder': isFolder 
+        'is-folder': isFolder
       }"
     >
       <span class="node-indent" :style="{ width: indent + 'px' }"></span>
-      <span class="node-expand-icon" @click.stop="toggle">
-        <svg v-if="isFolder" class="expand-icon" :class="{ 'is-expanded': isOpen }" viewBox="0 0 24 24">
+
+      <span v-if="isFolder" class="node-expand-icon" @click="toggle">
+        <svg class="expand-icon" :class="{ 'is-expanded': isOpen }" viewBox="0 0 24 24">
           <path d="M7 10l5 5 5-5z" fill="currentColor"/>
         </svg>
       </span>
+
       <span class="node-content-wrapper">
-        <svg class="node-icon" viewBox="0 0 24 24" fill="currentColor">
-          <path v-if="isFolder && isOpen" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h5l2 2h7a2 2 0 012 2v1M19 11v7a2 2 0 01-2 2H7a2 2 0 01-2-2v-7a2 2 0 012-2h10a2 2 0 012 2z"></path>
-          <path v-else-if="isFolder" d="M10 4H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8c0-1.11-.9-2-2-2h-8l-2-2z"></path>
-          <path v-else d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"></path>
-        </svg>
         <span class="node-label">{{ node.name }}</span>
       </span>
     </div>
@@ -39,8 +47,9 @@
           :node="child"
           :selected-id="selectedId"
           :level="level + 1"
-          @node-click="$emit('node-click', $event)"
           :is-last="index === node.children.length - 1"
+          @node-click="$emit('node-click', $event)"
+          :path="[...path, node]"
         />
       </ul>
     </transition>
@@ -51,39 +60,22 @@
 import { ref, computed } from 'vue';
 
 const props = defineProps({
-  node: {
-    type: Object,
-    required: true
-  },
-  selectedId: {
-    type: [String, Number, null],
-    default: null
-  },
-  level: {
-    type: Number,
-    default: 0
-  },
-  isLast: {
-    type: Boolean,
-    default: false
+  node: { type: Object, required: true },
+  selectedId: { type: [String, Number, null], default: null },
+  level: { type: Number, default: 0 },
+  isLast: { type: Boolean, default: false },
+  path: {
+    type: Array,
+    default: () => []
   }
 });
 
 const emit = defineEmits(['node-click']);
 
 const isOpen = ref(props.node.isOpen || false);
-
-const isFolder = computed(() => {
-  return props.node.children && props.node.children.length > 0;
-});
-
-const isSelected = computed(() => {
-  return props.node.name === props.selectedId;
-});
-
-const indent = computed(() => {
-  return props.level * 18;
-});
+const isFolder = computed(() => props.node.children && props.node.children.length > 0);
+const isSelected = computed(() => props.node.name === props.selectedId);
+const indent = computed(() => props.level * 18);
 
 const toggle = () => {
   if (isFolder.value) {
@@ -92,11 +84,16 @@ const toggle = () => {
 };
 
 const handleClick = () => {
-  emit('node-click', props.node);
+  const fullPath = [...props.path, props.node];
+  emit('node-click', fullPath);
 };
 </script>
 
 <style lang="scss" scoped>
+/* ======================================= */
+/* TreeNode 组件的全部样式 (完全封装)      */
+/* ======================================= */
+
 .tree-node-item {
   list-style: none;
   margin: 0;
@@ -105,25 +102,20 @@ const handleClick = () => {
   position: relative;
 }
 
-/* 绘制非根节点的连接线 */
+/* --- 连接线样式 --- */
 .tree-node-item:not(.is-root) {
-  /* ::before 伪类用于绘制垂直线 | */
   &::before {
     content: '';
     position: absolute;
-    /* 使用当前组件的 level prop 动态计算位置 */
     left: calc(18px * (v-bind(level) - 1) + 12px);
     top: 0;
     width: 1px;
     height: 100%;
     background-color: #dcdfe6;
   }
-
-  /* ::after 伪类用于绘制水平线 ─ */
   &::after {
     content: '';
     position: absolute;
-    /* 使用当前组件的 level prop 动态计算位置 */
     left: calc(18px * (v-bind(level) - 1) + 13px);
     top: 16px;
     width: 11px;
@@ -132,14 +124,136 @@ const handleClick = () => {
   }
 }
 
-/* 对于最后一个子节点，垂直线不应该延伸到底部 */
 .tree-node-item.is-last::before {
   height: 16px;
+}
+
+/* --- 节点内容样式 --- */
+.node-content {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  cursor: pointer;
+  position: relative;
+  
+  /* 整行高亮效果 */
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    transition: background-color 0.15s;
+  }
+  
+  &:hover::before {
+    background-color: #f3f4f6;
+  }
+  
+  &.is-selected::before {
+    background-color: #e3f2fd;
+  }
+  
+  &.is-selected:hover::before {
+    background-color: #bbdefb;
+  }
+  
+  /* 选中时的左边框 */
+  &.is-selected::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background-color: #1976d2;
+  }
+}
+
+.node-indent {
+  flex-shrink: 0;
+}
+
+.node-expand-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  
+  .expand-icon {
+    width: 16px;
+    height: 16px;
+    color: #6e7781;
+    transition: transform 0.2s;
+    
+    &.is-expanded {
+      transform: rotate(180deg);
+    }
+  }
+  
+  &:hover .expand-icon {
+    color: #24292e;
+  }
+}
+
+.node-content-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  position: relative;
+  z-index: 1;
+  padding-right: 12px;
+  /* [新增] 增加左侧内边距，制造文字和连接线/图标的间隔 */
+  padding-left: 6px; 
+}
+
+.node-label {
+  font-size: 14px;
+  color: #24292e;
+  line-height: 1.5;
+  
+  // .node-content.is-selected .node-label
+  .is-selected & {
+    color: #1976d2;
+    font-weight: 500;
+  }
+}
+
+.tree-node-children {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* --- 展开/收起动画 --- */
+.tree-node-expand-enter-active,
+.tree-node-expand-leave-active {
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.tree-node-expand-enter-from,
+.tree-node-expand-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+.tree-node-expand-enter-to,
+.tree-node-expand-leave-from {
+  opacity: 1;
+  max-height: 500px; /* 或一个足够大的值 */
 }
 </style>
 ```
 
-### `App.vue`
+### `App.vue` (完整代码)
+
+这个文件的 `<style>` 块被大幅清理，所有 `:deep()` 选择器都已移除，只留下与 `App.vue` 自身布局相关的样式。
 
 ```vue
 <template>
@@ -174,8 +288,15 @@ const handleClick = () => {
         </div>
         <div class="main-body">
           <p>当左侧侧边栏收起时，这里的内容会平滑地占据更多空间。</p>
-          <div v-if="selectedNodeId" class="selected-info">
-            <p>当前选中的文件/文件夹是: <strong>{{ selectedNodeId }}</strong></p>
+          
+          <div v-if="selectedNodePath.length > 0" class="selected-info">
+            <p>
+              当前选中的节点是: <strong>{{ selectedNodeId }}</strong>
+            </p>
+            <p style="margin-top: 8px;">
+              完整路径: 
+              <span class="path-display">{{ selectedNodePath.map(p => p.name).join(' / ') }}</span>
+            </p>
           </div>
         </div>
       </div>
@@ -188,60 +309,29 @@ import { ref, reactive } from 'vue';
 import TreeNode from './TreeNode.vue';
 
 const isSidebarOpen = ref(true);
-
 const treeData = reactive([
-  {
-    name: '项目根目录',
-    isOpen: true,
-    children: [
-      {
-        name: 'src',
-        isOpen: true,
-        children: [
+  { name: '项目根目录', isOpen: true, children: [
+      { name: 'src', isOpen: true, children: [
           { name: 'App.vue' },
           { name: 'main.js' },
-          { 
-            name: 'components', 
-            children: [
-              { name: 'Button.vue' }, 
-              { name: 'Modal.vue' },
-              { name: 'Card.vue' }
-            ] 
-          },
-          {
-            name: 'views',
-            children: [
-              { name: 'Home.vue' },
-              { name: 'About.vue' }
-            ]
-          }
-        ]
-      },
-      {
-        name: 'public',
-        children: [
-          { name: 'index.html' }, 
-          { name: 'favicon.ico' }
-        ]
-      },
+          { name: 'components', children: [ { name: 'Button.vue' }, { name: 'Modal.vue' }, { name: 'Card.vue' } ] },
+          { name: 'views', children: [ { name: 'Home.vue' }, { name: 'About.vue' } ] }
+      ]},
+      { name: 'public', children: [ { name: 'index.html' }, { name: 'favicon.ico' } ]},
       { name: 'package.json' },
       { name: 'README.md' },
       { name: 'vite.config.js' }
-    ]
-  },
-  {
-    name: '文档',
-    children: [
-      { name: 'guide.md' },
-      { name: 'api.md' }
-    ]
-  }
+  ]},
+  { name: '文档', children: [ { name: 'guide.md' }, { name: 'api.md' } ] }
 ]);
 
 const selectedNodeId = ref(null);
+const selectedNodePath = ref([]);
 
-const handleNodeClick = (node) => {
-  selectedNodeId.value = node.name;
+const handleNodeClick = (path) => {
+  const clickedNode = path[path.length - 1];
+  selectedNodeId.value = clickedNode.name;
+  selectedNodePath.value = path;
 };
 
 const toggleSidebar = () => {
@@ -250,442 +340,61 @@ const toggleSidebar = () => {
 </script>
 
 <style lang="scss" scoped>
-/* 全局样式 */
-* {
-  box-sizing: border-box;
+/* [重构] App.vue 现在只包含与自身布局和树的根容器相关的样式 */
+.path-display {
+  color: #586069;
+  background-color: #eef0f2;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Courier New', Courier, monospace;
 }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  margin: 0;
-  background-color: #f4f7f9;
-  overflow-x: hidden;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-}
-
-#app-wrapper {
-  padding: 20px;
-  width: 100%;
-  max-width: 1400px;
-}
-
-.card-container {
-  display: flex;
-  height: calc(100vh - 40px);
-  min-height: 600px;
-  background-color: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-  position: relative;
-
-  /* 左侧边栏 */
-  .sidebar-container {
-    width: 320px;
-    flex-shrink: 0;
-    background-color: #fafbfc;
-    border-right: 1px solid #e1e4e8;
-    transition: width 0.3s ease-in-out;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-
-    .sidebar-header {
-      padding: 20px 24px;
-      font-weight: 600;
-      font-size: 16px;
-      border-bottom: 1px solid #e1e4e8;
-      background-color: #fff;
-      color: #24292e;
-      flex-shrink: 0;
-      white-space: nowrap;
-    }
-
-    .sidebar-content {
-      flex-grow: 1;
-      overflow-y: auto;
-      overflow-x: hidden;
-      background-color: #fafbfc;
-      
-      &::-webkit-scrollbar { width: 6px; }
-      &::-webkit-scrollbar-track { background: transparent; }
-      &::-webkit-scrollbar-thumb {
-        background: #d1d5db;
-        border-radius: 3px;
-        &:hover { background: #b0b7c3; }
-      }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 0; background-color: #f4f7f9; overflow-x: hidden; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+#app-wrapper { padding: 20px; width: 100%; max-width: 1400px; }
+.card-container { display: flex; height: calc(100vh - 40px); min-height: 600px; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1); overflow: hidden; position: relative;
+  .sidebar-container { width: 320px; flex-shrink: 0; background-color: #fafbfc; border-right: 1px solid #e1e4e8; transition: width 0.3s ease-in-out; overflow: hidden; display: flex; flex-direction: column;
+    .sidebar-header { padding: 20px 24px; font-weight: 600; font-size: 16px; border-bottom: 1px solid #e1e4e8; background-color: #fff; color: #24292e; flex-shrink: 0; white-space: nowrap; }
+    .sidebar-content { flex-grow: 1; overflow-y: auto; overflow-x: hidden; background-color: #fafbfc;
+      &::-webkit-scrollbar { width: 6px; } &::-webkit-scrollbar-track { background: transparent; } &::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; &:hover { background: #b0b7c3; } }
     }
   }
-
-  /* 切换按钮 */
-  .sidebar-toggle {
-    position: absolute;
-    top: 20px;
-    left: 320px;
-    transform: translateX(-50%);
-    width: 28px;
-    height: 28px;
-    background-color: #fff;
-    color: #586069;
-    border: 1px solid #e1e4e8;
-    border-radius: 6px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    line-height: 1;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    z-index: 10;
-    transition: left 0.3s ease-in-out, background-color 0.2s, transform 0.2s;
-
-    &:hover {
-      background-color: #f6f8fa;
-      transform: translateX(-50%) scale(1.05);
-    }
-
-    &:active {
-      transform: translateX(-50%) scale(0.95);
-    }
+  .sidebar-toggle { position: absolute; top: 20px; left: 320px; transform: translateX(-50%); width: 28px; height: 28px; background-color: #fff; color: #586069; border: 1px solid #e1e4e8; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); z-index: 10; transition: left 0.3s ease-in-out, background-color 0.2s, transform 0.2s;
+    &:hover { background-color: #f6f8fa; transform: translateX(-50%) scale(1.05); }
+    &:active { transform: translateX(-50%) scale(0.95); }
   }
-
-  /* 右侧主内容区 */
-  .main-content {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-    background-color: #fff;
-    transition: margin-left 0.3s ease-in-out;
-
-    .main-header {
-      padding: 20px 30px;
-      background-color: #fff;
-      border-bottom: 1px solid #e1e4e8;
-      flex-shrink: 0;
-      
-      h1 {
-        margin: 0;
-        font-size: 24px;
-        font-weight: 600;
-        color: #24292e;
-      }
+  .main-content { flex-grow: 1; display: flex; flex-direction: column; background-color: #fff; transition: margin-left 0.3s ease-in-out;
+    .main-header { padding: 20px 30px; background-color: #fff; border-bottom: 1px solid #e1e4e8; flex-shrink: 0;
+      h1 { margin: 0; font-size: 24px; font-weight: 600; color: #24292e; }
     }
-
-    .main-body {
-      padding: 30px;
-      flex-grow: 1;
-      overflow-y: auto;
-      
-      .selected-info {
-        margin-top: 20px;
-        padding: 16px;
-        background-color: #f6f8fa;
-        border-radius: 6px;
-        border-left: 4px solid #0969da;
-        
-        p {
-          margin: 0;
-          color: #586069;
-          
-          strong {
-            color: #24292e;
-            font-weight: 600;
-          }
+    .main-body { padding: 30px; flex-grow: 1; overflow-y: auto;
+      .selected-info { margin-top: 20px; padding: 16px; background-color: #f6f8fa; border-radius: 6px; border-left: 4px solid #0969da;
+        p { margin: 0; color: #586069;
+          strong { color: #24292e; font-weight: 600; }
         }
       }
     }
   }
-
-  /* 侧边栏收起时的样式 */
   &.sidebar-collapsed {
-    .sidebar-container {
-      width: 0;
-      border-right-color: transparent;
-    }
-
-    .sidebar-toggle {
-      left: 20px;
-    }
+    .sidebar-container { width: 0; border-right-color: transparent; }
+    .sidebar-toggle { left: 20px; }
   }
 }
 
-/* 树形组件样式 */
+/* --- 树形组件外部容器样式 --- */
 .tree-wrapper {
   padding: 8px 0;
 }
 
+/*
+  因为 .tree-node-root 是在 App.vue 的模板中渲染的 <ul>,
+  所以它的样式规则需要保留在这里。
+  使用 :deep() 是为了确保它能应用到 TreeNode 组件的根元素上。
+*/
 :deep(.tree-node-root) {
   list-style: none;
   padding: 0;
   margin: 0;
 }
-
-/* 连接线样式已经移至 TreeNode.vue，这里不再需要 */
-
-:deep(.node-content) {
-  display: flex;
-  align-items: center;
-  height: 32px;
-  cursor: pointer;
-  position: relative;
-  
-  &::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    transition: background-color 0.15s;
-  }
-  
-  &:hover::before { background-color: #f3f4f6; }
-  
-  &.is-selected::before { background-color: #e3f2fd; }
-  
-  &.is-selected:hover::before { background-color: #bbdefb; }
-  
-  &.is-selected::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background-color: #1976d2;
-  }
-}
-
-:deep(.node-indent) {
-  flex-shrink: 0;
-}
-
-:deep(.node-expand-icon) {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  position: relative;
-  z-index: 1;
-  
-  .expand-icon {
-    width: 16px;
-    height: 16px;
-    color: #6e7781;
-    transition: transform 0.2s;
-    
-    &.is-expanded {
-      transform: rotate(180deg);
-    }
-  }
-  
-  &:hover .expand-icon {
-    color: #24292e;
-  }
-}
-
-:deep(.node-content-wrapper) {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  position: relative;
-  z-index: 1;
-  padding-right: 12px;
-}
-
-:deep(.node-icon) {
-  width: 18px;
-  height: 18px;
-  margin-right: 6px;
-  flex-shrink: 0;
-  color: #6e7781;
-  
-  .is-selected & {
-    color: #1976d2;
-  }
-}
-
-:deep(.node-label) {
-  font-size: 14px;
-  color: #24292e;
-  line-height: 1.5;
-  
-  .is-selected & {
-    color: #1976d2;
-    font-weight: 500;
-  }
-}
-
-:deep(.tree-node-children) {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-:deep(.tree-node-expand-enter-active),
-:deep(.tree-node-expand-leave-active) {
-  transition: all 0.2s ease;
-  overflow: hidden;
-}
-
-:deep(.tree-node-expand-enter-from),
-:deep(.tree-node-expand-leave-to) {
-  opacity: 0;
-  max-height: 0;
-}
-
-:deep(.tree-node-expand-enter-to),
-:deep(.tree-node-expand-leave-from) {
-  opacity: 1;
-  max-height: 500px;
-}
 </style>
 ```
-
-
-
-
-
-
-
-<template>
-  <li class="tree-node-item" :class="{ 'is-last': isLast, 'is-root': level === 0 }">
-    <div 
-      class="node-content" 
-      @click="handleClick"
-      :class="{ 
-        'is-selected': isSelected,
-        'is-folder': isFolder 
-      }"
-    >
-      <span class="node-indent" :style="{ width: indent + 'px' }"></span>
-      
-      <span v-if="isFolder" class="node-expand-icon" @click="toggle">
-        <svg class="expand-icon" :class="{ 'is-expanded': isOpen }" viewBox="0 0 24 24">
-          <path d="M7 10l5 5 5-5z" fill="currentColor"/>
-        </svg>
-      </span>
-
-      <span class="node-content-wrapper">
-        <svg class="node-icon" viewBox="0 0 24 24" fill="currentColor">
-          <path v-if="isFolder && isOpen" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h5l2 2h7a2 2 0 012 2v1M19 11v7a2 2 0 01-2 2H7a2 2 0 01-2-2v-7a2 2 0 012-2h10a2 2 0 012 2z"></path>
-          <path v-else-if="isFolder" d="M10 4H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8c0-1.11-.9-2-2-2h-8l-2-2z"></path>
-          <path v-else d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"></path>
-        </svg>
-        <span class="node-label">{{ node.name }}</span>
-      </span>
-    </div>
-    
-    <transition name="tree-node-expand">
-      <ul class="tree-node-children" v-if="isFolder && isOpen">
-        <TreeNode
-          v-for="(child, index) in node.children"
-          :key="child.name"
-          :node="child"
-          :selected-id="selectedId"
-          :level="level + 1"
-          @node-click="$emit('node-click', $event)"
-          :is-last="index === node.children.length - 1"
-        />
-      </ul>
-    </transition>
-  </li>
-</template>
-
-<script setup>
-import { ref, computed } from 'vue';
-
-const props = defineProps({
-  node: {
-    type: Object,
-    required: true
-  },
-  selectedId: {
-    type: [String, Number, null],
-    default: null
-  },
-  level: {
-    type: Number,
-    default: 0
-  },
-  isLast: {
-    type: Boolean,
-    default: false
-  }
-});
-
-const emit = defineEmits(['node-click']);
-
-const isOpen = ref(props.node.isOpen || false);
-
-const isFolder = computed(() => {
-  return props.node.children && props.node.children.length > 0;
-});
-
-const isSelected = computed(() => {
-  return props.node.name === props.selectedId;
-});
-
-const indent = computed(() => {
-  return props.level * 18;
-});
-
-const toggle = () => {
-  if (isFolder.value) {
-    isOpen.value = !isOpen.value;
-  }
-};
-
-const handleClick = () => {
-  emit('node-click', props.node);
-};
-</script>
-
-<style lang="scss" scoped>
-.tree-node-item {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  user-select: none;
-  position: relative;
-}
-
-/* 绘制非根节点的连接线 */
-.tree-node-item:not(.is-root) {
-  /* ::before 伪类用于绘制垂直线 | */
-  &::before {
-    content: '';
-    position: absolute;
-    /* 使用当前组件的 level prop 动态计算位置 */
-    left: calc(18px * (v-bind(level) - 1) + 12px);
-    top: 0;
-    width: 1px;
-    height: 100%;
-    background-color: #dcdfe6;
-  }
-
-  /* ::after 伪类用于绘制水平线 ─ */
-  &::after {
-    content: '';
-    position: absolute;
-    /* 使用当前组件的 level prop 动态计算位置 */
-    left: calc(18px * (v-bind(level) - 1) + 13px);
-    top: 16px;
-    width: 11px;
-    height: 1px;
-    background-color: #dcdfe6;
-  }
-}
-
-/* 对于最后一个子节点，垂直线不应该延伸到底部 */
-.tree-node-item.is-last::before {
-  height: 16px;
-}
-
-/* .is-leaf 相关的样式已不再需要，故删除 */
-</style>
