@@ -1,0 +1,295 @@
+*Thinking...*
+
+> **Understanding the Core Pattern**
+> 
+> I'm now focused on the essence of the Instant Share Promise pattern. It seems the user's request boils down to creating an immediate sharing mechanism for Promises. My initial step involves grasping the central idea behind "instant sharing." I'm pondering the implications of immediately sharing a Promise—what problems does this solve?
+> 
+> 
+> **Analyzing the Requirements**
+> 
+> I'm digging deeper into the user's needs. They want a JavaScript implementation, specifically a demo, in Chinese. This means the explanation, code, and any comments must be in Chinese. My brainstorming has highlighted key areas: avoiding redundant work, managing concurrent requests, and utilizing caching principles to achieve "instant sharing" of Promises.
+> 
+> 
+> **Structuring the Explanation**
+> 
+> I've now outlined the entire structure of the response. It includes an introduction, a core idea section explaining the pattern's mechanism (using a "single menu" metaphor), and real-world application scenarios. I will also create a demo model featuring fetching user data as a clear use case, using `setTimeout` within a `Promise` to simulate a network request. I plan to use detailed comments within the code, entirely in Chinese, for ultimate clarity.
+> 
+> 
+> **Finalizing the Code**
+> 
+> I'm now focused on the demo's code implementation. I'm using a closure to encapsulate the shared Promise, ensuring it's not exposed globally. The `getSharedUserData` function handles the core logic: checking for an existing Promise, creating a new one if needed (simulating a network call using `setTimeout`), and, crucially, handling potential errors and resetting the shared Promise for future retries. The demo will showcase simultaneous calls to `getSharedUserData`, demonstrating instant sharing.
+> 
+> 
+> **Finalizing the Explanation**
+> 
+> I've now refined the explanation section. I'm including a "single menu" metaphor to illustrate the concept and have pinpointed concrete application scenarios, such as fetching user data, initializing a service, and loading configuration. I've also outlined the benefits of the pattern, including performance optimization and prevention of race conditions. I'm also adding a considerations and caveats section, to provide a more complete and balanced view of the topic.
+> 
+> 
+> **Implementing the Solution**
+> 
+> I'm actively working on the demo now. I'm generating a single `getSharedUserData` function which encapsulates a shared Promise, and using `setTimeout` for the simulated API call. Crucially, I'm including error handling and a mechanism to reset the shared promise upon failure. I'm planning on demonstrating concurrent requests.
+> 
+> 
+> **Creating the Demo**
+> 
+> I'm starting to build the demo's foundation. The chosen use case of user data fetching is ideal. The key is to simulate the network delay using `setTimeout` within the Promise to emulate an API call. This method allows for a self-contained demo, showcasing "instant sharing" without any external dependencies, making it easy to understand and replicate.
+> 
+> 
+好的，我们来深入探讨一下 “即时共享 Promise” (Instant Share Promise) 这个非常实用的 JavaScript 设计模式。
+
+这个模式的核心思想是：**对于同一个异步操作，无论在短时间内被调用多少次，都只执行一次。所有调用者共享这第一次执行的 Promise 结果。**
+
+这能极大地优化性能，避免因为组件重复渲染、用户连续点击等原因导致的“请求瀑布”或“请求风暴”问题。
+
+---
+
+### 应用场景
+
+即时共享 Promise 方案在以下场景中非常有用：
+
+1.  **获取全局配置或用户信息**：
+    在一个单页应用 (SPA) 中，多个组件可能在初始化时都需要获取应用配置或当前登录的用户信息。这些数据在一次会话中通常是不变的。使用此模式可以确保只会发送一个网络请求。
+
+2.  **初始化单例服务**：
+    当应用需要一个异步初始化的单例服务时（例如，连接数据库、初始化 WebAssembly 模块），所有需要此服务的模块都可以调用初始化函数，但实际的初始化过程只会执行一次。
+
+3.  **防止用户重复点击**：
+    当用户快速、重复地点击一个会触发异步操作（如提交订单、发送请求）的按钮时，此模式可以确保只有第一次点击有效，后续的点击会直接返回第一次操作的 Promise，直到它完成。
+
+4.  **加载大型资源**：
+    如果应用需要动态加载一个大型的第三方库、脚本或数据文件，多个模块可以同时请求加载，但实际的下载和执行只会发生一次。
+
+---
+
+### Demo 模型：基础版 (针对单一资源)
+
+我们来创建一个获取用户数据的 Demo。想象一下，在一个页面上，有三个不同的组件（Header, ProfileCard, Sidebar）在几乎同一时间都需要获取当前用户信息。
+
+**目标**：只向服务器发送一次 `/api/user` 请求。
+
+```javascript
+// userApi.js - 模拟一个获取用户信息的模块
+
+/**
+ * 这是一个模拟的 API 请求函数。
+ * 为了清晰地看到效果，它会故意延迟 2 秒。
+ */
+function fetchUserFromServer() {
+  console.log("%c[API Call] 正在从服务器获取用户数据...", "color: red; font-weight: bold;");
+  return new Promise(resolve => {
+    setTimeout(() => {
+      const userData = {
+        id: '123',
+        name: '张三',
+        email: 'zhangsan@example.com'
+      };
+      console.log("%c[API Call] 用户数据获取成功!", "color: red; font-weight: bold;");
+      resolve(userData);
+    }, 2000); // 模拟 2 秒的网络延迟
+  });
+}
+
+// --- 这是“即时共享 Promise”模式的核心实现 ---
+
+// 使用一个闭包来维护共享的 promise 实例
+const createSharedPromise = () => {
+  let sharedPromise = null;
+
+  return () => {
+    // 如果 sharedPromise 已经存在，直接返回它
+    if (sharedPromise) {
+      console.log("[Cache] 发现正在进行的请求，直接复用 Promise。");
+      return sharedPromise;
+    }
+
+    // 如果不存在，说明这是第一次调用
+    console.log("[Request] 没有发现正在进行的请求，创建新的 Promise。");
+    sharedPromise = fetchUserFromServer();
+
+    // [重要] 无论成功或失败，在 Promise 结束后都应该重置
+    // 这样如果请求失败，下一次调用可以重新发起请求
+    sharedPromise.finally(() => {
+      console.log("[Reset] 请求已完成，重置共享状态，以便下次可以重新获取。");
+      sharedPromise = null;
+    });
+
+    return sharedPromise;
+  };
+};
+
+// 导出我们创建的函数
+export const getSharedUserData = createSharedPromise();
+
+```
+
+#### 代码解析：
+
+1.  **`fetchUserFromServer()`**: 这是一个模拟函数，它返回一个 Promise，并在 2 秒后解析出用户数据。关键是我们在它执行时打印一条红色日志，这样就能清楚地知道它是否被多次执行。
+2.  **`createSharedPromise()`**: 这是一个高阶函数，它创建并返回了我们的核心逻辑函数。它利用闭包（closure）的特性，让内部的 `sharedPromise` 变量在多次调用之间得以保持状态。
+3.  **`sharedPromise` 变量**: 这是状态的核心。它被初始化为 `null`。当第一个请求发起时，它会保存 `fetchUserFromServer()` 返回的那个 Promise 对象。
+4.  **核心判断 `if (sharedPromise)`**:
+    *   **如果为 `true`**: 说明已经有一个请求正在进行中。后续的所有调用都会进入这个分支，直接返回那个正在 "pending" 状态的 Promise。它们都会等待同一个 Promise 的结果。
+    *   **如果为 `false`**: 说明这是第一个请求。它会执行 `fetchUserFromServer()`，将返回的 Promise 存入 `sharedPromise`，然后返回这个 Promise。
+5.  **`sharedPromise.finally(...)`**: 这是非常关键的一步。当 Promise 完成（无论是成功 `fulfilled` 还是失败 `rejected`）后，我们将 `sharedPromise` 重置为 `null`。这确保了：
+    *   **数据刷新**：下一次调用 `getSharedUserData` 时会重新从服务器获取数据，而不是永远使用第一次的缓存。
+    *   **错误重试**：如果第一次请求失败了，`sharedPromise` 会被重置，允许后续的调用能重新发起请求，而不是永远得到一个失败的 Promise。
+
+#### 如何使用和验证：
+
+```javascript
+// main.js - 模拟多个组件同时调用
+
+import { getSharedUserData } from './userApi.js';
+
+console.log("--- 模拟场景开始 ---");
+
+// 模拟 Header 组件在 0ms 时请求数据
+setTimeout(() => {
+  console.log("1. Header 组件请求用户数据...");
+  getSharedUserData().then(user => {
+    console.log(`%c   -> Header 获取到数据: ${user.name}`, "color: green");
+  });
+}, 0);
+
+// 模拟 ProfileCard 组件在 50ms 时请求数据
+setTimeout(() => {
+  console.log("2. ProfileCard 组件请求用户数据...");
+  getSharedUserData().then(user => {
+    console.log(`%c   -> ProfileCard 获取到数据: ${user.name}`, "color: green");
+  });
+}, 50);
+
+// 模拟 Sidebar 组件在 100ms 时请求数据
+setTimeout(() => {
+  console.log("3. Sidebar 组件请求用户数据...");
+  getSharedUserData().then(user => {
+    console.log(`%c   -> Sidebar 获取到数据: ${user.name}`, "color: green");
+  });
+}, 100);
+
+// 在 3 秒后，模拟用户刷新页面或重新进入，再次请求
+setTimeout(() => {
+    console.log("\n--- 3秒后，模拟第二次独立请求 ---");
+    console.log("4. 某个新组件再次请求用户数据...");
+    getSharedUserData().then(user => {
+        console.log(`%c   -> 新组件获取到数据: ${user.name}`, "color: blue");
+    });
+}, 3000);
+
+```
+
+**预期输出结果分析：**
+
+```
+--- 模拟场景开始 ---
+1. Header 组件请求用户数据...
+[Request] 没有发现正在进行的请求，创建新的 Promise。
+[API Call] 正在从服务器获取用户数据...
+2. ProfileCard 组件请求用户数据...
+[Cache] 发现正在进行的请求，直接复用 Promise。
+3. Sidebar 组件请求用户数据...
+[Cache] 发现正在进行的请求，直接复用 Promise。
+
+// (等待约 2 秒)
+
+[API Call] 用户数据获取成功!
+[Reset] 请求已完成，重置共享状态，以便下次可以重新获取。
+   -> Header 获取到数据: 张三
+   -> ProfileCard 获取到数据: 张三
+   -> Sidebar 获取到数据: 张三
+
+--- 3秒后，模拟第二次独立请求 ---
+4. 某个新组件再次请求用户数据...
+[Request] 没有发现正在进行的请求，创建新的 Promise。
+[API Call] 正在从服务器获取用户数据...
+
+// (再等待约 2 秒)
+
+[API Call] 用户数据获取成功!
+[Reset] 请求已完成，重置共享状态，以便下次可以重新获取。
+   -> 新组件获取到数据: 张三
+```
+
+从输出可以清晰地看到：
+*   前三次调用（Header, ProfileCard, Sidebar）虽然在不同时间点发生，但因为它们都在第一个 Promise 完成之前，所以只有第一次调用真正创建了 Promise 并触发了 API 请求。后两次都复用了这个 Promise。
+*   所有三个组件几乎同时获取到了数据。
+*   在 3 秒后，由于之前的 Promise 已经完成并被重置，第四次调用会发起一次全新的 API 请求。
+
+---
+
+### Demo 模型：进阶版 (支持不同参数)
+
+基础版模型无法处理 `getUser(1)` 和 `getUser(2)` 这种带参数的情况。我们可以用一个 `Map` 来扩展这个模式，为每个不同的参数（key）缓存其对应的 Promise。
+
+```javascript
+// userApiWithParams.js
+
+function fetchUserFromServerById(userId) {
+  console.log(`%c[API Call] 正在从服务器获取 ID 为 ${userId} 的用户数据...`, "color: red; font-weight: bold;");
+  return new Promise(resolve => {
+    setTimeout(() => {
+      const userData = {
+        id: userId,
+        name: `用户-${userId}`,
+      };
+      console.log(`%c[API Call] ID 为 ${userId} 的用户数据获取成功!`, "color: red; font-weight: bold;");
+      resolve(userData);
+    }, 1500);
+  });
+}
+
+// --- 进阶版核心实现 ---
+const createParametrizedSharedPromise = (asyncFunction) => {
+  // 使用 Map 来存储 key -> promise 的映射
+  const promiseCache = new Map();
+
+  return (...args) => {
+    // 将参数序列化作为 key
+    const cacheKey = JSON.stringify(args);
+
+    if (promiseCache.has(cacheKey)) {
+      console.log(`[Cache] 发现 Key: ${cacheKey} 对应的请求，复用 Promise。`);
+      return promiseCache.get(cacheKey);
+    }
+
+    console.log(`[Request] Key: ${cacheKey} 无缓存，创建新的 Promise。`);
+    const newPromise = asyncFunction(...args);
+    promiseCache.set(cacheKey, newPromise);
+
+    // 请求结束后，从缓存中删除
+    newPromise.finally(() => {
+      console.log(`[Reset] Key: ${cacheKey} 的请求已完成，从缓存中删除。`);
+      promiseCache.delete(cacheKey);
+    });
+
+    return newPromise;
+  };
+};
+
+export const getSharedUserDataById = createParametrizedSharedPromise(fetchUserFromServerById);
+
+// --- 使用和验证 ---
+console.log("--- 进阶版场景开始 ---");
+
+// 多次请求同一个用户 (ID: 101)
+getSharedUserDataById(101).then(user => console.log(`  -> 第一次获取 user 101: ${user.name}`));
+getSharedUserDataById(101).then(user => console.log(`  -> 第二次获取 user 101: ${user.name}`));
+
+// 同时请求另一个用户 (ID: 202)
+getSharedUserDataById(202).then(user => console.log(`  -> 第一次获取 user 202: ${user.name}`));
+
+// 稍后再次请求用户 202
+setTimeout(() => {
+    getSharedUserDataById(202).then(user => console.log(`  -> 50ms 后再次获取 user 202: ${user.name}`));
+}, 50);
+```
+
+这个进阶版模型更加通用和强大，可以封装任何接受参数并返回 Promise 的异步函数，使其具备并发请求合并的能力。
+
+---
+
+Related searches:
++ [即时共享 Promise 方案 demo](https://www.google.com/search?q=%E5%8D%B3%E6%97%B6%E5%85%B1%E4%BA%AB+Promise+%E6%96%B9%E6%A1%88+demo&client=app-vertex-grounding-quora-poe)
++ [javascript promise sharing pattern](https://www.google.com/search?q=javascript+promise+sharing+pattern&client=app-vertex-grounding-quora-poe)
++ [javascript promise 缓存方案](https://www.google.com/search?q=javascript+promise+%E7%BC%93%E5%AD%98%E6%96%B9%E6%A1%88&client=app-vertex-grounding-quora-poe)
++ [js concurrent requests single promise](https://www.google.com/search?q=js+concurrent+requests+single+promise&client=app-vertex-grounding-quora-poe)
