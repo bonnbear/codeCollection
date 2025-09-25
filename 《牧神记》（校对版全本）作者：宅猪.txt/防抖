@@ -1,0 +1,193 @@
+好的，遵照您的要求，为您提供我们讨论过的最优秀的方案——即基于防抖的 BatchValidator 方案的纯 JavaScript 版本。
+该方案是最健壮和可靠的选择，因为它完美地解决了“竞态条件”和“数据陈旧”两大核心问题，非常适合在生产环境中使用。
+完整 Vue 3 组件代码 (JavaScript)
+您可以将以下完整代码直接复制到一个 .vue 文件中（例如 BatchUrlForm.vue）。
+<template>
+  <div>
+    <el-alert
+      title="最优方案：防抖批量校验"
+      type="success"
+      description="请打开浏览器开发者工具的控制台。在两个输入框中快速输入内容并移开焦点。您将看到控制台的【API 调用】日志仅打印一次，证明请求已成功合并，且发送的是最新的数据。"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 20px;"
+    />
+
+    <el-form
+      ref="formRef"
+      :model="formModel"
+      :rules="rules"
+      label-width="120px"
+      style="max-width: 600px"
+    >
+      <el-form-item label="URL 1" prop="url1">
+        <el-input v-model="formModel.url1" placeholder="有效示例: https://google.com" />
+      </el-form-item>
+      <el-form-item label="URL 2" prop="url2">
+        <el-input v-model="formModel.url2" placeholder="无效示例: my-invalid-url" />
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" @click="submitForm">提交</el-button>
+        <el-button @click="resetForm">重置</el-button>
+      </el-form-item>
+    </el-form>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive } from 'vue';
+import { ElMessage } from 'element-plus';
+import { debounce } from 'lodash-es';
+
+// ===================================================================
+// 核心逻辑: 批量校验器类 (JavaScript 版本)
+// ===================================================================
+class BatchValidator {
+  constructor(debounceMs = 300) {
+    this.validationQueue = new Map();
+    // 创建一个防抖函数，它将在延迟后执行真正的批量校验
+    this.debouncedExecute = debounce(this.executeBatchValidation.bind(this), debounceMs);
+  }
+
+  /**
+   * 模拟后端的批量校验接口
+   */
+  async batchValidateApi(urls) {
+    console.log(`%c【API 调用】正在调用批量接口，合并了 ${Object.keys(urls).length} 个请求。`, 'color: #409EFF; font-weight: bold;', urls);
+    
+    // 模拟网络延迟
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const results = {};
+    for (const field in urls) {
+      const value = urls[field];
+      // 模拟一个简单的校验逻辑：URL必须包含 'google.com' 或 'vuejs.org'
+      if (value && (value.includes('google.com') || value.includes('vuejs.org'))) {
+        results[field] = { valid: true, message: 'URL有效' };
+      } else {
+        results[field] = { valid: false, message: `"${value}" 不是一个有效的URL` };
+      }
+    }
+    console.log('%c【API 返回】接口返回结果。', 'color: #67C23A;', results);
+    return results;
+  }
+  
+  /**
+   * 公开方法: 由每个表单项的 validator 调用
+   */
+  validate(field, value) {
+    return new Promise((resolve, reject) => {
+      this.validationQueue.set(field, { value, resolve, reject });
+      this.debouncedExecute();
+    });
+  }
+
+  /**
+   * 私有方法: 实际执行批量校验的逻辑
+   */
+  async executeBatchValidation() {
+    if (this.validationQueue.size === 0) return;
+
+    const currentQueue = new Map(this.validationQueue);
+    this.validationQueue.clear();
+
+    const urlsToValidate = {};
+    currentQueue.forEach((item, field) => {
+      if (item.value) { // 只将有值的字段加入请求
+        urlsToValidate[field] = item.value;
+      }
+    });
+
+    try {
+      let results = {};
+      if (Object.keys(urlsToValidate).length > 0) {
+        results = await this.batchValidateApi(urlsToValidate);
+      }
+      
+      currentQueue.forEach((item, field) => {
+        const result = results[field] || { valid: true }; // 值为空或未返回结果的字段，默认通过
+        if (result.valid) {
+          item.resolve(result);
+        } else {
+          item.reject(result);
+        }
+      });
+    } catch (error) {
+      currentQueue.forEach(item => {
+        item.reject({ valid: false, message: '网络或服务器错误' });
+      });
+    }
+  }
+}
+
+// ===================================================================
+// Vue 组件逻辑
+// ===================================================================
+
+// 1. 创建校验器实例
+const batchValidator = new BatchValidator();
+
+// 2. 定义表单的 ref 和响应式数据
+const formRef = ref(null);
+const formModel = reactive({
+  url1: '',
+  url2: '',
+});
+
+// 3. 创建一个验证器工厂函数
+const urlValidatorFactory = (field) => {
+  return async (rule, value, callback) => {
+    if (!value) {
+      return callback();
+    }
+    try {
+      await batchValidator.validate(field, value);
+      callback(); // 校验通过
+    } catch (errorResult) {
+      callback(new Error(errorResult.message || '校验失败')); // 校验失败
+    }
+  };
+};
+
+// 4. 定义表单的校验规则
+const rules = reactive({
+  url1: [
+    { required: true, message: 'URL1 不能为空', trigger: 'blur' },
+    { validator: urlValidatorFactory('url1'), trigger: 'blur' }
+  ],
+  url2: [
+    { required: true, message: 'URL2 不能为空', trigger: 'blur' },
+    { validator: urlValidatorFactory('url2'), trigger: 'blur' }
+  ],
+});
+
+// 5. 表单提交和重置方法
+const submitForm = async () => {
+  if (!formRef.value) return;
+  await formRef.value.validate((valid) => {
+    if (valid) {
+      ElMessage.success('表单校验通过，可以提交！');
+    } else {
+      ElMessage.error('表单校验失败，请检查输入！');
+    }
+  });
+};
+
+const resetForm = () => {
+  if (!formRef.value) return;
+  formRef.value.resetFields();
+};
+</script>
+
+如何使用
+ * 环境准备：确保您的项目已经安装了 element-plus 和 lodash-es。
+   如果未安装，请在您的项目根目录下执行：
+   npm install element-plus lodash-es
+
+ * 创建文件：将上面的代码保存为一个 Vue 组件文件，例如 BatchUrlForm.vue。
+ * 使用组件：在您的应用中引入并使用这个组件即可。
+为什么这是最优秀的方案？
+ * 健壮可靠：它不依赖于API的响应快慢，完美避免了“竞态条件”问题。无论网络快慢，逻辑都是稳固的。
+ * 数据准确：它总是在用户的一连串输入操作结束之后，才去获取表单的最新值并发送请求，彻底解决了“数据陈旧”的风险。
+ * 体验流畅：通过防抖延迟，避免了在用户打字过程中进行不必要的校验和API请求，只在用户暂停时才给出反馈，性能和体验俱佳。
+ * 高扩展性：BatchValidator 类可以轻松地应用到三个、四个甚至更多的表单字段中，只需在rules中继续使用urlValidatorFactory即可，无需改动核心逻辑。
