@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>图片分辨率修改并上传</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f3f4f6;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    .container {
+      background: white;
+      max-width: 500px;
+      margin: auto;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    h2 {
+      text-align: center;
+    }
+    input[type="file"], input[type="number"], button {
+      display: block;
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 12px;
+      box-sizing: border-box;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      font-weight: bold;
+      border: none;
+      cursor: pointer;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .info {
+      padding: 10px;
+      background: #f9fafb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      word-break: break-all;
+      margin-top: 10px;
+    }
+    .resize-options {
+      display: none; /* 默认隐藏 */
+      border-top: 1px solid #eee;
+      margin-top: 15px;
+      padding-top: 15px;
+    }
+    .dimension-inputs {
+      display: flex;
+      gap: 10px;
+    }
+    img {
+      width: 100%;
+      display: block;
+      margin-top: 10px;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>图片分辨率修改并上传</h2>
+    
+    <p>1. 上传原始图片</p>
+    <input type="file" id="upload" accept="image/*">
+    <div id="original-info" class="info">请上传一张图片</div>
+    <img id="preview" alt="">
+
+    <div id="resize-options" class="resize-options">
+      <p>2. 输入新的分辨率</p>
+      <div class="dimension-inputs">
+        <input type="number" id="target-width" placeholder="新宽度 (px)">
+        <input type="number" id="target-height" placeholder="新高度 (px)">
+      </div>
+      <label style="cursor: pointer; user-select: none; margin-bottom: 12px; display: inline-block;">
+          <input type="checkbox" id="keep-ratio" checked> 保持宽高比
+      </label>
+      
+      <p>3. 生成新文件并模拟上传</p>
+      <button id="resize-btn" disabled>生成并上传</button>
+    </div>
+
+    <div id="result-info" class="info" style="display:none;"></div>
+  </div>
+
+  <script>
+    const uploadInput = document.getElementById('upload');
+    const originalInfo = document.getElementById('original-info');
+    const preview = document.getElementById('preview');
+    const resizeOptions = document.getElementById('resize-options');
+    const targetWidthInput = document.getElementById('target-width');
+    const targetHeightInput = document.getElementById('target-height');
+    const keepRatioCheckbox = document.getElementById('keep-ratio');
+    const resizeBtn = document.getElementById('resize-btn');
+    const resultInfo = document.getElementById('result-info');
+
+    let originalImage = null;
+    let originalFile = null;
+    let originalRatio = 1;
+
+    // 1. 监听文件上传
+    uploadInput.addEventListener('change', event => {
+      originalFile = event.target.files[0];
+      if (!originalFile) return;
+
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          originalImage = img; // 保存原始图片对象
+          const w = img.naturalWidth;
+          const h = img.naturalHeight;
+          originalRatio = w / h;
+
+          originalInfo.innerHTML = `<strong>原始分辨率：</strong> ${w} × ${h}`;
+          preview.src = img.src;
+          
+          // 显示并设置默认值
+          targetWidthInput.value = w;
+          targetHeightInput.value = h;
+          resizeOptions.style.display = 'block';
+          resizeBtn.disabled = false;
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(originalFile);
+    });
+    
+    // 2. 监听宽高比锁定
+    targetWidthInput.addEventListener('input', () => {
+        if (keepRatioCheckbox.checked) {
+            targetHeightInput.value = Math.round(targetWidthInput.value / originalRatio);
+        }
+    });
+
+    targetHeightInput.addEventListener('input', () => {
+        if (keepRatioCheckbox.checked) {
+            targetWidthInput.value = Math.round(targetHeightInput.value * originalRatio);
+        }
+    });
+
+    // 3. 点击按钮，执行核心转换逻辑
+    resizeBtn.addEventListener('click', () => {
+      if (!originalImage) {
+        alert('请先上传一张图片！');
+        return;
+      }
+
+      const targetWidth = parseInt(targetWidthInput.value, 10);
+      const targetHeight = parseInt(targetHeightInput.value, 10);
+
+      if (!targetWidth || !targetHeight || targetWidth <= 0 || targetHeight <= 0) {
+        alert('请输入有效的新宽度和高度！');
+        return;
+      }
+
+      // 创建一个离屏Canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
+
+      // 将原始图片按新尺寸绘制到Canvas上
+      ctx.drawImage(originalImage, 0, 0, targetWidth, targetHeight);
+
+      // 将Canvas内容转换为Blob对象
+      // toBlob是异步操作，需要一个回调函数
+      canvas.toBlob(blob => {
+        // 创建一个新的File对象
+        // 参数：[Blob], 文件名, { type: MIME类型 }
+        const resizedFile = new File([blob], `resized_${originalFile.name}`, {
+          type: originalFile.type,
+          lastModified: Date.now()
+        });
+        
+        // 更新结果信息
+        resultInfo.style.display = 'block';
+        resultInfo.innerHTML = `
+          <strong>新文件已生成:</strong><br>
+          文件名: ${resizedFile.name}<br>
+          新分辨率: ${targetWidth} × ${targetHeight}<br>
+          新文件大小: ${(resizedFile.size / 1024).toFixed(2)} KB<br>
+          类型: ${resizedFile.type}
+        `;
+
+        // 模拟上传过程
+        simulateUpload(resizedFile);
+
+      }, originalFile.type, 0.9); // 0.9是图片质量（针对jpeg/webp）
+    });
+
+    // 4. 模拟上传函数
+    function simulateUpload(file) {
+      // FormData是用于发送表单数据（包括文件）的标准方式
+      const formData = new FormData();
+      
+      // 'imageFile' 是后端接收文件时使用的字段名
+      formData.append('imageFile', file, file.name);
+
+      console.log('--- 模拟上传 ---');
+      console.log('已创建 FormData 对象，准备发送:');
+      console.log(formData);
+      
+      // 检查FormData中的内容
+      for (let [key, value] of formData.entries()) {
+        console.log(`字段名: ${key}, 文件详情:`, value);
+      }
+      
+      resultInfo.innerHTML += '<br><strong>模拟上传:</strong> 请查看浏览器控制台 (F12) 获取 FormData 详情。';
+
+      /*
+      // 真实的上传代码会是这样：
+      fetch('/your-upload-endpoint', {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => response.json())
+      .then(data => console.log('上传成功:', data))
+      .catch(error => console.error('上传失败:', error));
+      */
+    }
+  </script>
+</body>
+</html>
