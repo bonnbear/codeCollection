@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vue3 伸缩卡片 - 节点进度条</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 16px 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+        }
+
+        .card-header:hover {
+            background: #e9ecef;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .toggle-btn {
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: color 0.2s;
+        }
+
+        .toggle-btn:hover {
+            color: #333;
+        }
+
+        .arrow {
+            display: inline-block;
+            transition: transform 0.3s ease;
+        }
+
+        .arrow.expanded {
+            transform: rotate(180deg);
+        }
+
+        .card-body {
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }
+
+        .card-body.collapsed {
+            max-height: 0;
+            padding: 0 20px;
+        }
+
+        .card-body.expanded {
+            max-height: 1000px;
+            padding: 20px;
+        }
+
+        .progress-item {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .progress-item:last-child {
+            border-bottom: none;
+        }
+
+        .item-label {
+            font-size: 14px;
+            color: #333;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            height: 100%;
+        }
+
+        .progress-track {
+            position: relative;
+            height: 60px;
+            display: flex;
+            align-items: center;
+        }
+
+        .progress-line {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: #e9ecef;
+            transform: translateY(-50%);
+        }
+
+        .progress-line-fill {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #66BB6A);
+            transition: width 0.5s ease;
+        }
+
+        .progress-nodes {
+            position: relative;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            z-index: 1;
+        }
+
+        .node {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .node-circle {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #e9ecef;
+            border: 3px solid #e9ecef;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .node-circle.active {
+            background: #4CAF50;
+            border-color: #4CAF50;
+            box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.2);
+            animation: pulse-node 2s infinite;
+        }
+
+        .node-circle.completed {
+            background: #4CAF50;
+            border-color: #4CAF50;
+        }
+
+        .node-circle.completed::after {
+            content: '✓';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+        }
+
+        @keyframes pulse-node {
+            0%, 100% {
+                box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.2);
+            }
+            50% {
+                box-shadow: 0 0 0 8px rgba(76, 175, 80, 0);
+            }
+        }
+
+        .node-label {
+            font-size: 11px;
+            color: #999;
+            white-space: nowrap;
+            transition: color 0.3s ease;
+        }
+
+        .node-label.active {
+            color: #4CAF50;
+            font-weight: 600;
+        }
+
+        .node-label.completed {
+            color: #666;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            height: 100%;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            position: relative;
+        }
+
+        .status-dot.running {
+            background: #4CAF50;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.pending {
+            background: #FF9800;
+        }
+
+        .status-dot.completed {
+            background: #2196F3;
+        }
+
+        .status-dot.paused {
+            background: #9E9E9E;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+            }
+            50% {
+                box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+            }
+        }
+
+        .status-text {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .status-text.running {
+            color: #4CAF50;
+        }
+
+        .status-text.pending {
+            color: #FF9800;
+        }
+
+        .status-text.completed {
+            color: #2196F3;
+        }
+
+        .status-text.paused {
+            color: #9E9E9E;
+        }
+
+        @media (max-width: 768px) {
+            .progress-item {
+                grid-template-columns: 1fr;
+                gap: 12px;
+                padding: 16px;
+            }
+
+            .node-label {
+                font-size: 9px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <collapsible-card
+                v-for="card in cards"
+                :key="card.id"
+                :title="card.title"
+                :items="card.items"
+                :default-expanded="card.defaultExpanded"
+            />
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref } = Vue;
+
+        const CollapsibleCard = {
+            name: 'CollapsibleCard',
+            props: {
+                title: {
+                    type: String,
+                    required: true
+                },
+                items: {
+                    type: Array,
+                    required: true
+                },
+                defaultExpanded: {
+                    type: Boolean,
+                    default: false
+                }
+            },
+            setup(props) {
+                const isExpanded = ref(props.defaultExpanded);
+
+                const toggle = () => {
+                    isExpanded.value = !isExpanded.value;
+                };
+
+                const getNodeStatus = (nodeIndex, currentStep) => {
+                    if (nodeIndex < currentStep) {
+                        return 'completed';
+                    } else if (nodeIndex === currentStep) {
+                        return 'active';
+                    }
+                    return 'pending';
+                };
+
+                const getProgressWidth = (currentStep, totalSteps) => {
+                    return (currentStep / (totalSteps - 1)) * 100;
+                };
+
+                return {
+                    isExpanded,
+                    toggle,
+                    getNodeStatus,
+                    getProgressWidth
+                };
+            },
+            template: `
+                <div class="card">
+                    <div class="card-header" @click="toggle">
+                        <h3 class="card-title">{{ title }}</h3>
+                        <button class="toggle-btn">
+                            <span>{{ isExpanded ? '收起' : '展开' }}</span>
+                            <span class="arrow" :class="{ expanded: isExpanded }">▼</span>
+                        </button>
+                    </div>
+                    <div class="card-body" :class="{ collapsed: !isExpanded, expanded: isExpanded }">
+                        <div class="progress-item" v-for="item in items" :key="item.id">
+                            <div class="item-label">{{ item.label }}</div>
+                            
+                            <div class="progress-track">
+                                <div class="progress-line">
+                                    <div 
+                                        class="progress-line-fill"
+                                        :style="{ width: getProgressWidth(item.currentStep, item.nodes.length) + '%' }"
+                                    ></div>
+                                </div>
+                                
+                                <div class="progress-nodes">
+                                    <div 
+                                        class="node" 
+                                        v-for="(node, index) in item.nodes" 
+                                        :key="index"
+                                    >
+                                        <div 
+                                            class="node-circle"
+                                            :class="getNodeStatus(index, item.currentStep)"
+                                        ></div>
+                                        <span 
+                                            class="node-label"
+                                            :class="getNodeStatus(index, item.currentStep)"
+                                        >{{ node }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="status-indicator">
+                                <span class="status-dot" :class="item.status"></span>
+                                <span class="status-text" :class="item.status">{{ item.statusText }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `
+        };
+
+        createApp({
+            components: {
+                CollapsibleCard
+            },
+            setup() {
+                const cards = ref([
+                    {
+                        id: 1,
+                        title: '项目开发流程',
+                        defaultExpanded: true,
+                        items: [
+                            { 
+                                id: 1, 
+                                label: '前端开发', 
+                                nodes: ['需求分析', '设计', '开发', '测试', '上线'],
+                                currentStep: 2,
+                                status: 'running',
+                                statusText: '进行中'
+                            },
+                            { 
+                                id: 2, 
+                                label: '后端开发', 
+                                nodes: ['架构设计', '接口开发', '联调', '部署'],
+                                currentStep: 1,
+                                status: 'running',
+                                statusText: '进行中'
+                            },
+                            { 
+                                id: 3, 
+                                label: 'UI设计', 
+                                nodes: ['原型', '视觉设计', '交互', '验收'],
+                                currentStep: 4,
+                                status: 'completed',
+                                statusText: '已完成'
+                            },
+                            { 
+                                id: 4, 
+                                label: '测试阶段', 
+                                nodes: ['单元测试', '集成测试', '压力测试'],
+                                currentStep: 0,
+                                status: 'pending',
+                                statusText: '待启动'
+                            }
+                        ]
+                    },
+                    {
+                        id: 2,
+                        title: '订单处理流程',
+                        defaultExpanded: false,
+                        items: [
+                            { 
+                                id: 1, 
+                                label: '订单 #12345', 
+                                nodes: ['下单', '支付', '发货', '配送', '签收'],
+                                currentStep: 3,
+                                status: 'running',
+                                statusText: '配送中'
+                            },
+                            { 
+                                id: 2, 
+                                label: '订单 #12346', 
+                                nodes: ['下单', '支付', '发货', '配送', '签收'],
+                                currentStep: 5,
+                                status: 'completed',
+                                statusText: '已完成'
+                            },
+                            { 
+                                id: 3, 
+                                label: '订单 #12347', 
+                                nodes: ['下单', '支付', '发货', '配送', '签收'],
+                                currentStep: 1,
+                                status: 'paused',
+                                statusText: '待支付'
+                            }
+                        ]
+                    },
+                    {
+                        id: 3,
+                        title: '学习路线',
+                        defaultExpanded: false,
+                        items: [
+                            { 
+                                id: 1, 
+                                label: 'Vue 3 全栈', 
+                                nodes: ['基础', '进阶', '实战', '源码'],
+                                currentStep: 2,
+                                status: 'running',
+                                statusText: '学习中'
+                            },
+                            { 
+                                id: 2, 
+                                label: 'TypeScript', 
+                                nodes: ['入门', '类型系统', '高级特性'],
+                                currentStep: 1,
+                                status: 'running',
+                                statusText: '学习中'
+                            },
+                            { 
+                                id: 3, 
+                                label: 'Node.js', 
+                                nodes: ['基础', '进阶'],
+                                currentStep: 0,
+                                status: 'pending',
+                                statusText: '待开始'
+                            }
+                        ]
+                    }
+                ]);
+
+                return {
+                    cards
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
