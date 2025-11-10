@@ -1,0 +1,248 @@
+<script setup>
+// 新增: 导入 watch
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
+
+// 定义组件的 props
+const props = defineProps({
+  // 步骤数据数组
+  // 示例: [{ id: 1, title: '步骤1', status: 'submitted', type: 'check' }, ...]
+  steps: {
+    type: Array,
+    default: () => []
+  },
+  // 当前激活的步骤索引
+  currentStep: {
+    type: Number,
+    default: 0
+  },
+  // 新增: 指定要滚动到的步骤 ID
+  scrollToStepId: {
+    type: [String, Number],
+    default: null
+  },
+  // 新增: 是否在 currentStep 变化时自动将其居中
+  centerOnCurrentStep: {
+    type: Boolean,
+    default: false // 默认为 false
+  }
+});
+
+// 内部图标映射
+const iconMap = {
+  // ... (图标映射不变)
+  check: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>`,
+  user: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`,
+  edit: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`,
+  wait: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg>`,
+};
+
+// 滚动相关的响应式状态
+const scrollContainer = ref(null);
+const showLeftButton = ref(false);
+const showRightButton = ref(false);
+
+/**
+ * 根据 type 获取图标的 SVG 字符串
+ * @param {string} type - 步骤的类型
+ */
+const getIcon = (type) => {
+  return iconMap[type] || '';
+};
+
+/**
+ * 获取步骤项的 CSS 类
+ * @param {object} step - 步骤对象
+ * @param {number} index - 步骤索引
+ */
+const getStepClasses = (step, index) => {
+  // ... (此函数不变)
+  const classes = ['step-item'];
+  
+  if (index === props.currentStep) {
+    classes.push('is-active');
+  } else if (index < props.currentStep) {
+    classes.push('is-completed');
+  }
+
+  if (step.status) {
+    classes.push(`status-${step.status}`);
+  }
+
+  return classes.join(' ');
+};
+
+/**
+ * 检查是否需要显示滚动按钮
+ */
+const checkScrollButtons = () => {
+  if (!scrollContainer.value) return;
+  
+  const { scrollLeft, scrollWidth, clientWidth } = scrollContainer.value;
+  
+  showLeftButton.value = scrollLeft > 0;
+  showRightButton.value = scrollLeft < scrollWidth - clientWidth - 1;
+};
+
+/**
+ * 向左滚动
+ */
+const scrollLeft = () => {
+  // ... (此函数不变)
+  if (!scrollContainer.value) return;
+  
+  scrollContainer.value.scrollBy({
+    left: -200,
+    behavior: 'smooth'
+  });
+};
+
+/**
+ * 向右滚动
+ */
+const scrollRight = () => {
+  // ... (此函数不变)
+  if (!scrollContainer.value) return;
+  
+  scrollContainer.value.scrollBy({
+    left: 200,
+    behavior: 'smooth'
+  });
+};
+
+// --- 新增功能 ---
+
+/**
+ * (内部) 滚动到指定索引的步骤，并使其居中
+ * @param {number} index - 步骤的索引
+ */
+const _scrollToIndex = (index) => {
+  if (index < 0 || !scrollContainer.value) return;
+
+  // 通过 .children 获取所有步骤的 DOM 元素
+  const stepElements = scrollContainer.value.children;
+  if (!stepElements || !stepElements[index]) {
+    console.warn(`[Steps] 无法找到索引为 ${index} 的步骤元素。`);
+    return;
+  }
+  
+  const targetElement = stepElements[index];
+  const container = scrollContainer.value;
+
+  // 计算居中位置
+  const targetLeft = targetElement.offsetLeft; // 目标元素相对于父元素的左偏移
+  const targetWidth = targetElement.clientWidth; // 目标元素的宽度
+  const containerWidth = container.clientWidth; // 容器的可见宽度
+
+  // 目标 scrollLeft = 目标元素的中心点 - 容器的中心点
+  // 目标元素的中心点 = targetLeft + targetWidth / 2
+  // 容器的中心点 = containerWidth / 2
+  const scrollTo = (targetLeft + targetWidth / 2) - (containerWidth / 2);
+
+  container.scrollTo({
+    left: scrollTo,
+    behavior: 'smooth'
+  });
+};
+
+// 新增: 监听 scrollToStepId prop 的变化
+watch(() => props.scrollToStepId, (newId) => {
+  if (newId !== null && props.steps.length > 0 && scrollContainer.value) {
+    const index = props.steps.findIndex(step => step.id === newId);
+    if (index >= 0) {
+      _scrollToIndex(index);
+    } else {
+      console.warn(`[Steps] scrollToStepId: 未在 steps 数组中找到 ID "${newId}"。`);
+    }
+  }
+}, { flush: 'post' }); // 使用 flush: 'post' 确保 DOM 更新后再执行
+
+// 新增: 监听 currentStep prop 的变化 (如果 centerOnCurrentStep 为 true)
+watch(() => props.currentStep, (newIndex) => {
+  if (props.centerOnCurrentStep && newIndex >= 0 && scrollContainer.value) {
+    _scrollToIndex(newIndex);
+  }
+}, { flush: 'post' }); // 同样使用 flush: 'post'
+
+// --- 修改后的 onMounted ---
+
+// 组件挂载后设置监听
+onMounted(() => {
+  if (scrollContainer.value) {
+    checkScrollButtons();
+    scrollContainer.value.addEventListener('scroll', checkScrollButtons);
+    window.addEventListener('resize', checkScrollButtons);
+
+    // 新增: 组件挂载时, 检查是否需要立即滚动到指定位置
+    // 优先处理 scrollToStepId
+    if (props.scrollToStepId !== null) {
+      const index = props.steps.findIndex(step => step.id === props.scrollToStepId);
+      if (index >= 0) {
+        // 稍微延迟执行，确保初始渲染和布局完全稳定
+        setTimeout(() => _scrollToIndex(index), 100);
+      }
+    } 
+    // 否则，如果设置了 centerOnCurrentStep，则滚动到当前步骤
+    else if (props.centerOnCurrentStep && props.currentStep >= 0) {
+      setTimeout(() => _scrollToIndex(props.currentStep), 100);
+    }
+  }
+});
+
+// 组件卸载前清理监听
+onUnmounted(() => {
+  // ... (此函数不变)
+  if (scrollContainer.value) {
+    scrollContainer.value.removeEventListener('scroll', checkScrollButtons);
+  }
+  window.removeEventListener('resize', checkScrollButtons);
+});
+
+</script>
+
+<template>
+  <div class="steps-wrapper">
+    <button 
+      v-if="showLeftButton"
+      class="scroll-button scroll-button-left"
+      @click="scrollLeft"
+      aria-label="向左滚动"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+      </svg>
+    </button>
+    <div class="steps-container" ref="scrollContainer">
+      <div
+        v-for="(step, index) in steps"
+        :key="step.id || index"
+        :class="getStepClasses(step, index)"
+      >
+        <div class="step-node">
+          <div 
+            v-if="getIcon(step.type)" 
+            class="step-icon" 
+            v-html="getIcon(step.type)"
+          ></div>
+          <span v-else class="step-number">{{ index + 1 }}</span>
+        </div>
+        <div class="step-title">{{ step.title }}</div>
+        <div class="connector-line"></div>
+      </div>
+    </div>
+    <button 
+      v-if="showRightButton"
+      class="scroll-button scroll-button-right"
+      @click="scrollRight"
+      aria-label="向右滚动"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+      </svg>
+    </button>
+  </div>
+</template>
+
+<style scoped>
+/* CSS 样式部分完全不变 */
+/* ... (所有 style 样式) ... */
+</style>
