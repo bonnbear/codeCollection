@@ -1,0 +1,1693 @@
+*Thinking...*
+
+> 用户想要一个从 vue-grid-layout 迁移到 GridStack.js 的 Vue 3 组合式 API (setup) 示例。需要包含以下功能：
+> 
+> 1. 保存和恢复布局到后端
+> 2. 添加和删除 item 功能
+> 3. 使用 GridStack 自带的自动放置功能
+> 4. 浏览模式和编辑模式的切换（可拖动/不可拖动）
+> 5. 提供两份等效代码对比（vue-grid-layout vs GridStack.js）
+> 
+> 我需要创建两个版本的代码：
+> 1. vue-grid-layout 版本
+> 2. GridStack.js 版本
+> 
+> 让我来编写这两份代码。
+> 
+> 首先是 vue-grid-layout 版本：
+> - 使用 vue-grid-layout 的 Vue 3 版本
+> - 实现布局的保存和加载
+> - 添加和删除 item
+> - 编辑/浏览模式切换
+> 
+> 然后是 GridStack.js 版本：
+> - 使用 gridstack 库
+> - 实现相同的功能
+> - 使用 GridStack 的 API
+> 
+> 让我详细编写这两份代码。
+
+# Vue Grid Layout vs GridStack.js 对比
+
+我来提供两份等效的代码，实现相同的功能。
+
+## 1. Vue-Grid-Layout 版本
+
+```vue
+<!-- VueGridLayoutVersion.vue -->
+<template>
+  <div class="grid-container">
+    <div class="toolbar">
+      <button @click="toggleMode" :class="{ active: isEditMode }">
+        {{ isEditMode ? '🔓 编辑模式' : '🔒 浏览模式' }}
+      </button>
+      <button @click="addItem" :disabled="!isEditMode">➕ 添加组件</button>
+      <button @click="saveLayout">💾 保存布局</button>
+      <button @click="loadLayout">📂 加载布局</button>
+    </div>
+
+    <grid-layout
+      v-model:layout="layout"
+      :col-num="12"
+      :row-height="30"
+      :is-draggable="isEditMode"
+      :is-resizable="isEditMode"
+      :vertical-compact="true"
+      :use-css-transforms="true"
+    >
+      <grid-item
+        v-for="item in layout"
+        :key="item.i"
+        :x="item.x"
+        :y="item.y"
+        :w="item.w"
+        :h="item.h"
+        :i="item.i"
+      >
+        <div class="grid-item-content">
+          <span class="item-title">组件 {{ item.i }}</span>
+          <button 
+            v-if="isEditMode" 
+            class="delete-btn" 
+            @click="removeItem(item.i)"
+          >
+            ✕
+          </button>
+        </div>
+      </grid-item>
+    </grid-layout>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+// import { GridLayout, GridItem } from 'vue-grid-layout'
+
+// 响应式状态
+const isEditMode = ref(false)
+const itemIdCounter = ref(3)
+
+const layout = ref([
+  { x: 0, y: 0, w: 2, h: 2, i: '0' },
+  { x: 2, y: 0, w: 2, h: 4, i: '1' },
+  { x: 4, y: 0, w: 2, h: 5, i: '2' },
+])
+
+// 切换编辑/浏览模式
+const toggleMode = () => {
+  isEditMode.value = !isEditMode.value
+}
+
+// 添加新组件 - 需要手动计算位置
+const addItem = (width = 2, height = 2) => {
+  // vue-grid-layout 需要手动找空位
+  const newY = Math.max(...layout.value.map(item => item.y + item.h), 0)
+  
+  layout.value.push({
+    x: 0,
+    y: newY,
+    w: width,
+    h: height,
+    i: String(itemIdCounter.value++)
+  })
+}
+
+// 删除组件
+const removeItem = (id) => {
+  const index = layout.value.findIndex(item => item.i === id)
+  if (index !== -1) {
+    layout.value.splice(index, 1)
+  }
+}
+
+// 保存布局到后端
+const saveLayout = async () => {
+  const layoutData = layout.value.map(item => ({
+    id: item.i,
+    x: item.x,
+    y: item.y,
+    w: item.w,
+    h: item.h
+  }))
+  
+  try {
+    // 实际项目中替换为真实的 API
+    await fetch('/api/layout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ layout: layoutData })
+    })
+    alert('布局保存成功!')
+  } catch (error) {
+    console.error('保存失败:', error)
+    // 模拟保存
+    localStorage.setItem('vue-grid-layout', JSON.stringify(layoutData))
+    alert('布局已保存到本地!')
+  }
+}
+
+// 从后端加载布局
+const loadLayout = async () => {
+  try {
+    // 实际项目中替换为真实的 API
+    const response = await fetch('/api/layout')
+    const data = await response.json()
+    
+    layout.value = data.layout.map(item => ({
+      i: item.id,
+      x: item.x,
+      y: item.y,
+      w: item.w,
+      h: item.h
+    }))
+  } catch (error) {
+    console.error('加载失败:', error)
+    // 从本地加载
+    const saved = localStorage.getItem('vue-grid-layout')
+    if (saved) {
+      const data = JSON.parse(saved)
+      layout.value = data.map(item => ({
+        i: item.id,
+        x: item.x,
+        y: item.y,
+        w: item.w,
+        h: item.h
+      }))
+      alert('从本地加载布局成功!')
+    }
+  }
+}
+</script>
+
+<style scoped>
+.grid-container {
+  padding: 20px;
+}
+
+.toolbar {
+  margin-bottom: 20px;
+  display: flex;
+  gap: 10px;
+}
+
+.toolbar button {
+  padding: 8px 16px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #fff;
+}
+
+.toolbar button.active {
+  background: #4CAF50;
+  color: white;
+}
+
+.toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.grid-item-content {
+  height: 100%;
+  background: #42b983;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.item-title {
+  color: white;
+  font-weight: bold;
+}
+</style>
+```
+
+---
+
+## 2. GridStack.js 版本
+
+```vue
+<!-- GridStackVersion.vue -->
+<template>
+  <div class="grid-container">
+    <div class="toolbar">
+      <button @click="toggleMode" :class="{ active: isEditMode }">
+        {{ isEditMode ? '🔓 编辑模式' : '🔒 浏览模式' }}
+      </button>
+      <button @click="addItem()" :disabled="!isEditMode">➕ 添加组件</button>
+      <button @click="saveLayout">💾 保存布局</button>
+      <button @click="loadLayout">📂 加载布局</button>
+    </div>
+
+    <!-- GridStack 容器 -->
+    <div ref="gridRef" class="grid-stack"></div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { GridStack } from 'gridstack'
+import 'gridstack/dist/gridstack.min.css'
+
+// 响应式状态
+const gridRef = ref(null)
+const isEditMode = ref(false)
+let grid = null
+let itemIdCounter = 3
+
+// 初始布局数据
+const initialLayout = [
+  { x: 0, y: 0, w: 2, h: 2, id: '0' },
+  { x: 2, y: 0, w: 2, h: 4, id: '1' },
+  { x: 4, y: 0, w: 2, h: 5, id: '2' },
+]
+
+// 创建组件内容 HTML
+const createItemContent = (id) => {
+  return `
+    <div class="grid-item-content">
+      <span class="item-title">组件 ${id}</span>
+      <button class="delete-btn" onclick="window.deleteGridItem('${id}')">✕</button>
+    </div>
+  `
+}
+
+// 初始化 GridStack
+onMounted(() => {
+  grid = GridStack.init({
+    column: 12,
+    cellHeight: 30,
+    float: false,           // 自动堆叠
+    disableDrag: true,      // 初始为浏览模式
+    disableResize: true,
+    animate: true,
+    margin: 5,
+  }, gridRef.value)
+
+  // 加载初始布局
+  initialLayout.forEach(item => {
+    grid.addWidget({
+      x: item.x,
+      y: item.y,
+      w: item.w,
+      h: item.h,
+      id: item.id,
+      content: createItemContent(item.id)
+    })
+  })
+
+  // 全局删除方法（供内部按钮调用）
+  window.deleteGridItem = removeItem
+
+  // 监听变化事件
+  grid.on('change', (event, items) => {
+    console.log('布局变化:', items)
+  })
+})
+
+onUnmounted(() => {
+  if (grid) {
+    grid.destroy(false)
+  }
+  delete window.deleteGridItem
+})
+
+// 切换编辑/浏览模式
+const toggleMode = () => {
+  isEditMode.value = !isEditMode.value
+  
+  if (isEditMode.value) {
+    // 启用拖拽和调整大小
+    grid.enableMove(true)
+    grid.enableResize(true)
+  } else {
+    // 禁用拖拽和调整大小
+    grid.enableMove(false)
+    grid.enableResize(false)
+  }
+}
+
+// 添加新组件 - 使用 GridStack 自动放置
+const addItem = (width = 2, height = 2) => {
+  const id = String(itemIdCounter++)
+  
+  // GridStack 自动找到合适位置 (autoPosition: true)
+  grid.addWidget({
+    w: width,
+    h: height,
+    id: id,
+    autoPosition: true,  // ⭐ 关键：自动放置
+    content: createItemContent(id)
+  })
+}
+
+// 删除组件
+const removeItem = (id) => {
+  const el = gridRef.value.querySelector(`[gs-id="${id}"]`)
+  if (el) {
+    grid.removeWidget(el)
+  }
+}
+
+// 保存布局到后端
+const saveLayout = async () => {
+  // 获取当前布局数据
+  const layoutData = grid.save(false) // false = 不含 content
+  
+  // 转换为简洁格式
+  const saveData = layoutData.map(item => ({
+    id: item.id,
+    x: item.x,
+    y: item.y,
+    w: item.w,
+    h: item.h
+  }))
+  
+  try {
+    // 实际项目中替换为真实的 API
+    await fetch('/api/layout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ layout: saveData })
+    })
+    alert('布局保存成功!')
+  } catch (error) {
+    console.error('保存失败:', error)
+    // 模拟保存到本地
+    localStorage.setItem('gridstack-layout', JSON.stringify(saveData))
+    alert('布局已保存到本地!')
+  }
+}
+
+// 从后端加载布局
+const loadLayout = async () => {
+  try {
+    // 实际项目中替换为真实的 API
+    const response = await fetch('/api/layout')
+    const data = await response.json()
+    
+    applyLayout(data.layout)
+  } catch (error) {
+    console.error('加载失败:', error)
+    // 从本地加载
+    const saved = localStorage.getItem('gridstack-layout')
+    if (saved) {
+      applyLayout(JSON.parse(saved))
+      alert('从本地加载布局成功!')
+    }
+  }
+}
+
+// 应用布局数据
+const applyLayout = (layoutData) => {
+  // 清空现有组件
+  grid.removeAll()
+  
+  // 重新加载
+  layoutData.forEach(item => {
+    grid.addWidget({
+      x: item.x,
+      y: item.y,
+      w: item.w,
+      h: item.h,
+      id: item.id,
+      content: createItemContent(item.id)
+    })
+  })
+  
+  // 更新 ID 计数器
+  const maxId = Math.max(...layoutData.map(item => parseInt(item.id) || 0), 0)
+  itemIdCounter = maxId + 1
+}
+</script>
+
+<style>
+.grid-container {
+  padding: 20px;
+}
+
+.toolbar {
+  margin-bottom: 20px;
+  display: flex;
+  gap: 10px;
+}
+
+.toolbar button {
+  padding: 8px 16px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #fff;
+  transition: all 0.2s;
+}
+
+.toolbar button:hover {
+  background: #f5f5f5;
+}
+
+.toolbar button.active {
+  background: #4CAF50;
+  color: white;
+}
+
+.toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* GridStack 样式 */
+.grid-stack {
+  background: #f0f0f0;
+  min-height: 400px;
+}
+
+.grid-stack-item-content {
+  background: #42b983;
+  border-radius: 4px;
+}
+
+.grid-item-content {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: none;
+}
+
+/* 编辑模式下显示删除按钮 */
+.grid-stack.grid-stack-animate .delete-btn {
+  display: block;
+}
+
+.item-title {
+  color: white;
+  font-weight: bold;
+}
+</style>
+```
+
+---
+
+## 3. 关键差异对比表
+
+| 功能 | vue-grid-layout | GridStack.js |
+|------|-----------------|--------------|
+| **自动放置** | ❌ 需手动计算位置 | ✅ `autoPosition: true` |
+| **禁用拖拽** | `:is-draggable="false"` | `grid.enableMove(false)` |
+| **禁用缩放** | `:is-resizable="false"` | `grid.enableResize(false)` |
+| **保存布局** | 手动收集 layout 数组 | `grid.save()` 内置方法 |
+| **加载布局** | 直接赋值 layout | `grid.load()` 或手动添加 |
+| **删除组件** | 数组操作 splice | `grid.removeWidget(el)` |
+| **添加组件** | 数组 push + 手动定位 | `grid.addWidget()` 自动定位 |
+| **Vue 集成** | ✅ 原生 Vue 组件 | ⚠️ 需要手动管理 DOM |
+
+---
+
+## 4. 后端 API 示例 (Node.js/Express)
+
+```javascript
+// server.js
+const express = require('express')
+const app = express()
+app.use(express.json())
+
+let savedLayout = []
+
+// 保存布局
+app.post('/api/layout', (req, res) => {
+  savedLayout = req.body.layout
+  res.json({ success: true, message: '布局保存成功' })
+})
+
+// 获取布局
+app.get('/api/layout', (req, res) => {
+  res.json({ layout: savedLayout })
+})
+
+app.listen(3000)
+```
+
+---
+
+## 5. 安装依赖
+
+```bash
+# GridStack.js
+npm install gridstack
+
+# 或 vue-grid-layout (Vue 3 版本)
+npm install vue-grid-layout@3
+```
+
+**推荐使用 GridStack.js**，因为它的 `autoPosition` 和 `save/load` API 更加完善，编辑/浏览模式切换也更简洁。
+
+
+
+
+
+
+
+
+
+
+# 样式区分与改动对比
+
+我来详细对比两个库在样式方面的差异，并标注需要改动的地方。
+
+## 1. 样式差异对比表
+
+| 样式方面 | vue-grid-layout | GridStack.js | 迁移改动 |
+|---------|-----------------|--------------|----------|
+| **容器类名** | `.vue-grid-layout` | `.grid-stack` | 需修改选择器 |
+| **组件项类名** | `.vue-grid-item` | `.grid-stack-item` | 需修改选择器 |
+| **内容容器** | 自定义内容直接写 | `.grid-stack-item-content` | 需包裹内容 |
+| **占位符** | `.vue-grid-placeholder` | `.grid-stack-placeholder` | 需修改选择器 |
+| **拖拽手柄** | 无内置 | `.gs-move-handler` | 可选 |
+| **缩放手柄** | `.vue-resizable-handle` | `.ui-resizable-handle` | 需修改选择器 |
+| **CSS 引入** | 无需引入 | 需引入 `gridstack.min.css` | 新增引入 |
+
+---
+
+## 2. 完整样式对比代码
+
+```vue
+<!-- StyleComparison.vue -->
+<template>
+  <div class="demo-container">
+    <h2>样式对比演示</h2>
+    
+    <!-- 切换按钮 -->
+    <div class="toolbar">
+      <button @click="toggleMode" :class="{ active: isEditMode }">
+        {{ isEditMode ? '🔓 编辑模式' : '🔒 浏览模式' }}
+      </button>
+      <button @click="addItem()" :disabled="!isEditMode">➕ 添加组件</button>
+      <button @click="saveLayout">💾 保存</button>
+      <button @click="loadLayout">📂 加载</button>
+    </div>
+
+    <!-- GridStack 容器 -->
+    <div ref="gridRef" class="grid-stack"></div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+import { GridStack } from 'gridstack'
+import 'gridstack/dist/gridstack.min.css'
+
+const gridRef = ref(null)
+const isEditMode = ref(false)
+let grid = null
+let itemIdCounter = 3
+
+const initialLayout = [
+  { x: 0, y: 0, w: 2, h: 2, id: '0' },
+  { x: 2, y: 0, w: 2, h: 4, id: '1' },
+  { x: 4, y: 0, w: 2, h: 5, id: '2' },
+]
+
+const createItemContent = (id) => {
+  return `
+    <div class="grid-item-content">
+      <span class="item-title">组件 ${id}</span>
+      <button class="delete-btn" data-id="${id}">✕</button>
+    </div>
+  `
+}
+
+onMounted(() => {
+  grid = GridStack.init({
+    column: 12,
+    cellHeight: 30,
+    float: false,
+    disableDrag: true,
+    disableResize: true,
+    animate: true,
+    margin: 5,
+  }, gridRef.value)
+
+  initialLayout.forEach(item => {
+    grid.addWidget({
+      x: item.x,
+      y: item.y,
+      w: item.w,
+      h: item.h,
+      id: item.id,
+      content: createItemContent(item.id)
+    })
+  })
+
+  // 事件委托处理删除
+  gridRef.value.addEventListener('click', (e) => {
+    if (e.target.classList.contains('delete-btn')) {
+      const id = e.target.dataset.id
+      removeItem(id)
+    }
+  })
+})
+
+onUnmounted(() => {
+  if (grid) grid.destroy(false)
+})
+
+const toggleMode = () => {
+  isEditMode.value = !isEditMode.value
+  grid.enableMove(isEditMode.value)
+  grid.enableResize(isEditMode.value)
+  
+  // 切换容器类名以控制样式
+  if (isEditMode.value) {
+    gridRef.value.classList.add('edit-mode')
+  } else {
+    gridRef.value.classList.remove('edit-mode')
+  }
+}
+
+const addItem = (width = 2, height = 2) => {
+  const id = String(itemIdCounter++)
+  grid.addWidget({
+    w: width,
+    h: height,
+    id: id,
+    autoPosition: true,
+    content: createItemContent(id)
+  })
+}
+
+const removeItem = (id) => {
+  const el = gridRef.value.querySelector(`[gs-id="${id}"]`)
+  if (el) grid.removeWidget(el)
+}
+
+const saveLayout = async () => {
+  const layoutData = grid.save(false)
+  localStorage.setItem('gridstack-layout', JSON.stringify(layoutData))
+  alert('保存成功!')
+}
+
+const loadLayout = () => {
+  const saved = localStorage.getItem('gridstack-layout')
+  if (saved) {
+    const layoutData = JSON.parse(saved)
+    grid.removeAll()
+    layoutData.forEach(item => {
+      grid.addWidget({
+        ...item,
+        content: createItemContent(item.id)
+      })
+    })
+    const maxId = Math.max(...layoutData.map(item => parseInt(item.id) || 0), 0)
+    itemIdCounter = maxId + 1
+    alert('加载成功!')
+  }
+}
+</script>
+
+<style>
+/*
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                          样式迁移对比说明                                      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+*/
+
+/* ============================================================================
+   1. 容器样式
+   ============================================================================ */
+
+/* 
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ vue-grid-layout (旧)                                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+.vue-grid-layout {
+  background: #eee;
+}
+*/
+
+/* 
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GridStack (新) ✅                                                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+*/
+.grid-stack {
+  background: #f5f7fa;
+  min-height: 400px;
+  border-radius: 8px;
+  border: 2px dashed #e0e0e0;
+}
+
+
+/* ============================================================================
+   2. 网格项样式
+   ============================================================================ */
+
+/* 
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ vue-grid-layout (旧)                                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+.vue-grid-item {
+  transition: all 200ms ease;
+  transition-property: left, top;
+}
+.vue-grid-item.cssTransforms {
+  transition-property: transform;
+}
+.vue-grid-item > .vue-resizable-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  bottom: 0;
+  right: 0;
+  cursor: se-resize;
+}
+*/
+
+/* 
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GridStack (新) ✅                                                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+*/
+.grid-stack-item {
+  /* GridStack 已内置过渡动画 */
+}
+
+/* 内容容器 - 这是主要改动点！ */
+.grid-stack-item-content {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  transition: box-shadow 0.3s ease, transform 0.2s ease;
+}
+
+.grid-stack-item-content:hover {
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+
+/* ============================================================================
+   3. 编辑模式 vs 浏览模式样式
+   ============================================================================ */
+
+/* 
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ vue-grid-layout (旧)                                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+// 通过 :is-draggable 和 :is-resizable props 控制
+// 样式无明显变化
+
+.vue-grid-item.no-drag {
+  cursor: default;
+}
+*/
+
+/* 
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GridStack (新) ✅                                                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+*/
+
+/* 浏览模式 - 默认状态 */
+.grid-stack .grid-stack-item-content {
+  cursor: default;
+}
+
+.grid-stack .delete-btn {
+  display: none;  /* 隐藏删除按钮 */
+}
+
+/* 编辑模式 - 通过添加 .edit-mode 类控制 */
+.grid-stack.edit-mode {
+  border-color: #4CAF50;
+  background: #f0fff0;
+}
+
+.grid-stack.edit-mode .grid-stack-item-content {
+  cursor: move;
+  border: 2px dashed transparent;
+}
+
+.grid-stack.edit-mode .grid-stack-item-content:hover {
+  border-color: #4CAF50;
+  transform: scale(1.02);
+}
+
+.grid-stack.edit-mode .delete-btn {
+  display: flex;  /* 显示删除按钮 */
+}
+
+
+/* ============================================================================
+   4. 占位符样式 (拖拽时的预览位置)
+   ============================================================================ */
+
+/* 
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ vue-grid-layout (旧)                                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+.vue-grid-placeholder {
+  background: red;
+  opacity: 0.2;
+  transition-duration: 100ms;
+  z-index: 2;
+  user-select: none;
+}
+*/
+
+/* 
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GridStack (新) ✅                                                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+*/
+.grid-stack-placeholder > .placeholder-content {
+  background-color: rgba(76, 175, 80, 0.3) !important;
+  border: 2px dashed #4CAF50 !important;
+  border-radius: 8px;
+}
+
+
+/* ============================================================================
+   5. 缩放手柄样式
+   ============================================================================ */
+
+/* 
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ vue-grid-layout (旧)                                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+.vue-grid-item > .vue-resizable-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  bottom: 0;
+  right: 0;
+  background: url('data:image/svg+xml,...') no-repeat;
+  cursor: se-resize;
+}
+*/
+
+/* 
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GridStack (新) ✅                                                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+*/
+.grid-stack-item > .ui-resizable-handle {
+  /* GridStack 默认已有基础样式 */
+}
+
+/* 自定义右下角缩放手柄 */
+.grid-stack-item > .ui-resizable-se {
+  width: 20px;
+  height: 20px;
+  right: 5px;
+  bottom: 5px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='white'%3E%3Cpath d='M11 11v-1h1v1h-1zm-2 0v-1h1v1h-1zm-2 0v-1h1v1h-1zm4-2v-1h1v1h-1zm-2 0v-1h1v1h-1zm2-2v-1h1v1h-1z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  cursor: se-resize;
+}
+
+/* 编辑模式下显示缩放手柄 */
+.grid-stack:not(.edit-mode) .ui-resizable-handle {
+  display: none !important;
+}
+
+
+/* ============================================================================
+   6. 拖拽状态样式
+   ============================================================================ */
+
+/* 
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ vue-grid-layout (旧)                                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+.vue-grid-item.vue-draggable-dragging {
+  transition: none;
+  z-index: 3;
+}
+.vue-grid-item.resizing {
+  opacity: 0.6;
+  z-index: 3;
+}
+*/
+
+/* 
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GridStack (新) ✅                                                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+*/
+.grid-stack-item.ui-draggable-dragging {
+  z-index: 100;
+  opacity: 0.9;
+}
+
+.grid-stack-item.ui-draggable-dragging > .grid-stack-item-content {
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+  transform: rotate(2deg);
+}
+
+.grid-stack-item.ui-resizable-resizing {
+  opacity: 0.8;
+}
+
+.grid-stack-item.ui-resizable-resizing > .grid-stack-item-content {
+  border: 2px solid #4CAF50;
+}
+
+
+/* ============================================================================
+   7. 自定义组件内容样式 (通用)
+   ============================================================================ */
+
+.grid-item-content {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 10px;
+}
+
+.item-title {
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.delete-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  background: #ff4757;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.delete-btn:hover {
+  background: #ff2240;
+  transform: scale(1.1);
+}
+
+
+/* ============================================================================
+   8. 工具栏样式
+   ============================================================================ */
+
+.demo-container {
+  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.toolbar {
+  margin-bottom: 20px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.toolbar button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  background: #f0f0f0;
+  color: #333;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar button:hover:not(:disabled) {
+  background: #e0e0e0;
+  transform: translateY(-1px);
+}
+
+.toolbar button.active {
+  background: linear-gradient(135deg, #4CAF50, #45a049);
+  color: white;
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+}
+
+.toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
+/* ============================================================================
+   9. 响应式适配
+   ============================================================================ */
+
+/* 
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ vue-grid-layout (旧) - 需要手动配置 responsive 和 breakpoints               │
+└─────────────────────────────────────────────────────────────────────────────┘
+*/
+
+/* 
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GridStack (新) ✅ - 支持 column: 'auto' 或手动断点                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+*/
+@media (max-width: 768px) {
+  .grid-stack {
+    /* GridStack 可配置 column: 1 实现单列 */
+  }
+  
+  .toolbar {
+    flex-direction: column;
+  }
+  
+  .toolbar button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+</style>
+```
+
+---
+
+## 3. 样式迁移检查清单
+
+```markdown
+## 迁移检查清单 ✅
+
+### CSS 选择器替换
+- [ ] `.vue-grid-layout` → `.grid-stack`
+- [ ] `.vue-grid-item` → `.grid-stack-item`
+- [ ] `.vue-grid-placeholder` → `.grid-stack-placeholder`
+- [ ] `.vue-resizable-handle` → `.ui-resizable-handle`
+- [ ] `.vue-draggable-dragging` → `.ui-draggable-dragging`
+- [ ] `.resizing` → `.ui-resizable-resizing`
+
+### 新增必须项
+- [ ] 引入 `gridstack/dist/gridstack.min.css`
+- [ ] 内容需包裹在 `.grid-stack-item-content` 内
+- [ ] 添加 `.edit-mode` 类用于模式切换
+
+### 移除项
+- [ ] 移除 vue-grid-layout 相关的 scoped 样式
+- [ ] 移除 `:deep()` 或 `>>>` 穿透选择器（如有）
+
+### 注意事项
+- [ ] GridStack 样式是全局的，建议加命名空间
+- [ ] 使用 `!important` 覆盖默认样式时需谨慎
+```
+
+---
+
+## 4. 关键样式差异总结
+
+| 差异点 | 说明 | 处理方式 |
+|--------|------|----------|
+| **CSS 引入** | GridStack 需要引入基础 CSS | `import 'gridstack/dist/gridstack.min.css'` |
+| **内容层级** | GridStack 多一层 `.grid-stack-item-content` | 背景、圆角等样式需设在此层 |
+| **模式切换** | vue-grid-layout 用 props | GridStack 用 `enableMove/Resize` + CSS 类 |
+| **手柄类名** | 不同的类名前缀 | 检索替换即可 |
+| **动画** | vue-grid-layout 用 CSS transition | GridStack 内置 animate 选项 |
+
+这样迁移时就能清晰知道哪些样式需要修改了！
+
+
+
+
+
+
+
+# 缩放 Handle 样式对比与迁移
+
+## 1. 缩放手柄核心差异
+
+| 方面 | vue-grid-layout | GridStack.js |
+|------|-----------------|--------------|
+| **手柄类名** | `.vue-resizable-handle` | `.ui-resizable-handle` |
+| **方向类名** | 无细分 | `.ui-resizable-se`, `.ui-resizable-e`, `.ui-resizable-s` 等 |
+| **默认位置** | 仅右下角 | 可配置多个方向 |
+| **显示控制** | 通过 `:is-resizable` prop | 通过 `enableResize()` 方法 + CSS |
+
+---
+
+## 2. 详细样式对比
+
+```css
+/* ============================================================================
+   缩放 Handle 完整样式对比
+   ============================================================================ */
+
+/* 
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  vue-grid-layout (旧)                                                         ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+*/
+
+/*
+.vue-grid-item > .vue-resizable-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  bottom: 0;
+  right: 0;
+  background: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb25lPSJubyI/Pg08IS0tIEdlbmVyYXRvcjogQWRvYmUgRmlyZXdvcmtzIENTNiwgRXhwb3J0IFNWRyBFeHRlbnNpb24gYnkgQWFyb24gQmVhbGwgKGh0dHA6Ly9maXJld29ya3MuYWJlYWxsLmNvbSkgLiBWZXJzaW9uOiAwLjYuMSAgLS0+DTwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+DTxzdmcgaWQ9IlVudGl0bGVkLVBhZ2UlMjAxIiB2aWV3Qm94PSIwIDAgNiA2IiBzdHlsZT0iYmFja2dyb3VuZC1jb2xvcjojZmZmZmZmMDAiIHZlcnNpb249IjEuMSINCXhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHhtbDpzcGFjZT0icHJlc2VydmUiDQl4PSIwcHgiIHk9IjBweCIgd2lkdGg9IjZweCIgaGVpZ2h0PSI2cHgiDT4NCTxnIG9wYWNpdHk9IjAuMzAyIj4NCQk8cGF0aCBkPSJNIDYgNiBMIDAgNiBMIDAgNC4yIEwgNCA0LjIgTCA0LjIgNC4yIEwgNC4yIDAgTCA2IDAgTCA2IDYgTCA2IDYgWiIgZmlsbD0iIzAwMDAwMCIvPg0JPC9nPg08L3N2Zz4=');
+  background-position: bottom right;
+  padding: 0 3px 3px 0;
+  background-repeat: no-repeat;
+  background-origin: content-box;
+  box-sizing: border-box;
+  cursor: se-resize;
+}
+*/
+
+
+/* 
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  GridStack.js (新) ✅                                                         ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+*/
+
+/* --------------------------------------------------------------------------
+   基础手柄样式 (所有方向通用)
+   -------------------------------------------------------------------------- */
+.grid-stack-item > .ui-resizable-handle {
+  position: absolute;
+  font-size: 0.1px;
+  display: block;
+  touch-action: none;
+}
+
+/* --------------------------------------------------------------------------
+   各方向手柄位置
+   -------------------------------------------------------------------------- */
+
+/* 右下角 (最常用) */
+.grid-stack-item > .ui-resizable-se {
+  width: 20px;
+  height: 20px;
+  right: 0;
+  bottom: 0;
+  cursor: se-resize;
+}
+
+/* 右边 */
+.grid-stack-item > .ui-resizable-e {
+  width: 10px;
+  height: 100%;
+  right: 0;
+  top: 0;
+  cursor: e-resize;
+}
+
+/* 下边 */
+.grid-stack-item > .ui-resizable-s {
+  width: 100%;
+  height: 10px;
+  left: 0;
+  bottom: 0;
+  cursor: s-resize;
+}
+
+/* 左边 */
+.grid-stack-item > .ui-resizable-w {
+  width: 10px;
+  height: 100%;
+  left: 0;
+  top: 0;
+  cursor: w-resize;
+}
+
+/* 上边 */
+.grid-stack-item > .ui-resizable-n {
+  width: 100%;
+  height: 10px;
+  left: 0;
+  top: 0;
+  cursor: n-resize;
+}
+
+/* 左下角 */
+.grid-stack-item > .ui-resizable-sw {
+  width: 20px;
+  height: 20px;
+  left: 0;
+  bottom: 0;
+  cursor: sw-resize;
+}
+
+/* 左上角 */
+.grid-stack-item > .ui-resizable-nw {
+  width: 20px;
+  height: 20px;
+  left: 0;
+  top: 0;
+  cursor: nw-resize;
+}
+
+/* 右上角 */
+.grid-stack-item > .ui-resizable-ne {
+  width: 20px;
+  height: 20px;
+  right: 0;
+  top: 0;
+  cursor: ne-resize;
+}
+
+
+/* --------------------------------------------------------------------------
+   自定义手柄外观 (仿 vue-grid-layout 风格)
+   -------------------------------------------------------------------------- */
+
+/* 方案一: 使用 SVG 背景图 (与 vue-grid-layout 类似) */
+.grid-stack-item > .ui-resizable-se {
+  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="6" height="6"><path d="M6 6L0 6L0 4.2L4 4.2L4.2 4.2L4.2 0L6 0L6 6Z" fill="%23000" opacity="0.3"/></svg>');
+  background-position: bottom right;
+  background-repeat: no-repeat;
+  padding: 3px;
+  background-origin: content-box;
+  box-sizing: border-box;
+}
+
+/* 方案二: 使用 CSS 绘制点阵 */
+.grid-stack-item > .ui-resizable-se.dots-style {
+  background: 
+    radial-gradient(circle, #999 1.5px, transparent 1.5px);
+  background-size: 5px 5px;
+  background-position: bottom right;
+  background-repeat: no-repeat;
+  width: 15px;
+  height: 15px;
+}
+
+/* 方案三: 使用伪元素绘制斜线 */
+.grid-stack-item > .ui-resizable-se.lines-style::before {
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid rgba(0, 0, 0, 0.3);
+  border-bottom: 2px solid rgba(0, 0, 0, 0.3);
+}
+
+
+/* --------------------------------------------------------------------------
+   编辑模式控制手柄显示
+   -------------------------------------------------------------------------- */
+
+/* 默认隐藏所有缩放手柄 */
+.grid-stack .ui-resizable-handle {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+}
+
+/* 编辑模式下显示 */
+.grid-stack.edit-mode .ui-resizable-handle {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 或者: 悬停时显示 */
+.grid-stack.edit-mode .grid-stack-item:hover > .ui-resizable-handle {
+  opacity: 1;
+  visibility: visible;
+}
+
+
+/* --------------------------------------------------------------------------
+   缩放中状态样式
+   -------------------------------------------------------------------------- */
+
+.grid-stack-item.ui-resizable-resizing {
+  z-index: 100;
+}
+
+.grid-stack-item.ui-resizable-resizing > .grid-stack-item-content {
+  opacity: 0.8;
+  outline: 2px dashed #4CAF50;
+  outline-offset: -2px;
+}
+
+.grid-stack-item.ui-resizable-resizing > .ui-resizable-handle {
+  background-color: #4CAF50;
+  border-radius: 2px;
+}
+```
+
+---
+
+## 3. GridStack 缩放配置选项
+
+```javascript
+// GridStack 初始化时配置缩放手柄
+const grid = GridStack.init({
+  // 启用/禁用缩放
+  resizable: {
+    handles: 'se'  // 默认只有右下角
+    // handles: 'e, se, s, sw, w'  // 多个方向
+    // handles: 'all'  // 所有方向
+  },
+  
+  // 或者简单禁用
+  disableResize: false,
+  
+  // 其他配置...
+  column: 12,
+  cellHeight: 70,
+})
+
+// 动态控制
+grid.enableResize(true)   // 启用缩放
+grid.enableResize(false)  // 禁用缩放
+
+// 单个组件控制
+grid.update(el, { noResize: true })  // 禁止该组件缩放
+```
+
+---
+
+## 4. 完整迁移示例
+
+```vue
+<template>
+  <div class="container">
+    <div class="controls">
+      <button @click="toggleEdit" :class="{ active: isEdit }">
+        {{ isEdit ? '✓ 编辑中' : '编辑模式' }}
+      </button>
+      <select v-model="handleStyle" @change="updateHandleStyle">
+        <option value="default">默认手柄</option>
+        <option value="dots">点阵手柄</option>
+        <option value="lines">线条手柄</option>
+        <option value="icon">图标手柄</option>
+      </select>
+    </div>
+    
+    <div 
+      ref="gridRef" 
+      class="grid-stack"
+      :class="{ 
+        'edit-mode': isEdit,
+        [`handle-${handleStyle}`]: true 
+      }"
+    ></div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+import { GridStack } from 'gridstack'
+import 'gridstack/dist/gridstack.min.css'
+
+const gridRef = ref(null)
+const isEdit = ref(false)
+const handleStyle = ref('default')
+let grid = null
+
+onMounted(() => {
+  grid = GridStack.init({
+    column: 12,
+    cellHeight: 80,
+    margin: 8,
+    disableResize: true,  // 初始禁用
+    disableDrag: true,
+    resizable: {
+      handles: 'se, e, s'  // 右下角、右边、下边
+    }
+  }, gridRef.value)
+
+  // 添加测试组件
+  for (let i = 0; i < 4; i++) {
+    grid.addWidget({
+      x: (i % 2) * 6,
+      y: Math.floor(i / 2) * 3,
+      w: 4,
+      h: 3,
+      content: `<div class="widget-content">组件 ${i + 1}</div>`
+    })
+  }
+})
+
+const toggleEdit = () => {
+  isEdit.value = !isEdit.value
+  grid.enableMove(isEdit.value)
+  grid.enableResize(isEdit.value)
+}
+
+const updateHandleStyle = () => {
+  // 样式通过 CSS 类控制
+}
+</script>
+
+<style>
+/* 容器 */
+.container {
+  padding: 20px;
+  font-family: system-ui, sans-serif;
+}
+
+.controls {
+  margin-bottom: 16px;
+  display: flex;
+  gap: 12px;
+}
+
+.controls button {
+  padding: 8px 16px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.controls button.active {
+  background: #4CAF50;
+  color: white;
+  border-color: #4CAF50;
+}
+
+.controls select {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+/* Grid 容器 */
+.grid-stack {
+  background: #f5f5f5;
+  border-radius: 8px;
+  min-height: 400px;
+}
+
+.grid-stack.edit-mode {
+  background: #e8f5e9;
+  border: 2px dashed #4CAF50;
+}
+
+/* 组件内容 */
+.widget-content {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: white;
+}
+
+.grid-stack-item-content {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+
+/* ============================================================================
+   缩放手柄样式
+   ============================================================================ */
+
+/* 基础: 隐藏手柄 (非编辑模式) */
+.grid-stack .ui-resizable-handle {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+/* 编辑模式显示 */
+.grid-stack.edit-mode .ui-resizable-handle {
+  opacity: 1;
+}
+
+/* 悬停时高亮 */
+.grid-stack.edit-mode .grid-stack-item:hover > .ui-resizable-handle {
+  background-color: rgba(76, 175, 80, 0.3);
+}
+
+
+/* ---------- 默认手柄样式 ---------- */
+.grid-stack.handle-default .ui-resizable-se {
+  width: 20px;
+  height: 20px;
+  right: 2px;
+  bottom: 2px;
+  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><path d="M10 10L0 10L0 8L8 8L8 0L10 0Z" fill="white" opacity="0.8"/></svg>') no-repeat center;
+}
+
+.grid-stack.handle-default .ui-resizable-e {
+  width: 8px;
+  right: 0;
+  background: linear-gradient(to left, rgba(255,255,255,0.3), transparent);
+}
+
+.grid-stack.handle-default .ui-resizable-s {
+  height: 8px;
+  bottom: 0;
+  background: linear-gradient(to top, rgba(255,255,255,0.3), transparent);
+}
+
+
+/* ---------- 点阵手柄样式 ---------- */
+.grid-stack.handle-dots .ui-resizable-se {
+  width: 16px;
+  height: 16px;
+  right: 4px;
+  bottom: 4px;
+  background-image: 
+    radial-gradient(circle, white 2px, transparent 2px);
+  background-size: 6px 6px;
+  background-position: bottom right;
+}
+
+
+/* ---------- 线条手柄样式 ---------- */
+.grid-stack.handle-lines .ui-resizable-se {
+  width: 16px;
+  height: 16px;
+  right: 4px;
+  bottom: 4px;
+}
+
+.grid-stack.handle-lines .ui-resizable-se::before,
+.grid-stack.handle-lines .ui-resizable-se::after {
+  content: '';
+  position: absolute;
+  background: white;
+  opacity: 0.8;
+}
+
+.grid-stack.handle-lines .ui-resizable-se::before {
+  width: 12px;
+  height: 2px;
+  bottom: 0;
+  right: 0;
+}
+
+.grid-stack.handle-lines .ui-resizable-se::after {
+  width: 2px;
+  height: 12px;
+  bottom: 0;
+  right: 0;
+}
+
+
+/* ---------- 图标手柄样式 ---------- */
+.grid-stack.handle-icon .ui-resizable-se {
+  width: 20px;
+  height: 20px;
+  right: 4px;
+  bottom: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.grid-stack.handle-icon .ui-resizable-se::before {
+  content: '⤡';
+  font-size: 12px;
+  color: #666;
+}
+
+
+/* ---------- 缩放中状态 ---------- */
+.grid-stack-item.ui-resizable-resizing > .grid-stack-item-content {
+  opacity: 0.85;
+  box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.5);
+}
+
+.grid-stack-item.ui-resizable-resizing > .ui-resizable-se {
+  transform: scale(1.2);
+  background-color: #4CAF50 !important;
+}
+</style>
+```
+
+---
+
+## 5. 迁移检查清单
+
+```markdown
+### 缩放 Handle 迁移清单
+
+#### 选择器替换
+- [ ] `.vue-resizable-handle` → `.ui-resizable-handle`
+- [ ] 添加方向特定选择器 `.ui-resizable-se`, `.ui-resizable-e` 等
+
+#### 功能迁移
+- [ ] `:is-resizable="true/false"` → `grid.enableResize(true/false)`
+- [ ] 组件级控制 → `grid.update(el, { noResize: true })`
+
+#### 样式调整
+- [ ] 保留原有背景图 SVG
+- [ ] 添加编辑模式显示/隐藏逻辑
+- [ ] 添加缩放中状态样式 `.ui-resizable-resizing`
+
+#### 新增配置
+- [ ] `resizable: { handles: 'se' }` 配置手柄方向
+```
+
+这样你就能完整迁移缩放手柄的样式和功能了！
