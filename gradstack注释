@@ -1,0 +1,884 @@
+<script setup>
+// ============================================================
+// 导入依赖
+// ============================================================
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+// ref: 创建响应式引用
+// onMounted: 组件挂载后执行的生命周期钩子
+// onBeforeUnmount: 组件卸载前执行的生命周期钩子
+// nextTick: 等待 DOM 更新完成后执行回调
+
+import { GridStack } from 'gridstack'
+// GridStack: 一个可拖拽、可调整大小的网格布局库
+// 官网: https://gridstackjs.com/
+
+import 'gridstack/dist/gridstack.min.css'
+// 引入 GridStack 的基础样式
+
+// ============================================================
+// 常量定义
+// ============================================================
+const LS_KEY = 'gridstack-layout'
+// localStorage 存储键名，用于持久化保存用户的布局配置
+
+// ============================================================
+// 响应式数据 (Reactive State)
+// ============================================================
+const gridRef = ref(null)
+// 网格容器的 DOM 引用，通过 template 中的 ref="gridRef" 绑定
+// 用于 GridStack 初始化和查询子元素
+
+const gsItems = ref([])
+// 存储所有卡片数据的响应式数组
+// 每个卡片对象包含: { id, x, y, w, h, title, content }
+// - id: 唯一标识符
+// - x, y: 网格中的位置坐标
+// - w, h: 宽度和高度（以网格单元为单位）
+// - title: 卡片标题
+// - content: 卡片内容
+
+const addCount = ref(1)
+// 批量添加时的数量，绑定到输入框的 v-model
+
+// ============================================================
+// GridStack 实例相关
+// ============================================================
+let grid = null
+// GridStack 实例，非响应式（因为不需要触发视图更新）
+// 在 onMounted 中初始化，在 onBeforeUnmount 中销毁
+
+let gsCounter = Date.now()
+// ID 计数器，使用当前时间戳作为初始值
+// 确保生成的 ID 唯一且递增
+
+/**
+ * 生成唯一 ID
+ * @returns {string} 唯一的字符串 ID
+ * 
+ * 使用递增计数器而非随机数，确保：
+ * 1. ID 永远唯一
+ * 2. ID 可预测，便于调试
+ * 3. 新卡片的 ID 总是大于现有卡片
+ */
+function generateId() {
+  return String(gsCounter++)
+}
+
+// ============================================================
+// 默认布局配置
+// ============================================================
+const defaultLayout = [
+  { id: '1', x: 0, y: 0, w: 2, h: 2, title: '卡片 1', content: '內容 1' },
+  { id: '2', x: 2, y: 0, w: 2, h: 2, title: '卡片 2', content: '內容 2' },
+  { id: '3', x: 4, y: 0, w: 2, h: 2, title: '卡片 3', content: '內容 3' },
+]
+// 初始加载和重置时使用的默认布局
+// 网格共 12 列，这里放置了 3 个 2×2 的卡片并排显示
+
+// ============================================================
+// 工具函数 (Utility Functions)
+// ============================================================
+
+/**
+ * 安全解析 JSON 数组
+ * @param {string} raw - 原始 JSON 字符串
+ * @returns {Array} 解析后的数组，解析失败返回空数组
+ * 
+ * 防御性编程：
+ * 1. 捕获 JSON.parse 可能抛出的异常
+ * 2. 验证解析结果确实是数组
+ */
+function safeParseArray(raw) {
+  try {
+    const data = JSON.parse(raw)
+    return Array.isArray(data) ? data : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 销毁 GridStack 中的所有 widget（但保留 DOM）
+ * 
+ * 参数说明：
+ * - grid.removeAll(false): false 表示不移除 DOM 元素
+ *   仅从 GridStack 的管理中移除这些 widget
+ *   DOM 元素由 Vue 的 v-for 控制
+ */
+function destroyGridstackWidgetsOnly() {
+  if (grid) {
+    grid.removeAll(false)
+  }
+}
+
+/**
+ * 批量将 DOM 元素注册为 GridStack widget
+ * 
+ * 工作流程：
+ * 1. batchUpdate() - 开始批量更新模式，暂停布局计算
+ * 2. 遍历 gsItems，为每个卡片的 DOM 调用 makeWidget()
+ * 3. batchUpdate(false) - 结束批量模式，一次性重新计算布局
+ * 
+ * 性能优化：批量操作避免多次重排，提升性能
+ */
+function batchMakeWidgets() {
+  if (!grid || !gridRef.value) return
+
+  grid.batchUpdate() // 开始批量模式
+
+  gsItems.value.forEach((it) => {
+    // 通过 gs-id 属性查找对应的 DOM 元素
+    const el = gridRef.value.querySelector(`[gs-id="${it.id}"]`)
+    if (!el) return
+    
+    // makeWidget() 将普通 DOM 元素转换为可拖拽/调整大小的 widget
+    grid.makeWidget(el)
+  })
+
+  grid.batchUpdate(false) // 结束批量模式，触发布局重算
+}
+
+/**
+ * 从 GridStack 同步位置数据到 Vue 响应式数据
+ * 
+ * 为什么需要这个？
+ * 用户拖拽卡片后，GridStack 内部状态会更新
+ * 但 Vue 的 gsItems 不会自动同步
+ * 这个函数手动将 GridStack 的状态同步到 Vue
+ * 
+ * gridstackNode: GridStack 在每个 DOM 元素上附加的状态对象
+ */
+function syncFromGridstack() {
+  if (!grid) return
+
+  // 获取所有被 GridStack 管理的 DOM 元素
+  const nodes = grid.getGridItems()
+  
+  nodes.forEach((el) => {
+    const node = el.gridstackNode // 获取 GridStack 附加的节点数据
+    if (!node) return
+
+    // 在 Vue 数据中找到对应的卡片并更新位置/尺寸
+    const item = gsItems.value.find((it) => it.id === node.id)
+    if (item) {
+      item.x = node.x
+      item.y = node.y
+      item.w = node.w
+      item.h = node.h
+    }
+  })
+}
+
+/**
+ * 使用新数据完全重新加载布局
+ * @param {Array} data - 新的布局数据数组
+ * 
+ * 执行步骤：
+ * 1. 从 GridStack 移除所有现有 widget
+ * 2. 清空 Vue 响应式数组
+ * 3. 等待 DOM 更新（Vue 会移除旧的 DOM 元素）
+ * 4. 设置新数据
+ * 5. 更新 ID 计数器（防止 ID 冲突）
+ * 6. 等待 DOM 更新（Vue 会创建新的 DOM 元素）
+ * 7. 将新的 DOM 元素注册为 GridStack widget
+ */
+async function reloadLayoutWithData(data) {
+  destroyGridstackWidgetsOnly()
+
+  gsItems.value = [] // 清空，触发 Vue 移除所有卡片 DOM
+  await nextTick()   // 等待 DOM 更新完成
+
+  // 规范化数据：确保每个字段都有值
+  gsItems.value = data.map((it) => ({
+    id: String(it.id),          // 确保 ID 是字符串
+    x: it.x,
+    y: it.y,
+    w: it.w,
+    h: it.h,
+    title: it.title ?? `卡片 ${it.id}`,  // 空值合并运算符
+    content: it.content ?? '',
+  }))
+
+  updateCounterFromItems() // 更新计数器，防止新增时 ID 冲突
+  await nextTick()         // 等待新 DOM 创建
+  batchMakeWidgets()       // 注册为 GridStack widget
+}
+
+/**
+ * 根据现有卡片 ID 更新计数器
+ * 
+ * 目的：防止新生成的 ID 与已存在的 ID 冲突
+ * 
+ * 工作原理：
+ * 1. 提取所有数字类型的 ID
+ * 2. 找出最大值
+ * 3. 如果计数器 <= 最大值，则更新计数器为 最大值 + 1
+ */
+function updateCounterFromItems() {
+  const nums = gsItems.value
+    .map((it) => parseInt(it.id, 10))  // 尝试转为数字
+    .filter((n) => !isNaN(n))           // 过滤无效数字
+
+  if (nums.length > 0) {
+    const maxId = Math.max(...nums)
+    if (gsCounter <= maxId) {
+      gsCounter = maxId + 1
+    }
+  }
+}
+
+// ============================================================
+// 操作函数 (Action Functions)
+// ============================================================
+
+/**
+ * 批量添加卡片
+ * @param {number} count - 要添加的卡片数量（1-20）
+ * 
+ * 执行步骤：
+ * 1. 验证并限制数量范围
+ * 2. 创建新卡片数据对象
+ * 3. 添加到 Vue 响应式数组
+ * 4. 等待 DOM 创建
+ * 5. 批量注册为 GridStack widget
+ * 6. 读取 GridStack 自动计算的位置并更新到 Vue 数据
+ * 
+ * 注意：新卡片的 x, y 位置由 GridStack 自动计算（float: false 模式下会自动堆叠）
+ */
+async function addItems(count = 1) {
+  const validCount = Math.max(1, Math.min(count, 20)) // 限制范围 1-20
+  const newItems = []
+
+  // 步骤 1: 创建所有新卡片的数据对象
+  for (let i = 0; i < validCount; i++) {
+    const id = generateId()
+    newItems.push({
+      id,
+      w: 2,           // 默认宽度 2 个网格单元
+      h: 2,           // 默认高度 2 个网格单元
+      title: `卡片 ${id}`,
+      content: '',
+      // 注意：不设置 x, y，让 GridStack 自动计算位置
+    })
+  }
+
+  // 步骤 2: 添加到响应式数组
+  gsItems.value.push(...newItems)
+  
+  // 步骤 3: 等待 Vue 更新 DOM（v-for 会创建新的卡片元素）
+  await nextTick()
+
+  // 步骤 4: 将新创建的 DOM 元素注册为 GridStack widget
+  if (grid && gridRef.value) {
+    grid.batchUpdate() // 开始批量模式
+
+    newItems.forEach((newItem) => {
+      // 查找新创建的 DOM 元素
+      const el = gridRef.value.querySelector(`[gs-id="${newItem.id}"]`)
+      if (el) {
+        grid.makeWidget(el) // 注册为 widget
+
+        // 读取 GridStack 计算的位置，更新到 Vue 数据
+        // 这样 Vue 模板中显示的位置信息才是准确的
+        const node = el.gridstackNode
+        if (node) {
+          newItem.x = node.x
+          newItem.y = node.y
+          newItem.w = node.w
+          newItem.h = node.h
+        }
+      }
+    })
+
+    grid.batchUpdate(false) // 结束批量模式
+  }
+}
+
+/**
+ * 添加单个卡片（便捷方法）
+ */
+async function addItem() {
+  await addItems(1)
+}
+
+/**
+ * 根据输入框的数量添加多个卡片
+ */
+async function addMultipleItems() {
+  await addItems(addCount.value)
+}
+
+/**
+ * 删除指定 ID 的卡片
+ * @param {string} id - 要删除的卡片 ID
+ * 
+ * 执行步骤：
+ * 1. 在数组中查找卡片索引
+ * 2. 从 GridStack 移除 widget（保留 DOM 让 Vue 处理）
+ * 3. 从 Vue 数组中移除（触发 DOM 移除）
+ * 4. 同步其他卡片的位置（因为删除后可能会触发重排）
+ */
+function removeItem(id) {
+  const idx = gsItems.value.findIndex((it) => it.id === id)
+  if (idx === -1) return // 找不到则退出
+
+  // 查找对应的 DOM 元素
+  const el = gridRef.value?.querySelector(`[gs-id="${id}"]`)
+
+  if (el && grid) {
+    // removeWidget(el, false): false 表示不移除 DOM
+    // DOM 的移除由 Vue 的响应式系统处理
+    grid.removeWidget(el, false)
+  }
+
+  // 从 Vue 数组中移除，触发 v-for 更新
+  gsItems.value.splice(idx, 1)
+
+  // 删除后，其他卡片可能会移动位置（float: false 模式下会自动填补空隙）
+  // 需要同步最新位置到 Vue 数据
+  nextTick(() => {
+    syncFromGridstack()
+  })
+}
+
+/**
+ * 清空所有卡片
+ * 包含确认对话框，防止误操作
+ */
+async function clearAllItems() {
+  if (gsItems.value.length === 0) return
+
+  // 显示确认对话框
+  if (!confirm(`確定要刪除所有 ${gsItems.value.length} 張卡片嗎？`)) return
+
+  // 从 GridStack 移除所有 widget
+  if (grid) {
+    grid.removeAll(false) // false: 不删除 DOM
+  }
+
+  // 清空 Vue 数组，触发 DOM 移除
+  gsItems.value = []
+}
+
+/**
+ * 保存当前布局到 localStorage
+ * 
+ * 执行步骤：
+ * 1. 同步 GridStack 状态到 Vue 数据
+ * 2. 提取需要持久化的字段
+ * 3. 序列化为 JSON 并存储
+ */
+function saveLayout() {
+  syncFromGridstack() // 确保位置数据是最新的
+
+  // 只保存必要的字段，排除运行时状态
+  const data = gsItems.value.map((it) => ({
+    id: it.id,
+    x: it.x,
+    y: it.y,
+    w: it.w,
+    h: it.h,
+    title: it.title,
+    content: it.content,
+  }))
+
+  localStorage.setItem(LS_KEY, JSON.stringify(data))
+  alert('已保存 GridStack 佈局')
+}
+
+/**
+ * 从 localStorage 加载布局
+ */
+async function loadLayout() {
+  const raw = localStorage.getItem(LS_KEY)
+  const data = safeParseArray(raw)
+
+  if (!data.length) {
+    alert('找不到已保存的 GridStack 佈局')
+    return
+  }
+
+  await reloadLayoutWithData(data)
+  alert('已載入 GridStack 佈局')
+}
+
+/**
+ * 重置为默认布局
+ */
+async function resetToDefault() {
+  await reloadLayoutWithData(defaultLayout)
+  alert('已重置為默認佈局')
+}
+
+// ============================================================
+// 生命周期钩子 (Lifecycle Hooks)
+// ============================================================
+
+/**
+ * 组件挂载后初始化
+ * 
+ * 执行步骤：
+ * 1. 设置初始数据
+ * 2. 更新 ID 计数器
+ * 3. 等待 DOM 渲染
+ * 4. 初始化 GridStack 实例
+ * 5. 注册现有 DOM 为 widget
+ * 6. 监听变更事件
+ */
+onMounted(async () => {
+  // 深拷贝默认布局，避免修改原始数据
+  gsItems.value = defaultLayout.map((it) => ({ ...it }))
+  updateCounterFromItems()
+
+  await nextTick() // 等待 Vue 渲染 DOM
+
+  // 初始化 GridStack
+  grid = GridStack.init(
+    {
+      column: 12,                  // 网格列数，默认 12 列
+      cellHeight: 80,              // 每个网格单元的高度（像素）
+      margin: 10,                  // 卡片之间的间距（像素）
+      float: false,                // false: 卡片会自动下沉填补空隙
+                                   // true: 卡片可以浮动，下方可以有空隙
+      disableOneColumnMode: true,  // 禁用移动端单列模式
+    },
+    gridRef.value // 指定容器 DOM 元素
+  )
+
+  batchMakeWidgets() // 注册初始卡片
+
+  // 监听卡片位置/大小变化事件
+  // 用户拖拽或调整大小后触发
+  grid.on('change', (event, items) => {
+    if (!items) return
+
+    // 将变更同步到 Vue 响应式数据
+    items.forEach((node) => {
+      const item = gsItems.value.find((it) => it.id === node.id)
+      if (item) {
+        item.x = node.x
+        item.y = node.y
+        item.w = node.w
+        item.h = node.h
+      }
+    })
+  })
+})
+
+/**
+ * 组件卸载前清理
+ * 
+ * 重要：防止内存泄漏
+ * 1. 移除事件监听器
+ * 2. 销毁 GridStack 实例
+ */
+onBeforeUnmount(() => {
+  if (grid) {
+    grid.off('change')     // 移除事件监听
+    grid.destroy(false)    // 销毁实例，false: 不移除 DOM
+    grid = null            // 清空引用
+  }
+})
+</script>
+
+<template>
+  <!-- 
+    整体容器
+    .gridstack-demo: 应用基础样式（内边距、字体等）
+  -->
+  <div class="gridstack-demo">
+    
+    <!-- 
+      工具栏区域
+      包含所有操作按钮，使用 flexbox 布局
+    -->
+    <div class="toolbar">
+      
+      <!-- 添加单个卡片按钮 -->
+      <button class="btn btn-primary" @click="addItem">
+        <span class="icon">+</span> 添加卡片
+      </button>
+
+      <!-- 
+        批量添加区域
+        包含数量输入框和批量添加按钮
+      -->
+      <div class="batch-add">
+        <!-- 
+          v-model.number: 双向绑定且自动转为数字
+          min/max: HTML5 原生限制（但 JS 中仍需验证）
+        -->
+        <input
+          v-model.number="addCount"
+          type="number"
+          min="1"
+          max="20"
+          class="count-input"
+          placeholder="數量"
+        />
+        <button class="btn btn-primary-alt" @click="addMultipleItems">
+          <span class="icon">++</span> 批量添加
+        </button>
+      </div>
+
+      <!-- 
+        快速添加按钮组
+        一键添加固定数量的卡片
+      -->
+      <div class="quick-add">
+        <button class="btn btn-quick" @click="addItems(3)">+3</button>
+        <button class="btn btn-quick" @click="addItems(5)">+5</button>
+        <button class="btn btn-quick" @click="addItems(10)">+10</button>
+      </div>
+
+      <!-- 视觉分隔线 -->
+      <div class="divider"></div>
+
+      <!-- 布局操作按钮组 -->
+      <button class="btn btn-success" @click="saveLayout">
+        <span class="icon">💾</span> 保存佈局
+      </button>
+      <button class="btn btn-info" @click="loadLayout">
+        <span class="icon">📂</span> 載入佈局
+      </button>
+      <button class="btn btn-warning" @click="resetToDefault">
+        <span class="icon">🔄</span> 重置默認
+      </button>
+      <button class="btn btn-danger" @click="clearAllItems">
+        <span class="icon">🗑️</span> 清空全部
+      </button>
+    </div>
+
+    <!-- 
+      统计信息栏
+      显示当前卡片总数
+    -->
+    <div class="stats">
+      當前卡片數量: <strong>{{ gsItems.length }}</strong>
+    </div>
+
+    <!-- 
+      GridStack 网格容器
+      ref="gridRef": 用于 JavaScript 访问 DOM
+      .grid-stack: GridStack 库要求的类名
+    -->
+    <div ref="gridRef" class="grid-stack">
+      
+      <!-- 
+        卡片循环渲染
+        v-for: 根据 gsItems 数组渲染卡片
+        :key: Vue 的虚拟 DOM diff 算法需要的唯一标识
+        
+        GridStack 属性说明：
+        - gs-id: 卡片唯一标识（GridStack 内部使用）
+        - gs-x, gs-y: 初始位置坐标
+        - gs-w, gs-h: 初始宽度和高度
+      -->
+      <div
+        v-for="item in gsItems"
+        :key="item.id"
+        class="grid-stack-item"
+        :gs-id="item.id"
+        :gs-x="item.x"
+        :gs-y="item.y"
+        :gs-w="item.w"
+        :gs-h="item.h"
+      >
+        <!-- 
+          卡片内容容器
+          .grid-stack-item-content: GridStack 要求的类名
+          这个容器内的内容可以自由定制
+        -->
+        <div class="grid-stack-item-content">
+          
+          <!-- 卡片头部：标题和关闭按钮 -->
+          <div class="card-header">
+            <span class="card-title">{{ item.title }}</span>
+            <!-- 
+              @click.stop: 阻止事件冒泡
+              防止点击关闭按钮时触发卡片的拖拽
+            -->
+            <button
+              class="close-btn"
+              @click.stop="removeItem(item.id)"
+              title="刪除卡片"
+            >
+              ×
+            </button>
+          </div>
+          
+          <!-- 卡片主体：显示内容或占位提示 -->
+          <div class="card-body">
+            <p v-if="item.content">{{ item.content }}</p>
+            <p v-else class="placeholder">拖曳調整位置和大小</p>
+          </div>
+          
+          <!-- 
+            卡片底部：显示调试信息
+            显示 ID、位置坐标和尺寸
+            ?? '-': 空值合并，未设置时显示 '-'
+          -->
+          <div class="card-footer">
+            <small>
+              ID: {{ item.id }} |
+              位置: ({{ item.x ?? '-' }}, {{ item.y ?? '-' }}) |
+              大小: {{ item.w }}×{{ item.h }}
+            </small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+/*
+  scoped: 样式只作用于当前组件
+  Vue 会自动添加 data-v-xxx 属性选择器
+*/
+
+/* ============================================
+   容器样式
+   ============================================ */
+.gridstack-demo {
+  padding: 20px;
+  /* 系统默认字体栈，确保在各平台显示良好 */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ============================================
+   工具栏样式
+   ============================================ */
+.toolbar {
+  margin-bottom: 20px;
+  display: flex;           /* 弹性布局 */
+  flex-wrap: wrap;         /* 允许换行（响应式） */
+  align-items: center;     /* 垂直居中对齐 */
+  gap: 10px;               /* 子元素间距 */
+}
+
+/* 批量添加区域 */
+.batch-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 数量输入框 */
+.count-input {
+  width: 60px;
+  padding: 10px 8px;
+  border: 2px solid #667eea;
+  border-radius: 6px;
+  font-size: 14px;
+  text-align: center;
+  outline: none;           /* 移除默认聚焦轮廓 */
+}
+
+/* 输入框聚焦状态 */
+.count-input:focus {
+  border-color: #764ba2;
+  /* 添加柔和的外发光效果 */
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+/* 快速添加按钮组 */
+.quick-add {
+  display: flex;
+  gap: 4px;
+}
+
+/* 快速添加按钮样式 */
+.btn-quick {
+  padding: 10px 14px;
+  /* 渐变背景 */
+  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+  color: #333;
+  font-weight: 600;
+}
+
+/* 垂直分隔线 */
+.divider {
+  width: 1px;
+  height: 36px;
+  background: #ddd;
+  margin: 0 5px;
+}
+
+/* ============================================
+   统计信息栏
+   ============================================ */
+.stats {
+  margin-bottom: 15px;
+  padding: 10px 15px;
+  background: #f0f4f8;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #555;
+}
+
+.stats strong {
+  color: #667eea;
+  font-size: 18px;
+}
+
+/* ============================================
+   按钮基础样式
+   ============================================ */
+.btn {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;                /* 图标和文字间距 */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;    /* 平滑过渡效果 */
+}
+
+/* 按钮悬停效果 */
+.btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);  /* 轻微上浮 */
+}
+
+/* 按钮按下效果 */
+.btn:active {
+  transform: translateY(0);     /* 恢复原位 */
+}
+
+/* ============================================
+   按钮颜色变体（使用渐变背景）
+   ============================================ */
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.btn-primary-alt {
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  color: white;
+}
+
+.btn-success {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  color: white;
+}
+
+.btn-info {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: white;
+}
+
+.btn-warning {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+  color: white;
+}
+
+.icon {
+  font-size: 16px;
+}
+
+/* ============================================
+   GridStack 网格容器
+   ============================================ */
+.grid-stack {
+  /* 渐变背景让网格区域更明显 */
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+  min-height: 500px;       /* 最小高度 */
+  border-radius: 12px;
+  padding: 10px;
+}
+
+/* ============================================
+   卡片内容容器
+   ============================================ */
+.grid-stack-item-content {
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);  /* 柔和阴影 */
+  display: flex;
+  flex-direction: column;  /* 垂直布局 */
+  overflow: hidden;        /* 裁剪超出部分 */
+  height: 100%;            /* 填满父容器 */
+}
+
+/* ============================================
+   卡片头部
+   ============================================ */
+.card-header {
+  display: flex;
+  justify-content: space-between;  /* 两端对齐 */
+  align-items: center;
+  padding: 12px 15px;
+  /* 渐变背景 */
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.card-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* 关闭按钮 */
+.close-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;      /* 圆形 */
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+/* 关闭按钮悬停 */
+.close-btn:hover {
+  background: rgba(255, 100, 100, 0.9);  /* 红色警示 */
+}
+
+/* ============================================
+   卡片主体
+   ============================================ */
+.card-body {
+  flex: 1;                 /* 占据剩余空间 */
+  padding: 15px;
+  color: #333;
+  overflow: auto;          /* 内容过多时显示滚动条 */
+}
+
+.card-body p {
+  margin: 0;
+}
+
+/* 占位提示文字 */
+.placeholder {
+  color: #999;
+  font-style: italic;
+}
+
+/* ============================================
+   卡片底部
+   ============================================ */
+.card-footer {
+  padding: 8px 15px;
+  background: #f8f9fa;
+  border-top: 1px solid #eee;
+  color: #888;
+  font-size: 11px;
+}
+</style>
