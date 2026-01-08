@@ -1,0 +1,889 @@
+<script setup>
+import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { GridStack } from 'gridstack'
+import 'gridstack/dist/gridstack.min.css'
+
+// ============ 常量 ============
+const LS_KEY = 'gridstack-layout'
+
+// ============ 响应式数据 ============
+const gridRef = ref(null)
+const gsItems = ref([])
+const addCount = ref(1)
+
+// ============ 新增：编辑态/浏览态 ============
+const isEditMode = ref(true)  // true: 编辑态, false: 浏览态
+
+// ============ GridStack 实例 ============
+let grid = null
+let gsCounter = Date.now()
+
+function generateId() {
+  return String(gsCounter++)
+}
+
+// ============ 默认布局 ============
+const defaultLayout = [
+  { id: '1', x: 0, y: 0, w: 2, h: 2, title: '卡片 1', content: '这是卡片 1 的内容，可以放置任何信息。' },
+  { id: '2', x: 2, y: 0, w: 2, h: 2, title: '卡片 2', content: '这是卡片 2 的内容，支持拖拽和调整大小。' },
+  { id: '3', x: 4, y: 0, w: 2, h: 2, title: '卡片 3', content: '这是卡片 3 的内容，切换到浏览态后将锁定。' },
+]
+
+// ============ 工具函数 ============
+
+function safeParseArray(raw) {
+  try {
+    const data = JSON.parse(raw)
+    return Array.isArray(data) ? data : []
+  } catch {
+    return []
+  }
+}
+
+function destroyGridstackWidgetsOnly() {
+  if (grid) {
+    grid.removeAll(false)
+  }
+}
+
+function batchMakeWidgets() {
+  if (!grid || !gridRef.value) return
+
+  grid.batchUpdate()
+
+  gsItems.value.forEach((it) => {
+    const el = gridRef.value.querySelector(`[gs-id="${it.id}"]`)
+    if (!el) return
+    grid.makeWidget(el)
+  })
+
+  grid.batchUpdate(false)
+}
+
+function syncFromGridstack() {
+  if (!grid) return
+
+  const nodes = grid.getGridItems()
+  nodes.forEach((el) => {
+    const node = el.gridstackNode
+    if (!node) return
+
+    const item = gsItems.value.find((it) => it.id === node.id)
+    if (item) {
+      item.x = node.x
+      item.y = node.y
+      item.w = node.w
+      item.h = node.h
+    }
+  })
+}
+
+async function reloadLayoutWithData(data) {
+  destroyGridstackWidgetsOnly()
+
+  gsItems.value = []
+  await nextTick()
+
+  gsItems.value = data.map((it) => ({
+    id: String(it.id),
+    x: it.x,
+    y: it.y,
+    w: it.w,
+    h: it.h,
+    title: it.title ?? `卡片 ${it.id}`,
+    content: it.content ?? '',
+  }))
+
+  updateCounterFromItems()
+  await nextTick()
+  batchMakeWidgets()
+  
+  // 重新加载后应用当前模式
+  applyEditMode(isEditMode.value)
+}
+
+function updateCounterFromItems() {
+  const nums = gsItems.value
+    .map((it) => parseInt(it.id, 10))
+    .filter((n) => !isNaN(n))
+
+  if (nums.length > 0) {
+    const maxId = Math.max(...nums)
+    if (gsCounter <= maxId) {
+      gsCounter = maxId + 1
+    }
+  }
+}
+
+// ============ 新增：编辑态/浏览态切换逻辑 ============
+
+/**
+ * 应用编辑模式设置
+ * @param {boolean} editable - true 为编辑态，false 为浏览态
+ * 
+ * GridStack 提供的控制方法：
+ * - enableMove(bool): 启用/禁用拖拽移动
+ * - enableResize(bool): 启用/禁用调整大小
+ * - setStatic(bool): 设置整个网格为静态（禁用所有交互）
+ */
+function applyEditMode(editable) {
+  if (!grid) return
+  
+  if (editable) {
+    // 编辑态：启用拖拽和调整大小
+    grid.enableMove(true)
+    grid.enableResize(true)
+    // 或者使用: grid.setStatic(false)
+  } else {
+    // 浏览态：禁用拖拽和调整大小
+    grid.enableMove(false)
+    grid.enableResize(false)
+    // 或者使用: grid.setStatic(true)
+  }
+}
+
+/**
+ * 切换编辑态/浏览态
+ */
+function toggleEditMode() {
+  isEditMode.value = !isEditMode.value
+}
+
+/**
+ * 进入编辑态
+ */
+function enterEditMode() {
+  isEditMode.value = true
+}
+
+/**
+ * 进入浏览态
+ */
+function enterViewMode() {
+  // 切换前先同步数据
+  syncFromGridstack()
+  isEditMode.value = false
+}
+
+// 监听编辑态变化，自动应用设置
+watch(isEditMode, (newValue) => {
+  applyEditMode(newValue)
+})
+
+// ============ 操作函数 ============
+
+async function addItems(count = 1) {
+  // 浏览态下不允许添加
+  if (!isEditMode.value) return
+  
+  const validCount = Math.max(1, Math.min(count, 20))
+  const newItems = []
+
+  for (let i = 0; i < validCount; i++) {
+    const id = generateId()
+    newItems.push({
+      id,
+      w: 2,
+      h: 2,
+      title: `卡片 ${id}`,
+      content: '',
+    })
+  }
+
+  gsItems.value.push(...newItems)
+  await nextTick()
+
+  if (grid && gridRef.value) {
+    grid.batchUpdate()
+
+    newItems.forEach((newItem) => {
+      const el = gridRef.value.querySelector(`[gs-id="${newItem.id}"]`)
+      if (el) {
+        grid.makeWidget(el)
+
+        const node = el.gridstackNode
+        if (node) {
+          newItem.x = node.x
+          newItem.y = node.y
+          newItem.w = node.w
+          newItem.h = node.h
+        }
+      }
+    })
+
+    grid.batchUpdate(false)
+  }
+}
+
+async function addItem() {
+  await addItems(1)
+}
+
+async function addMultipleItems() {
+  await addItems(addCount.value)
+}
+
+function removeItem(id) {
+  // 浏览态下不允许删除
+  if (!isEditMode.value) return
+  
+  const idx = gsItems.value.findIndex((it) => it.id === id)
+  if (idx === -1) return
+
+  const el = gridRef.value?.querySelector(`[gs-id="${id}"]`)
+
+  if (el && grid) {
+    grid.removeWidget(el, false)
+  }
+
+  gsItems.value.splice(idx, 1)
+
+  nextTick(() => {
+    syncFromGridstack()
+  })
+}
+
+async function clearAllItems() {
+  // 浏览态下不允许清空
+  if (!isEditMode.value) return
+  
+  if (gsItems.value.length === 0) return
+
+  if (!confirm(`确定要删除所有 ${gsItems.value.length} 张卡片吗？`)) return
+
+  if (grid) {
+    grid.removeAll(false)
+  }
+
+  gsItems.value = []
+}
+
+function saveLayout() {
+  syncFromGridstack()
+
+  const data = gsItems.value.map((it) => ({
+    id: it.id,
+    x: it.x,
+    y: it.y,
+    w: it.w,
+    h: it.h,
+    title: it.title,
+    content: it.content,
+  }))
+
+  localStorage.setItem(LS_KEY, JSON.stringify(data))
+  alert('已保存布局')
+}
+
+async function loadLayout() {
+  const raw = localStorage.getItem(LS_KEY)
+  const data = safeParseArray(raw)
+
+  if (!data.length) {
+    alert('找不到已保存的布局')
+    return
+  }
+
+  await reloadLayoutWithData(data)
+  alert('已载入布局')
+}
+
+async function resetToDefault() {
+  await reloadLayoutWithData(defaultLayout)
+  alert('已重置为默认布局')
+}
+
+// ============ 生命周期 ============
+
+onMounted(async () => {
+  gsItems.value = defaultLayout.map((it) => ({ ...it }))
+  updateCounterFromItems()
+
+  await nextTick()
+
+  grid = GridStack.init(
+    {
+      column: 12,
+      cellHeight: 80,
+      margin: 10,
+      float: false,
+      disableOneColumnMode: true,
+    },
+    gridRef.value
+  )
+
+  batchMakeWidgets()
+  
+  // 初始化时应用编辑模式
+  applyEditMode(isEditMode.value)
+
+  grid.on('change', (event, items) => {
+    if (!items) return
+
+    items.forEach((node) => {
+      const item = gsItems.value.find((it) => it.id === node.id)
+      if (item) {
+        item.x = node.x
+        item.y = node.y
+        item.w = node.w
+        item.h = node.h
+      }
+    })
+  })
+})
+
+onBeforeUnmount(() => {
+  if (grid) {
+    grid.off('change')
+    grid.destroy(false)
+    grid = null
+  }
+})
+</script>
+
+<template>
+  <div class="gridstack-demo">
+    
+    <!-- ========== 模式切换区域 ========== -->
+    <div class="mode-switcher">
+      <div class="mode-indicator">
+        <span class="mode-label">当前模式：</span>
+        <span :class="['mode-badge', isEditMode ? 'mode-edit' : 'mode-view']">
+          {{ isEditMode ? '✏️ 编辑态' : '👁️ 浏览态' }}
+        </span>
+      </div>
+      
+      <div class="mode-buttons">
+        <!-- 方式一：切换按钮 -->
+        <button class="btn btn-toggle" @click="toggleEditMode">
+          <span class="icon">🔄</span>
+          切换为{{ isEditMode ? '浏览态' : '编辑态' }}
+        </button>
+        
+        <!-- 方式二：独立按钮 -->
+        <button 
+          class="btn btn-edit" 
+          :class="{ active: isEditMode }"
+          @click="enterEditMode"
+        >
+          ✏️ 编辑
+        </button>
+        <button 
+          class="btn btn-view" 
+          :class="{ active: !isEditMode }"
+          @click="enterViewMode"
+        >
+          👁️ 浏览
+        </button>
+      </div>
+    </div>
+    
+    <!-- ========== 工具栏（编辑态显示完整，浏览态隐藏编辑功能） ========== -->
+    <div class="toolbar">
+      
+      <!-- 编辑功能区域：仅在编辑态显示 -->
+      <template v-if="isEditMode">
+        <button class="btn btn-primary" @click="addItem">
+          <span class="icon">+</span> 添加卡片
+        </button>
+
+        <div class="batch-add">
+          <input
+            v-model.number="addCount"
+            type="number"
+            min="1"
+            max="20"
+            class="count-input"
+            placeholder="数量"
+          />
+          <button class="btn btn-primary-alt" @click="addMultipleItems">
+            <span class="icon">++</span> 批量添加
+          </button>
+        </div>
+
+        <div class="quick-add">
+          <button class="btn btn-quick" @click="addItems(3)">+3</button>
+          <button class="btn btn-quick" @click="addItems(5)">+5</button>
+          <button class="btn btn-quick" @click="addItems(10)">+10</button>
+        </div>
+
+        <div class="divider"></div>
+      </template>
+
+      <!-- 布局操作：始终显示 -->
+      <button class="btn btn-success" @click="saveLayout">
+        <span class="icon">💾</span> 保存布局
+      </button>
+      <button class="btn btn-info" @click="loadLayout">
+        <span class="icon">📂</span> 载入布局
+      </button>
+      <button class="btn btn-warning" @click="resetToDefault">
+        <span class="icon">🔄</span> 重置默认
+      </button>
+      
+      <!-- 清空功能：仅在编辑态显示 -->
+      <button 
+        v-if="isEditMode" 
+        class="btn btn-danger" 
+        @click="clearAllItems"
+      >
+        <span class="icon">🗑️</span> 清空全部
+      </button>
+    </div>
+
+    <!-- ========== 统计信息 ========== -->
+    <div class="stats">
+      <span>当前卡片数量: <strong>{{ gsItems.length }}</strong></span>
+      <span class="stats-divider">|</span>
+      <span :class="['stats-mode', isEditMode ? 'edit' : 'view']">
+        {{ isEditMode ? '可拖拽调整' : '已锁定' }}
+      </span>
+    </div>
+
+    <!-- ========== GridStack 网格 ========== -->
+    <div 
+      ref="gridRef" 
+      class="grid-stack"
+      :class="{ 'view-mode': !isEditMode }"
+    >
+      <div
+        v-for="item in gsItems"
+        :key="item.id"
+        class="grid-stack-item"
+        :gs-id="item.id"
+        :gs-x="item.x"
+        :gs-y="item.y"
+        :gs-w="item.w"
+        :gs-h="item.h"
+      >
+        <div class="grid-stack-item-content">
+          <div class="card-header">
+            <span class="card-title">{{ item.title }}</span>
+            <!-- 关闭按钮：仅在编辑态显示 -->
+            <button
+              v-if="isEditMode"
+              class="close-btn"
+              @click.stop="removeItem(item.id)"
+              title="删除卡片"
+            >
+              ×
+            </button>
+            <!-- 浏览态显示锁定图标 -->
+            <span v-else class="lock-icon" title="浏览模式，已锁定">
+              🔒
+            </span>
+          </div>
+          <div class="card-body">
+            <p v-if="item.content">{{ item.content }}</p>
+            <p v-else class="placeholder">
+              {{ isEditMode ? '拖拽调整位置和大小' : '浏览模式' }}
+            </p>
+          </div>
+          <div class="card-footer">
+            <small>
+              ID: {{ item.id }} |
+              位置: ({{ item.x ?? '-' }}, {{ item.y ?? '-' }}) |
+              大小: {{ item.w }}×{{ item.h }}
+            </small>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- ========== 模式说明 ========== -->
+    <div class="mode-description">
+      <div v-if="isEditMode" class="desc-edit">
+        <strong>📝 编辑模式</strong>
+        <ul>
+          <li>拖拽卡片标题栏可移动位置</li>
+          <li>拖拽卡片边缘可调整大小</li>
+          <li>点击 × 按钮可删除卡片</li>
+          <li>可添加新卡片</li>
+        </ul>
+      </div>
+      <div v-else class="desc-view">
+        <strong>👁️ 浏览模式</strong>
+        <ul>
+          <li>布局已锁定，无法移动或调整</li>
+          <li>无法添加或删除卡片</li>
+          <li>适合最终展示使用</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.gridstack-demo {
+  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ============================================
+   模式切换区域
+   ============================================ */
+.mode-switcher {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 20px;
+  padding: 15px 20px;
+  background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+  border-radius: 12px;
+  border: 2px solid #667eea30;
+}
+
+.mode-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mode-label {
+  font-size: 14px;
+  color: #666;
+}
+
+.mode-badge {
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.3s;
+}
+
+.mode-edit {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.mode-view {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  color: white;
+  box-shadow: 0 4px 15px rgba(17, 153, 142, 0.4);
+}
+
+.mode-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-toggle {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+}
+
+.btn-edit {
+  background: #e0e0e0;
+  color: #666;
+}
+
+.btn-edit.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.btn-view {
+  background: #e0e0e0;
+  color: #666;
+}
+
+.btn-view.active {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  color: white;
+}
+
+/* ============================================
+   工具栏
+   ============================================ */
+.toolbar {
+  margin-bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.batch-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.count-input {
+  width: 60px;
+  padding: 10px 8px;
+  border: 2px solid #667eea;
+  border-radius: 6px;
+  font-size: 14px;
+  text-align: center;
+  outline: none;
+}
+
+.count-input:focus {
+  border-color: #764ba2;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.quick-add {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-quick {
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+  color: #333;
+  font-weight: 600;
+}
+
+.divider {
+  width: 1px;
+  height: 36px;
+  background: #ddd;
+  margin: 0 5px;
+}
+
+/* ============================================
+   统计信息
+   ============================================ */
+.stats {
+  margin-bottom: 15px;
+  padding: 10px 15px;
+  background: #f0f4f8;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #555;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stats strong {
+  color: #667eea;
+  font-size: 18px;
+}
+
+.stats-divider {
+  color: #ccc;
+}
+
+.stats-mode {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.stats-mode.edit {
+  background: #667eea20;
+  color: #667eea;
+}
+
+.stats-mode.view {
+  background: #11998e20;
+  color: #11998e;
+}
+
+/* ============================================
+   按钮样式
+   ============================================ */
+.btn {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;
+}
+
+.btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.btn-primary-alt {
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  color: white;
+}
+
+.btn-success {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  color: white;
+}
+
+.btn-info {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: white;
+}
+
+.btn-warning {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+  color: white;
+}
+
+.icon {
+  font-size: 16px;
+}
+
+/* ============================================
+   GridStack 网格
+   ============================================ */
+.grid-stack {
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+  min-height: 500px;
+  border-radius: 12px;
+  padding: 10px;
+  transition: all 0.3s;
+}
+
+/* 浏览态网格样式 */
+.grid-stack.view-mode {
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  border: 2px solid #4caf50;
+}
+
+.grid-stack-item-content {
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+  transition: all 0.3s;
+}
+
+/* 浏览态卡片样式 */
+.view-mode .grid-stack-item-content {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  transition: all 0.3s;
+}
+
+/* 浏览态卡片头部 */
+.view-mode .card-header {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  cursor: default;
+}
+
+.card-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.close-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.close-btn:hover {
+  background: rgba(255, 100, 100, 0.9);
+}
+
+.lock-icon {
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.card-body {
+  flex: 1;
+  padding: 15px;
+  color: #333;
+  overflow: auto;
+}
+
+.card-body p {
+  margin: 0;
+}
+
+.placeholder {
+  color: #999;
+  font-style: italic;
+}
+
+.card-footer {
+  padding: 8px 15px;
+  background: #f8f9fa;
+  border-top: 1px solid #eee;
+  color: #888;
+  font-size: 11px;
+}
+
+/* ============================================
+   模式说明区域
+   ============================================ */
+.mode-description {
+  margin-top: 20px;
+  padding: 15px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.desc-edit {
+  background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+  border-left: 4px solid #667eea;
+}
+
+.desc-view {
+  background: linear-gradient(135deg, #11998e15 0%, #38ef7d15 100%);
+  border-left: 4px solid #11998e;
+}
+
+.mode-description strong {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 16px;
+}
+
+.mode-description ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.mode-description li {
+  margin: 5px 0;
+  color: #555;
+}
+</style>
