@@ -1,0 +1,626 @@
+可以，直接合成一个文件。
+
+你最后只需要这 **2 个文件 + 1 个使用示例**：
+
+- `src/utils/iframeGate.js`
+- `src/components/IframeChild.vue`
+- 页面里直接用
+
+---
+
+# 1）合并后的工具文件
+
+## `src/utils/iframeGate.js`
+
+```js
+// =========================
+// 哪些页面需要启用 iframe gate
+// 当前页面 href 只要包含下面任意一个字符串，就会启用
+// 你把这里改成你自己的页面路径即可
+// =========================
+const HIT_LIST = [
+  '/xxx/page1',
+  '/xxx/page2',
+  '/xxx/page3'
+]
+
+/**
+ * 根据当前页面 href 判断是否需要启用 gate
+ * @param {string} href
+ * @returns {boolean}
+ */
+export function needIframeGateByHref(href = window.location.href) {
+  return HIT_LIST.some((item) => href.includes(item))
+}
+
+/**
+ * 创建一个 deferred promise
+ * 作用：
+ * 1. 其他 iframe 可以 await 这个 promise
+ * 2. 第一个 iframe load 后可以手动 resolve
+ */
+function createDeferred() {
+  let resolve
+
+  const promise = new Promise((res) => {
+    resolve = res
+  })
+
+  return { promise, resolve }
+}
+
+// gate 是否已经放行
+let opened = false
+
+// 当前 gate 是否已经初始化过
+let started = false
+
+// 当前页面标识，这里直接用 href 区分
+let currentKey = ''
+
+// 第一个 iframe 是否已经 load 完成
+let firstLoaded = false
+
+// 最少等待时间是否已到
+let minWaitDone = false
+
+// 当前 promise 对象
+let deferred = createDeferred()
+
+// 最少等待时间的定时器
+let minTimer = null
+
+// 超时兜底定时器
+let fallbackTimer = null
+
+/**
+ * 清理定时器
+ */
+function clearTimers() {
+  if (minTimer) {
+    clearTimeout(minTimer)
+    minTimer = null
+  }
+
+  if (fallbackTimer) {
+    clearTimeout(fallbackTimer)
+    fallbackTimer = null
+  }
+}
+
+/**
+ * 真正执行放行
+ * 只执行一次
+ */
+function doOpen() {
+  if (opened) return
+
+  opened = true
+  deferred.resolve()
+  clearTimers()
+}
+
+/**
+ * 尝试放行
+ * 条件：
+ * 1. 第一个 iframe 已经 load
+ * 2. 最少等待时间已到
+ */
+function tryOpen() {
+  if (firstLoaded && minWaitDone) {
+    doOpen()
+  }
+}
+
+/**
+ * 确保 gate 已初始化
+ * 同一个 href 不重复初始化
+ *
+ * @param {string} key 当前页面标识
+ * @param {{ minWait?: number, fallback?: number }} options
+ */
+export function ensureGate(key = window.location.href, options = {}) {
+  const { minWait = 2000, fallback = 10000 } = options
+
+  // 同一个页面已经初始化过了，就不重复重置
+  if (started && currentKey === key) {
+    return
+  }
+
+  resetGate(key, { minWait, fallback })
+}
+
+/**
+ * 重置 gate
+ * 一般切页面时会重新初始化
+ *
+ * @param {string} key 当前页面标识
+ * @param {{ minWait?: number, fallback?: number }} options
+ */
+export function resetGate(key = window.location.href, options = {}) {
+  const { minWait = 2000, fallback = 10000 } = options
+
+  clearTimers()
+
+  opened = false
+  started = true
+  currentKey = key
+  firstLoaded = false
+  minWaitDone = false
+  deferred = createDeferred()
+
+  // 至少等 2 秒
+  minTimer = setTimeout(() => {
+    minWaitDone = true
+    tryOpen()
+  }, minWait)
+
+  // 超时兜底
+  fallbackTimer = setTimeout(() => {
+    doOpen()
+  }, fallback)
+}
+
+/**
+ * 第一个 iframe load 完成后调用
+ */
+export function notifyFirstIframeLoaded() {
+  firstLoaded = true
+  tryOpen()
+}
+
+/**
+ * 其他 iframe 等待 gate
+ */
+export function waitGate() {
+  return opened ? Promise.resolve() : deferred.promise
+}
+
+/**
+ * 当前 gate 是否已经放行
+ */
+export function isGateOpened() {
+  return opened
+}
+```
+
+---
+
+# 2）组件文件
+
+## `src/components/IframeChild.vue`
+
+```vue
+<template>
+  <!--
+    visible 为 true 才真正创建 iframe
+    这样没放行前不会提前发请求
+  -->
+  <iframe
+    v-if="visible"
+    :src="src"
+    :class="iframeClass"
+    @load="onLoad"
+  />
+</template>
+
+<script setup>
+import { ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import {
+  needIframeGateByHref,
+  ensureGate,
+  waitGate,
+  notifyFirstIframeLoaded,
+  isGateOpened
+} from '@/utils/iframeGate'
+
+// 组件参数
+const props = defineProps({
+  // iframe 地址
+  src: {
+    type: String,
+    required: true
+  },
+
+  // 是否是第一个 iframe
+  // 第一个会先加载
+  first: {
+    type: Boolean,
+    default: false
+  },
+
+  // 至少等待多久，默认 2 秒
+  minWait: {
+    type: Number,
+    default: 2000
+  },
+
+  // 超时兜底多久，默认 10 秒
+  fallback: {
+    type: Number,
+    default: 10000
+  },
+
+  // 外部自定义 iframe class
+  iframeClass: {
+    type: String,
+    default: ''
+  }
+})
+
+const route = useRoute()
+
+// 控制 iframe 是否真正渲染
+const visible = ref(false)
+
+/**
+ * 初始化当前 iframe 的显示逻辑
+ */
+async function init() {
+  // 先隐藏，避免旧状态残留
+  visible.value = false
+
+  // 当前页面地址
+  const href = window.location.href
+
+  // 判断当前页面是否需要 gate
+  const needGate = needIframeGateByHref(href)
+
+  // 不需要 gate，直接显示
+  if (!needGate) {
+    visible.value = true
+    return
+  }
+
+  // 需要 gate，就初始化一下全局 gate
+  ensureGate(href, {
+    minWait: props.minWait,
+    fallback: props.fallback
+  })
+
+  // 第一个 iframe 直接显示
+  if (props.first) {
+    visible.value = true
+    return
+  }
+
+  // 如果已经放行过了，也直接显示
+  if (isGateOpened()) {
+    visible.value = true
+    return
+  }
+
+  // 其他 iframe 等待 gate 放行
+  await waitGate()
+  visible.value = true
+}
+
+/**
+ * iframe load 完成事件
+ */
+function onLoad() {
+  // 只有“当前是第一个 iframe”并且“当前页面命中规则”时
+  // 才通知全局 gate：第一个 iframe 已经好了
+  if (props.first && needIframeGateByHref(window.location.href)) {
+    notifyFirstIframeLoaded()
+  }
+}
+
+// 监听路由变化
+// 页面切换时重新执行一次
+watch(
+  () => route.fullPath,
+  () => {
+    init()
+  },
+  { immediate: true }
+)
+</script>
+```
+
+---
+
+# 3）页面里直接用
+
+## `src/views/DemoPage.vue`
+
+```vue
+<template>
+  <div class="page">
+    <!-- 第一个 iframe：先加载 -->
+    <IframeChild
+      first
+      src="https://a.com"
+      iframe-class="frame"
+    />
+
+    <!-- 其他 iframe：等第一个好了再加载 -->
+    <IframeChild
+      src="https://b.com"
+      iframe-class="frame"
+    />
+
+    <IframeChild
+      src="https://c.com"
+      iframe-class="frame"
+    />
+
+    <IframeChild
+      src="https://d.com"
+      iframe-class="frame"
+    />
+  </div>
+</template>
+
+<script setup>
+import IframeChild from '@/components/IframeChild.vue'
+</script>
+
+<style scoped>
+.page {
+  padding: 16px;
+}
+
+.frame {
+  width: 100%;
+  height: 300px;
+  border: 1px solid #ddd;
+  margin-bottom: 12px;
+}
+</style>
+```
+
+---
+
+# 4）你只需要改这两个地方
+
+---
+
+## A. 改命中页面
+
+改 `src/utils/iframeGate.js` 里的这个：
+
+```js
+const HIT_LIST = [
+  '/xxx/page1',
+  '/xxx/page2',
+  '/xxx/page3'
+]
+```
+
+比如：
+
+```js
+const HIT_LIST = [
+  '/order/detail',
+  '/user/report',
+  '/customer/view'
+]
+```
+
+只要当前 `href` 包含这些字符串之一，就启用等待逻辑。
+
+---
+
+## B. 改哪个是第一个 iframe
+
+在页面里，谁带 `first`，谁就是第一个：
+
+```vue
+<IframeChild first src="https://a.com" />
+<IframeChild src="https://b.com" />
+<IframeChild src="https://c.com" />
+```
+
+如果你想让 `c.com` 先加载：
+
+```vue
+<IframeChild src="https://a.com" />
+<IframeChild src="https://b.com" />
+<IframeChild first src="https://c.com" />
+```
+
+---
+
+# 5）最终效果
+
+命中指定页面时：
+
+1. `first` 的 iframe 立即加载
+2. 其他 iframe 先不加载
+3. 第一个 iframe `load` 完成后
+4. **并且至少等待了 2 秒**
+5. 才统一放行其他 iframe
+6. 如果第一个 iframe 一直没好，**10 秒后兜底放行**
+
+未命中指定页面时：
+
+- 所有 iframe 直接加载
+- 不等待
+
+---
+
+# 6）如果你想直接最简 copy
+
+下面这版是精简后的，直接可贴。
+
+---
+
+## `src/utils/iframeGate.js`
+
+```js
+const HIT_LIST = [
+  '/xxx/page1',
+  '/xxx/page2',
+  '/xxx/page3'
+]
+
+export function needIframeGateByHref(href = window.location.href) {
+  return HIT_LIST.some((item) => href.includes(item))
+}
+
+function createDeferred() {
+  let resolve
+  const promise = new Promise((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
+}
+
+let opened = false
+let started = false
+let currentKey = ''
+let firstLoaded = false
+let minWaitDone = false
+let deferred = createDeferred()
+let minTimer = null
+let fallbackTimer = null
+
+function clearTimers() {
+  if (minTimer) {
+    clearTimeout(minTimer)
+    minTimer = null
+  }
+  if (fallbackTimer) {
+    clearTimeout(fallbackTimer)
+    fallbackTimer = null
+  }
+}
+
+function doOpen() {
+  if (opened) return
+  opened = true
+  deferred.resolve()
+  clearTimers()
+}
+
+function tryOpen() {
+  if (firstLoaded && minWaitDone) {
+    doOpen()
+  }
+}
+
+export function ensureGate(key = window.location.href, options = {}) {
+  const { minWait = 2000, fallback = 10000 } = options
+  if (started && currentKey === key) return
+  resetGate(key, { minWait, fallback })
+}
+
+export function resetGate(key = window.location.href, options = {}) {
+  const { minWait = 2000, fallback = 10000 } = options
+
+  clearTimers()
+
+  opened = false
+  started = true
+  currentKey = key
+  firstLoaded = false
+  minWaitDone = false
+  deferred = createDeferred()
+
+  minTimer = setTimeout(() => {
+    minWaitDone = true
+    tryOpen()
+  }, minWait)
+
+  fallbackTimer = setTimeout(() => {
+    doOpen()
+  }, fallback)
+}
+
+export function notifyFirstIframeLoaded() {
+  firstLoaded = true
+  tryOpen()
+}
+
+export function waitGate() {
+  return opened ? Promise.resolve() : deferred.promise
+}
+
+export function isGateOpened() {
+  return opened
+}
+```
+
+---
+
+## `src/components/IframeChild.vue`
+
+```vue
+<template>
+  <iframe
+    v-if="visible"
+    :src="src"
+    :class="iframeClass"
+    @load="onLoad"
+  />
+</template>
+
+<script setup>
+import { ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import {
+  needIframeGateByHref,
+  ensureGate,
+  waitGate,
+  notifyFirstIframeLoaded,
+  isGateOpened
+} from '@/utils/iframeGate'
+
+const props = defineProps({
+  src: { type: String, required: true },
+  first: { type: Boolean, default: false },
+  minWait: { type: Number, default: 2000 },
+  fallback: { type: Number, default: 10000 },
+  iframeClass: { type: String, default: '' }
+})
+
+const route = useRoute()
+const visible = ref(false)
+
+async function init() {
+  visible.value = false
+
+  const href = window.location.href
+  const needGate = needIframeGateByHref(href)
+
+  if (!needGate) {
+    visible.value = true
+    return
+  }
+
+  ensureGate(href, {
+    minWait: props.minWait,
+    fallback: props.fallback
+  })
+
+  if (props.first) {
+    visible.value = true
+    return
+  }
+
+  if (isGateOpened()) {
+    visible.value = true
+    return
+  }
+
+  await waitGate()
+  visible.value = true
+}
+
+function onLoad() {
+  if (props.first && needIframeGateByHref(window.location.href)) {
+    notifyFirstIframeLoaded()
+  }
+}
+
+watch(() => route.fullPath, init, { immediate: true })
+</script>
+```
+
+---
+
+如果你要，我下一条可以继续直接给你一版：
+
+**“不用手写 `first`，父组件 `v-for` 自动把第一个当 first”** 的完整代码。
