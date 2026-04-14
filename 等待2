@@ -1,0 +1,389 @@
+*Thinking...*
+
+> The user wants me to integrate the fixes (except for the route switching race condition) into the complete code. Let me consolidate the fixes:
+> 
+> 1. **Component unmount cleanup** - add `onUnmounted` to unregister iframe, if it's the first one, do `doOpen()`
+> 2. **`minWait`/`fallback` only first component's values take effect** - remove these from component props, configure them only in `iframeGate.js`
+> 3. **`onLoad` re-checking href might be inaccurate** - store the `needGate` result in a ref during init, use that in `onLoad`
+> 
+> 
+> 4. Skip the route switching race condition handling
+> 
+> Now I'll write out the complete updated code for both files.
+
+# 一、`src/utils/iframeGate.js`
+
+```js
+// =========================
+// 哪些页面需要启用 iframe 串行控制
+// 当前页面 href 包含以下任意字符串时启用
+// 没命中则所有 iframe 直接加载
+// =========================
+const HIT_LIST = [
+  '/xxx/page1',
+  '/xxx/page2',
+  '/xxx/page3'
+]
+
+// =========================
+// 统一配置，不再由组件 props 传入
+// =========================
+const MIN_WAIT = 2000
+const FALLBACK = 10000
+
+/**
+ * 根据 href 判断当前页面是否需要启用 gate
+ * @param {string} href
+ * @returns {boolean}
+ */
+export function needIframeGateByHref(href = window.location.href) {
+  return HIT_LIST.some((item) => href.includes(item))
+}
+
+/**
+ * 创建一个可手动 resolve 的 Promise
+ */
+function createDeferred() {
+  let resolve
+
+  const promise = new Promise((res) => {
+    resolve = res
+  })
+
+  return { promise, resolve }
+}
+
+// 是否已经放行
+let opened = false
+
+// 是否已经初始化过
+let started = false
+
+// 当前页面标识
+let currentKey = ''
+
+// 当前页面内，第一个 iframe 的唯一 id
+let firstIframeId = ''
+
+// 第一个 iframe 是否已经 load 完成
+let firstLoaded = false
+
+// 最少等待时间是否完成
+let minWaitDone = false
+
+// 当前等待 promise
+let deferred = createDeferred()
+
+// 已注册的 iframe id 集合
+const registeredIds = new Set()
+
+// 定时器
+let minTimer = null
+let fallbackTimer = null
+
+/**
+ * 清理定时器
+ */
+function clearTimers() {
+  if (minTimer) {
+    clearTimeout(minTimer)
+    minTimer = null
+  }
+
+  if (fallbackTimer) {
+    clearTimeout(fallbackTimer)
+    fallbackTimer = null
+  }
+}
+
+/**
+ * 真正放行，只执行一次
+ */
+function doOpen() {
+  if (opened) return
+
+  opened = true
+  deferred.resolve()
+  clearTimers()
+}
+
+/**
+ * 尝试放行
+ * 条件：first 已 load 且最少等待时间已到
+ */
+function tryOpen() {
+  if (firstLoaded && minWaitDone) {
+    doOpen()
+  }
+}
+
+/**
+ * 确保当前页面 gate 已初始化
+ * 同一个页面不重复初始化
+ *
+ * @param {string} key
+ */
+export function ensureGate(key = window.location.href) {
+  if (started && currentKey === key) {
+    return
+  }
+
+  resetGate(key)
+}
+
+/**
+ * 重置 gate
+ *
+ * @param {string} key
+ */
+export function resetGate(key = window.location.href) {
+  clearTimers()
+
+  opened = false
+  started = true
+  currentKey = key
+  firstIframeId = ''
+  firstLoaded = false
+  minWaitDone = false
+  deferred = createDeferred()
+  registeredIds.clear()
+
+  // 最少等待时间
+  minTimer = setTimeout(() => {
+    minWaitDone = true
+    tryOpen()
+  }, MIN_WAIT)
+
+  // 超时兜底
+  fallbackTimer = setTimeout(() => {
+    doOpen()
+  }, FALLBACK)
+}
+
+/**
+ * 注册一个 iframe
+ * 谁先注册，谁就是 first
+ *
+ * @param {string} iframeId
+ * @returns {{ isFirst: boolean }}
+ */
+export function registerIframe(iframeId) {
+  registeredIds.add(iframeId)
+
+  // 如果还没有 first，则当前这个成为 first
+  if (!firstIframeId) {
+    firstIframeId = iframeId
+    return { isFirst: true }
+  }
+
+  // 如果当前本来就是 first，也返回 true
+  if (firstIframeId === iframeId) {
+    return { isFirst: true }
+  }
+
+  return { isFirst: false }
+}
+
+/**
+ * 注销一个 iframe
+ * 如果注销的是 first 且还没放行，则直接放行
+ *
+ * @param {string} iframeId
+ */
+export function unregisterIframe(iframeId) {
+  registeredIds.delete(iframeId)
+
+  // 注销的不是 first，无影响
+  if (iframeId !== firstIframeId) return
+
+  // 注销的是 first，且已经放行了，无需处理
+  if (opened) return
+
+  // 注销的是 first，还没放行
+  // 尝试从剩余注册列表里选一个新的 first
+  if (registeredIds.size > 0) {
+    // 取第一个
+    const newFirst = registeredIds.values().next().value
+    firstIframeId = newFirst
+    // 新的 first 已经在页面上了，但它此时 visible 是 false
+    // 这种情况比较复杂，直接放行最简单最稳
+    doOpen()
+  } else {
+    // 没有其他 iframe 了，直接放行清理
+    doOpen()
+  }
+}
+
+/**
+ * 通知：某个 iframe 已经 load
+ * 只有 first 的 load 才会触发放行判断
+ *
+ * @param {string} iframeId
+ */
+export function notifyIframeLoaded(iframeId) {
+  if (iframeId !== firstIframeId) return
+
+  firstLoaded = true
+  tryOpen()
+}
+
+/**
+ * 等待 gate 放行
+ */
+export function waitGate() {
+  return opened ? Promise.resolve() : deferred.promise
+}
+
+/**
+ * 当前是否已经放行
+ */
+export function isGateOpened() {
+  return opened
+}
+
+/**
+ * 当前某个 iframe 是否是 first
+ *
+ * @param {string} iframeId
+ * @returns {boolean}
+ */
+export function isFirstIframe(iframeId) {
+  return iframeId === firstIframeId
+}
+```
+
+---
+
+# 二、`src/components/IframeChild.vue`
+
+```vue
+<template>
+  <iframe
+    v-if="visible"
+    :src="src"
+    :class="iframeClass"
+    @load="onLoad"
+  />
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+import {
+  needIframeGateByHref,
+  ensureGate,
+  registerIframe,
+  unregisterIframe,
+  notifyIframeLoaded,
+  waitGate,
+  isGateOpened
+} from '@/utils/iframeGate'
+
+const props = defineProps({
+  // iframe 地址
+  src: {
+    type: String,
+    required: true
+  },
+
+  // 自定义样式类名
+  iframeClass: {
+    type: String,
+    default: ''
+  }
+})
+
+// 控制 iframe 是否渲染
+const visible = ref(false)
+
+// 当前组件实例的唯一 id
+const iframeId = `iframe_${Math.random().toString(36).slice(2)}_${Date.now()}`
+
+// 记录 init 时是否命中 gate，供 onLoad 使用
+// 避免 onLoad 时重新读 href 导致判断不准
+const gateActive = ref(false)
+
+/**
+ * 初始化逻辑
+ */
+async function init() {
+  visible.value = false
+  gateActive.value = false
+
+  const href = window.location.href
+  const needGate = needIframeGateByHref(href)
+
+  // 不需要 gate，直接显示
+  if (!needGate) {
+    visible.value = true
+    return
+  }
+
+  // 命中 gate
+  gateActive.value = true
+
+  // 初始化当前页面的 gate（同页面只初始化一次）
+  ensureGate(href)
+
+  // 注册当前 iframe
+  const { isFirst } = registerIframe(iframeId)
+
+  // first 立即显示
+  if (isFirst) {
+    visible.value = true
+    return
+  }
+
+  // 已经放行过了，直接显示
+  if (isGateOpened()) {
+    visible.value = true
+    return
+  }
+
+  // 等待放行
+  await waitGate()
+
+  visible.value = true
+}
+
+/**
+ * iframe 加载完成事件
+ */
+function onLoad() {
+  if (gateActive.value) {
+    notifyIframeLoaded(iframeId)
+  }
+}
+
+onMounted(() => {
+  init()
+})
+
+onUnmounted(() => {
+  // 组件销毁时注销
+  // 如果销毁的是 first 且还没放行，gate 会自动放行
+  if (gateActive.value) {
+    unregisterIframe(iframeId)
+  }
+})
+</script>
+```
+
+---
+
+# 三、改动总结
+
+**`iframeGate.js` 改了三处：**
+
+`minWait` 和 `fallback` 从函数参数里移除，改成文件顶部常量统一配置，不再由组件 props 传入，避免多个组件传不同值造成困惑。
+
+新增 `registeredIds` 集合和 `unregisterIframe` 方法。组件销毁时调用，如果销毁的是 first 且还没放行，直接 `doOpen()` 兜底，避免 first 变成"幽灵"导致其他 iframe 只能等超时。
+
+`ensureGate` 和 `resetGate` 里同步清理 `registeredIds`。
+
+**`IframeChild.vue` 改了三处：**
+
+去掉了 `minWait` 和 `fallback` 两个 props。
+
+新增 `gateActive` ref，在 `init` 时记录当前是否命中 gate，`onLoad` 里直接读这个值，不再重新调 `needIframeGateByHref(window.location.href)`。
+
+新增 `onUnmounted` 钩子，销毁时调 `unregisterIframe` 做清理。check一下逻辑
