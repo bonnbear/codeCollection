@@ -1,0 +1,241 @@
+# 明白，接口调用完全放在头部组件里
+
+Store 里**不写 action**，只负责存值 + 提供等待信号。
+
+---
+
+## Store（纯粹存值 + Promise 信号）
+
+```js
+// store/index.js
+import { createStore } from 'vuex'
+
+let readyResolve = null
+let readyPromise = new Promise(resolve => {
+  readyResolve = resolve
+})
+
+export default createStore({
+  state: {
+    myValue: localStorage.getItem('myValue') || ''  // 本地缓存默认值
+  },
+  mutations: {
+    SET_VALUE_FROM_API(state, value) {
+      state.myValue = value
+      localStorage.setItem('myValue', value)
+      // 通知等待者:API 的 commit 真正完成了
+      readyResolve(value)
+    },
+    RESET_READY() {
+      readyPromise = new Promise(resolve => {
+        readyResolve = resolve
+      })
+    }
+  },
+  getters: {
+    valueReady: () => readyPromise
+  }
+})
+```
+
+---
+
+## 头部组件（接口调用在这里）
+
+```js
+// HeaderComponent.vue
+import { onMounted } from 'vue'
+import { useStore } from 'vuex'
+
+export default {
+  setup() {
+    const store = useStore()
+
+    onMounted(async () => {
+      const res = await fetch('/api/xxx').then(r => r.json())
+      store.commit('SET_VALUE_FROM_API', res.value)
+    })
+  }
+}
+```
+
+---
+
+## 另一个组件（watch 别的值，里面等 API 完成）
+
+```js
+// OtherComponent.vue
+import { watch } from 'vue'
+import { useStore } from 'vuex'
+
+export default {
+  props: ['someOtherValue'],
+  setup(props) {
+    const store = useStore()
+
+    watch(() => props.someOtherValue, async (newVal) => {
+      // 闸门:等头部组件把 API 的值 commit 完
+      await store.getters.valueReady
+
+      // 到这里,store.state.myValue 一定是 API 返回的最新值
+      const apiValue = store.state.myValue
+      console.log('API 已就绪,继续往下走:', apiValue)
+
+      // ... 继续业务逻辑
+    })
+  }
+}
+```
+
+---
+
+## 流程
+
+1. 头部组件 `onMounted` 发请求 → 拿到结果 → `commit('SET_VALUE_FROM_API', res.value)`
+2. `commit` 里调用 `readyResolve(value)`，Promise 变成 resolved
+3. 另一个组件的 watch 触发 → `await store.getters.valueReady`
+   - 如果头部还没 commit 完 → 挂起等
+   - 如果已经 commit 完 → 立刻通过
+4. 拿到 `store.state.myValue`（一定是 API 的最新值），继续往下执行
+
+Store 完全不碰接口，接口逻辑只在头部组件里。这个方案可行吗check一下
+
+
+*Thinking...*
+
+> **Researching project details**
+> 
+> I'm thinking about how to approach a new project involving Pinia and whether it would be best to source information from the Vue documentation or focus on Pinia migration specifics. I need to make sure to cite all factual claims, especially from primary sources when addressing technical questions. I'll look for official documentation regarding getters, mutations for synchronous operations, actions for asynchronous tasks, and any relevant watchers.
+> 
+> **Exploring mutation behavior**
+> 
+> I'm trying to figure out if a mutation can resolve an external variable without breaking synchronous rules. Since resolving is synchronous, it might not be a problem, but could there be side effects? The documentation doesn't seem to prohibit side effects like writing to localStorage outside state. While mutations are meant to be synchronous, this could make things like SSR or tests less reliable. I might need to look into the official docs about localStorage plugins and persistent state.
+> 
+> **Searching for SSR guidelines**
+> 
+> I need to consider that SSR (Server-Side Rendering) can fail when trying to access localStorage at module initialization. It might be good to have an authoritative source, so I’ll search the Vue documentation for information on SSR and browser API access. The user’s code utilizes localStorage during state initialization and mutations, so I should check the official Vue docs about universal code, emphasizing that platform-specific APIs shouldn't be used in the setup phase.
+> 
+> **Analyzing Vuex pitfalls**
+> 
+> I'm thinking through Vuex states: mutations must be synchronous while actions are geared for async operations, though not required. That brings some potential pitfalls to light. 
+> 
+> For instance, if an API request fails on first load, the promise may never resolve, leaving callbacks hanging indefinitely. Also, once a promise is resolved, it stays that way. If the header component makes repeated requests after route changes or refreshes, subsequent calls won't block unless I reset the state first. This could lead to race conditions, where a slower request overwrites a faster one.
+
+**结论：可行。**  
+而且从 Vuex 规则上说没问题：**mutation 必须同步**，**异步逻辑通常放 action，但不是强制必须放 action**；你在组件里请求完再 `commit`，官方能力上是支持的，`setup()` 里直接 `useStore()` 再 `commit` 也没问题。([vuex.vuejs.org](https://vuex.vuejs.org/guide/actions.html))
+
+但这版我建议你补几个点，不然容易埋坑：
+
+1. **每次发请求前先 `RESET_READY`**  
+   不然 `readyPromise` 一旦 resolve 过，后面新的等待者会直接放行，挡不住下一轮请求。
+
+2. **要有失败分支**  
+   现在如果接口失败，或者头部组件没挂载，`await store.getters.valueReady` 会一直卡住。
+
+3. **最好加 `status / error / isReady`**  
+   你现在 `myValue` 既可能是 `localStorage` 的旧值，也可能是接口新值。  
+   如果业务要的是“**接口最新值**”，只看 `myValue` 不够，最好显式区分状态。
+
+4. **如果你真想让 Store 只负责存值，`localStorage.setItem` 也最好移出去**  
+   Vuex 官方有 `plugins` / `store.subscribe`，这类“mutation 之后做持久化”的副作用更适合放插件里。([vuex.vuejs.org](https://vuex.vuejs.org/guide/plugins))
+
+另外还有一个重要点：
+
+- **如果项目有 SSR / Nuxt，`state` 初始化里直接读 `localStorage` 不安全**。  
+  官方 SSR 指南明确说了，浏览器专属 API 不能在通用代码初始化阶段直接用，应该放到客户端环境再访问。([v2.ssr.vuejs.org](https://v2.ssr.vuejs.org/guide/universal.html?utm_source=openai))
+
+## 你这个方案的最小修正版
+
+```js
+// store/index.js
+import { createStore } from 'vuex'
+
+let readyResolve = null
+let readyReject = null
+
+function createReadyPromise() {
+  return new Promise((resolve, reject) => {
+    readyResolve = resolve
+    readyReject = reject
+  })
+}
+
+let readyPromise = createReadyPromise()
+
+export default createStore({
+  state: {
+    myValue: '',
+    status: 'idle',   // idle | loading | ready | error
+    error: null
+  },
+  mutations: {
+    RESET_READY(state) {
+      state.status = 'loading'
+      state.error = null
+      readyPromise = createReadyPromise()
+    },
+    SET_VALUE_FROM_API(state, value) {
+      state.myValue = value
+      state.status = 'ready'
+      readyResolve(value)
+    },
+    SET_READY_ERROR(state, error) {
+      state.status = 'error'
+      state.error = error
+      readyReject(error)
+    }
+  },
+  getters: {
+    valueReady: () => readyPromise
+  }
+})
+```
+
+```js
+// HeaderComponent.vue
+onMounted(async () => {
+  store.commit('RESET_READY')
+  try {
+    const res = await fetch('/api/xxx').then(r => r.json())
+    store.commit('SET_VALUE_FROM_API', res.value)
+  } catch (err) {
+    store.commit('SET_READY_ERROR', err)
+  }
+})
+```
+
+```js
+// OtherComponent.vue
+watch(() => props.someOtherValue, async () => {
+  try {
+    await store.getters.valueReady
+    const apiValue = store.state.myValue
+    console.log('API 已就绪:', apiValue)
+  } catch (e) {
+    console.error('API 失败:', e)
+  }
+})
+```
+
+## 一句话评价
+
+**能用，但建议加上“重置 + 失败态 + 状态标记”。**  
+不然它更像“能跑的闸门”，还不算“稳的闸门”。
+
+如果你愿意，我可以直接帮你把这套改成一个**更稳的 Vuex 版本**，或者顺手给你一个 **Pinia 版本**（Vue 官方现在新项目更推荐 Pinia，Vuex 已处于 maintenance mode）。([vuejs.org](https://vuejs.org/guide/scaling-up/state-management.html))
+
+---
+Learn more:
+1. [Actions | Vuex](https://vuex.vuejs.org/guide/actions.html)
+2. [Plugins | Vuex](https://vuex.vuejs.org/guide/plugins)
+3. [Writing Universal Code | Vue SSR Guide](https://v2.ssr.vuejs.org/guide/universal.html?utm_source=openai)
+4. [State Management | Vue.js](https://vuejs.org/guide/scaling-up/state-management.html)
+
+
+
+if (newObj?.id !== oldObj?.id) {
+  // 通过条件
+}
+const same =
+  [...list1.map(item => item.id)].sort().join(',') ===
+  [...list2.map(item => item.id)].sort().join(',')
