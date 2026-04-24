@@ -1,0 +1,286 @@
+<template>
+  <div class="common-iframe-wrapper">
+    <iframe
+      ref="iframeRef"
+      class="common-iframe"
+      :src="finalIframeSrc"
+      frameborder="0"
+    ></iframe>
+  </div>
+</template>
+
+<script setup>
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+
+/**
+ * 通用 iframe 组件参数
+ *
+ * id:
+ * 当前组件的唯一 id
+ * 用来作为 URL embedurl 里面的命名空间 key
+ *
+ * src:
+ * iframe 原始地址
+ */
+const props = defineProps({
+  id: {
+    type: String,
+    required: true
+  },
+  src: {
+    type: String,
+    required: true
+  }
+});
+
+/**
+ * iframe DOM 引用
+ */
+const iframeRef = ref(null);
+
+/**
+ * 当前组件从 URL 中恢复出来的参数
+ *
+ * 例如 URL 中是：
+ * {
+ *   orderIframe: {
+ *     tab: 'detail',
+ *     id: '1001'
+ *   }
+ * }
+ *
+ * 如果当前 props.id 是 orderIframe，
+ * 那么 currentIframeParams 就是：
+ * {
+ *   tab: 'detail',
+ *   id: '1001'
+ * }
+ */
+const currentIframeParams = ref({});
+
+/**
+ * 从当前页面 URL 中读取 embedurl 参数
+ */
+function getEmbedUrlParams() {
+  // 创建当前页面 URL 对象
+  const url = new URL(window.location.href);
+
+  // 获取 embedurl 参数
+  const value = url.searchParams.get('embedurl');
+
+  // 如果没有值，返回空对象
+  if (!value) return {};
+
+  try {
+    // 把 JSON 字符串转成对象
+    return JSON.parse(value);
+  } catch (error) {
+    // 防止 URL 参数异常导致页面崩溃
+    console.error('embedurl 参数解析失败:', error);
+    return {};
+  }
+}
+
+/**
+ * 把完整 embedurl 对象写回当前页面 URL
+ *
+ * @param {Object} params 完整的 embedurl 参数对象
+ */
+function setEmbedUrlParams(params) {
+  // 创建当前页面 URL 对象
+  const url = new URL(window.location.href);
+
+  // 设置 embedurl 参数
+  // searchParams.set 会自动编码
+  url.searchParams.set('embedurl', JSON.stringify(params || {}));
+
+  // 不刷新页面，更新地址栏
+  window.history.pushState({}, '', url.toString());
+}
+
+/**
+ * 更新当前组件对应的 URL 参数
+ *
+ * @param {Object} payload iframe 发来的业务参数
+ */
+function updateCurrentComponentParams(payload) {
+  // 读取当前 URL 中所有 iframe 组件的参数
+  const allParams = getEmbedUrlParams();
+
+  // 只更新当前组件 id 对应的数据
+  const nextParams = {
+    ...allParams,
+
+    // 用组件自身 id 作为命名空间
+    [props.id]: {
+      // 保留之前已有的参数
+      ...(allParams[props.id] || {}),
+
+      // 合并新的业务参数
+      ...(payload || {})
+    }
+  };
+
+  // 写回 URL
+  setEmbedUrlParams(nextParams);
+
+  // 同步更新当前组件内部状态
+  currentIframeParams.value = nextParams[props.id] || {};
+}
+
+/**
+ * 从 URL 中恢复当前组件自己的参数
+ */
+function restoreCurrentComponentParams() {
+  // 读取 URL 中所有组件参数
+  const allParams = getEmbedUrlParams();
+
+  // 根据当前组件 id 取出属于自己的参数
+  const ownParams = allParams[props.id];
+
+  // 如果 URL 中存在当前组件 id 对应的参数，则恢复
+  if (ownParams) {
+    currentIframeParams.value = ownParams;
+  } else {
+    currentIframeParams.value = {};
+  }
+}
+
+/**
+ * 把对象参数追加到 iframe src 上
+ *
+ * 例如：
+ * baseUrl = https://example.com/page
+ * params = { tab: 'detail', id: '1001' }
+ *
+ * 结果：
+ * https://example.com/page?tab=detail&id=1001
+ *
+ * @param {string} baseUrl iframe 原始地址
+ * @param {Object} params 要追加的参数
+ */
+function appendParamsToIframeUrl(baseUrl, params) {
+  // 如果没有参数，直接返回原地址
+  if (!params || Object.keys(params).length === 0) {
+    return baseUrl;
+  }
+
+  /**
+   * 注意：
+   * new URL(baseUrl) 要求 baseUrl 是完整 URL。
+   * 如果你的 src 可能是相对路径，可以传 window.location.origin 作为第二个参数。
+   */
+  const url = new URL(baseUrl, window.location.origin);
+
+  // 遍历参数对象，逐个设置到 iframe URL 上
+  Object.keys(params).forEach((key) => {
+    const value = params[key];
+
+    // null 和 undefined 不写入 URL
+    if (value === null || value === undefined) return;
+
+    // 如果是对象或数组，转成 JSON 字符串
+    if (typeof value === 'object') {
+      url.searchParams.set(key, JSON.stringify(value));
+    } else {
+      // 普通值直接转成字符串
+      url.searchParams.set(key, String(value));
+    }
+  });
+
+  // 返回最终 iframe 地址
+  return url.toString();
+}
+
+/**
+ * 最终 iframe 地址
+ *
+ * 初始化时：
+ * 会从当前页面 URL 的 embedurl 中读取当前组件 id 对应的数据，
+ * 然后把这些数据追加到 iframe 地址上。
+ */
+const finalIframeSrc = computed(() => {
+  return appendParamsToIframeUrl(props.src, currentIframeParams.value);
+});
+
+/**
+ * 监听 iframe 发来的消息
+ *
+ * 别人页面可以发送：
+ * window.parent.postMessage({
+ *   type: 'UPDATE_EMBED_URL',
+ *   payload: {
+ *     tab: 'detail',
+ *     id: '1001'
+ *   }
+ * }, '*')
+ */
+function handleMessage(event) {
+  /**
+   * 真实项目建议校验 event.origin
+   *
+   * 例如：
+   * if (event.origin !== 'https://别人页面域名.com') return;
+   *
+   * 如果 iframe 来源是可配置的，可以维护一个白名单。
+   */
+
+  const data = event.data;
+
+  // 只处理约定好的消息类型
+  if (data?.type !== 'UPDATE_EMBED_URL') return;
+
+  // iframe 发来的业务参数
+  const payload = data.payload || {};
+
+  // 用当前组件自己的 props.id 写入 URL
+  updateCurrentComponentParams(payload);
+}
+
+/**
+ * 组件挂载时：
+ * 1. 先从 URL 中恢复当前组件自己的参数
+ * 2. 再监听 iframe 消息
+ */
+onMounted(() => {
+  restoreCurrentComponentParams();
+
+  window.addEventListener('message', handleMessage);
+});
+
+/**
+ * 组件卸载时移除监听，防止内存泄漏
+ */
+onBeforeUnmount(() => {
+  window.removeEventListener('message', handleMessage);
+});
+</script>
+
+<style scoped>
+.common-iframe-wrapper {
+  width: 100%;
+  height: 100%;
+}
+
+.common-iframe {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+</style>/**
+ * 通知宿主页面更新 URL 状态
+ *
+ * @param {Object} payload 需要同步的业务参数
+ */
+function updateParentUrlState(payload) {
+  window.parent.postMessage(
+    {
+      type: 'UPDATE_EMBED_URL',
+      payload: payload || {}
+    },
+    '*'
+  );
+}updateParentUrlState({
+  tab: 'detail',
+  id: '1001'
+});
