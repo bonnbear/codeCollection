@@ -158,3 +158,312 @@ function labelOf(key) {
 }
 .empty { color: #999; text-align: center; }
 </style>
+
+
+
+# 抽成 `LegendFilter` 子组件 + 父组件按状态调接口
+
+设计思路：
+
+- **子组件**只负责图例 UI、维护选中状态、置灰样式，**不关心业务**。
+- 通过 `v-model` 把选中数组双向同步给父组件。
+- 通过 `@change` 事件把"语义化的过滤状态"抛给父组件（`mode: 'all' | 'partial'`、`selected`），父组件根据这个去拼接接口参数、调接口。
+
+---
+
+## 子组件 `LegendFilter.vue`
+
+```vue
+<!-- components/LegendFilter.vue -->
+<template>
+  <div class="legend">
+    <label
+      v-for="item in legends"
+      :key="item.key"
+      class="legend-item"
+      :class="{ 'is-disabled': isDimmed(item.key) }"
+    >
+      <input
+        type="checkbox"
+        :value="item.key"
+        :checked="modelValue.includes(item.key)"
+        @change="onToggle(item.key, $event.target.checked)"
+      />
+      <span
+        class="dot"
+        :style="{ background: isDimmed(item.key) ? '#ccc' : item.color }"
+      ></span>
+      {{ item.label }}
+    </label>
+
+    <button class="btn" @click="selectAll">全选</button>
+    <button class="btn" @click="clearAll">全不选</button>
+
+    <span class="tip">
+      <b>{{ modeText }}</b>（{{ modelValue.length }} / {{ legends.length }}）
+    </span>
+  </div>
+</template>
+
+<script setup>
+import { computed } from 'vue'
+
+const props = defineProps({
+  // 图例配置：[{ key, label, color }]
+  legends: {
+    type: Array,
+    required: true,
+  },
+  // v-model 绑定的选中 key 数组
+  modelValue: {
+    type: Array,
+    default: () => [],
+  },
+})
+
+const emit = defineEmits(['update:modelValue', 'change'])
+
+// 是否处于部分选中
+const isPartial = computed(() => {
+  const len = props.modelValue.length
+  return len > 0 && len < props.legends.length
+})
+
+// 全选/全不选都视为 'all'，部分选中为 'partial'
+const mode = computed(() => (isPartial.value ? 'partial' : 'all'))
+
+const modeText = computed(() => {
+  const len = props.modelValue.length
+  if (len === 0) return '全不选 → 全部'
+  if (len === props.legends.length) return '全选 → 全部'
+  return '部分选中'
+})
+
+function isDimmed(key) {
+  return isPartial.value && !props.modelValue.includes(key)
+}
+
+// 统一的更新出口：同时更新 v-model 和触发 change 事件
+function update(next) {
+  emit('update:modelValue', next)
+  emit('change', {
+    mode: next.length === 0 || next.length === props.legends.length
+      ? 'all'
+      : 'partial',
+    selected: next,
+  })
+}
+
+function onToggle(key, checked) {
+  const set = new Set(props.modelValue)
+  checked ? set.add(key) : set.delete(key)
+  // 保持原顺序
+  update(props.legends.map(l => l.key).filter(k => set.has(k)))
+}
+
+function selectAll() {
+  update(props.legends.map(l => l.key))
+}
+function clearAll() {
+  update([])
+}
+</script>
+
+<style scoped>
+.legend {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 10px; border: 1px solid #eee; border-radius: 6px;
+}
+.legend-item {
+  display: inline-flex; align-items: center; gap: 6px;
+  cursor: pointer; user-select: none;
+  color: #333;
+  transition: color 0.2s, opacity 0.2s;
+}
+.legend-item.is-disabled {
+  color: #aaa;
+  opacity: 0.55;
+}
+.legend-item.is-disabled .dot { filter: grayscale(1); }
+
+.dot {
+  width: 12px; height: 12px; border-radius: 2px; display: inline-block;
+  transition: background 0.2s, filter 0.2s;
+}
+.btn {
+  border: 1px solid #ddd; background: #fafafa; padding: 4px 10px;
+  border-radius: 4px; cursor: pointer;
+}
+.btn:hover { background: #f0f0f0; }
+.tip { color: #666; font-size: 13px; margin-left: auto; }
+</style>
+```
+
+### 子组件对外约定（重点）
+
+| 名称 | 类型 | 说明 |
+|---|---|---|
+| `props.legends` | `Array<{key,label,color}>` | 图例配置 |
+| `v-model` | `string[]` | 当前选中的 key 数组 |
+| `@change` | `({ mode, selected })` | `mode`: `'all'` 或 `'partial'`；`selected`: 当前选中数组 |
+
+> "全选"和"全不选"都被归一化为 `mode: 'all'`，父组件就不用自己再判断这两种边界情况。
+
+---
+
+## 父组件 `Dashboard.vue`
+
+```vue
+<!-- views/Dashboard.vue -->
+<template>
+  <div class="page">
+    <h3>订单列表</h3>
+
+    <!-- 嵌入图例组件 -->
+    <LegendFilter
+      v-model="selectedTypes"
+      :legends="legends"
+      @change="onLegendChange"
+    />
+
+    <p class="status" v-if="loading">加载中…</p>
+
+    <ul class="list" v-else>
+      <li
+        v-for="row in list"
+        :key="row.id"
+        :style="{ borderLeftColor: colorOf(row.type) }"
+      >
+        <span class="tag" :style="{ background: colorOf(row.type) }">
+          {{ labelOf(row.type) }}
+        </span>
+        {{ row.name }} - {{ row.value }}
+      </li>
+      <li v-if="!list.length" class="empty">没有数据</li>
+    </ul>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+import LegendFilter from '@/components/LegendFilter.vue'
+
+const legends = [
+  { key: 'A', label: '类型 A', color: '#3b82f6' },
+  { key: 'B', label: '类型 B', color: '#10b981' },
+  { key: 'C', label: '类型 C', color: '#f59e0b' },
+  { key: 'D', label: '类型 D', color: '#ef4444' },
+]
+
+const selectedTypes = ref([])  // v-model
+const list = ref([])
+const loading = ref(false)
+
+// ====== 接口请求 ======
+async function fetchList(params) {
+  loading.value = true
+  try {
+    // 这里换成你的真实接口，比如 axios.get('/api/orders', { params })
+    const res = await mockApi(params)
+    list.value = res.data
+  } finally {
+    loading.value = false
+  }
+}
+
+// ====== 关键：根据图例状态拼接参数 ======
+function buildParams({ mode, selected }) {
+  // 全部：不传 types 字段（或传空，按后端约定）
+  if (mode === 'all') {
+    return { /* 其它筛选条件... */ }
+  }
+  // 部分选中：传选中的 key 列表
+  return {
+    types: selected,            // 数组
+    // 或后端要逗号分隔: types: selected.join(','),
+  }
+}
+
+// 子组件的 change 事件
+function onLegendChange(state) {
+  // state = { mode: 'all' | 'partial', selected: [...] }
+  fetchList(buildParams(state))
+}
+
+// 初始化：默认全部
+onMounted(() => {
+  fetchList(buildParams({ mode: 'all', selected: [] }))
+})
+
+// ====== 工具 ======
+function colorOf(key) { return legends.find(l => l.key === key)?.color }
+function labelOf(key) { return legends.find(l => l.key === key)?.label }
+
+// 模拟接口
+function mockApi(params) {
+  console.log('请求参数：', params)
+  const all = [
+    { id: 1, name: '订单-001', type: 'A', value: 120 },
+    { id: 2, name: '订单-002', type: 'B', value: 88 },
+    { id: 3, name: '订单-003', type: 'C', value: 56 },
+    { id: 4, name: '订单-004', type: 'D', value: 200 },
+    { id: 5, name: '订单-005', type: 'A', value: 33 },
+    { id: 6, name: '订单-006', type: 'B', value: 77 },
+  ]
+  const data = params.types
+    ? all.filter(x => params.types.includes(x.type))
+    : all
+  return new Promise(r => setTimeout(() => r({ data }), 200))
+}
+</script>
+
+<style scoped>
+.page { padding: 16px; font-family: system-ui, sans-serif; }
+.status { color: #888; }
+.list { list-style: none; padding: 0; margin-top: 12px; }
+.list li {
+  padding: 8px 12px; margin-bottom: 6px; background: #fafafa;
+  border-left: 4px solid #ccc; border-radius: 4px;
+  display: flex; align-items: center; gap: 8px;
+}
+.tag { color:#fff; font-size:12px; padding:2px 6px; border-radius:3px; }
+.empty { color: #999; text-align: center; }
+</style>
+```
+
+---
+
+## 这套设计的几个关键点
+
+**1. 选中状态归一化在子组件里完成**
+
+`mode === 'all'` 已经包含了"全选"和"全不选"两种情况，父组件 `buildParams` 只要分两种情况写就行，逻辑不会散在两边。
+
+**2. `v-model` + `@change` 双通道**
+
+- `v-model`：父组件可以**主动**重置选中（比如清空筛选 `selectedTypes.value = []`）。
+- `@change`：父组件被动响应"用户操作"，避免初始化或外部赋值时也触发请求。
+
+如果你想"只要 `selectedTypes` 一变就请求"，可以改用 `watch(selectedTypes, ...)`，但通常更推荐显式的 `@change`，能精准区分**用户行为**和**程序赋值**。
+
+**3. 防抖 / 防重复请求（建议）**
+
+如果用户疯狂点图例，可以在 `onLegendChange` 里加节流，或者用一个 `requestId` 丢弃过期响应：
+
+```js
+let reqId = 0
+async function fetchList(params) {
+  const id = ++reqId
+  const res = await api(params)
+  if (id !== reqId) return   // 过期请求直接丢
+  list.value = res.data
+}
+```
+
+**4. 接口字段按后端约定调整**
+
+`buildParams` 是唯一拼参数的地方，后端要数组就传数组、要逗号字符串就 `.join(',')`、要 `all=true` 也只改这一处即可。
+
+---
+
+需要我再补一版**支持外部受控（父组件初始化默认选中、URL query 同步）**的写法，或者把它接到 ECharts 上联动 series 显示吗？
