@@ -1,0 +1,207 @@
+# 为什么 oh-my-opencode 离线装不进去
+
+先说结论：**oh-my-opencode 不是一个能"解压就用"的东西**，它本质是一份 **agent / 配置清单**，必须被 opencode 在启动时**读取并注册**才生效。离线场景下大多数人卡在三个点：放错目录、没触发注册、缺依赖。
+
+---
+
+## 第一步：先搞清楚它到底是什么
+
+oh-my-opencode 实际是一组文件（agent 定义 + 配置 + 可能的脚本），opencode 启动时按约定路径去找它。所以"安装"= **把这些文件放到 opencode 认识的目录** + **让 opencode 重新加载**。
+
+不是 npm 包，不是二进制，**没有 `install` 命令**。
+
+---
+
+## 第二步：确认 opencode 本体可用
+
+离线装 oh-my-opencode 之前，opencode 必须先能跑：
+
+```bash
+opencode --version
+# 没有输出就先解决 opencode 本身，再来谈插件
+```
+
+并且至少跑过一次让它生成配置目录：
+
+```bash
+opencode
+# 按 Ctrl+C 退出
+```
+
+**检查配置目录是否生成**（这是后面所有步骤的前提）：
+
+```bash
+# Linux / macOS
+ls -la ~/.config/opencode/
+ls -la ~/.local/share/opencode/
+
+# Windows PowerShell
+dir $env:APPDATA\opencode
+dir $env:LOCALAPPDATA\opencode
+```
+
+如果这些目录都不存在，说明 opencode 根本没初始化成功，后面装啥都白搭。
+
+---
+
+## 第三步：把离线包放对位置
+
+### 在有网机器上准备包
+
+```bash
+git clone https://github.com/<owner>/oh-my-opencode.git
+cd oh-my-opencode
+
+# 如果项目里有 package.json（含 node_modules 依赖）
+npm install                         # 先装完依赖
+cd ..
+tar czf oh-my-opencode.tar.gz oh-my-opencode/   # 必须连 node_modules 一起打
+```
+
+> ⚠️ **关键**：如果你只 `git archive` 或下 zip，`node_modules` 不会进去，到目标机就缺依赖。
+
+### 在目标机解压到正确目录
+
+opencode 读取自定义 agent / 配置的标准位置（按你装的版本可能略有差异，二选其一存在的）：
+
+**Linux / macOS**
+```bash
+# 优先：全局配置目录
+mkdir -p ~/.config/opencode
+tar xzf oh-my-opencode.tar.gz -C ~/.config/opencode/
+
+# 检查最终路径，应该看到类似：
+ls ~/.config/opencode/oh-my-opencode/
+# agents/  config.json  package.json  node_modules/  ...
+```
+
+**Windows PowerShell**
+```powershell
+$dest = "$env:APPDATA\opencode"
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+tar -xzf oh-my-opencode.tar.gz -C $dest
+dir $dest\oh-my-opencode
+```
+
+> 如果项目 README 里写的是 `~/.opencode/` 或 `~/.local/share/opencode/agents/`，**以 README 为准**，opencode 不同版本路径不一样。
+
+---
+
+## 第四步：让 opencode 注册它（最容易漏的一步）
+
+光放进去不够，还要让 opencode 把它**纳入清单**。常见三种触发方式（看项目支持哪种）：
+
+### 方式 A：在 opencode 配置里显式引用
+
+编辑 `~/.config/opencode/config.json`（Windows: `$env:APPDATA\opencode\config.json`）：
+
+```json
+{
+  "agents": {
+    "include": [
+      "~/.config/opencode/oh-my-opencode/agents"
+    ]
+  }
+}
+```
+
+### 方式 B：跑项目自带的初始化脚本
+
+```bash
+cd ~/.config/opencode/oh-my-opencode
+
+# Linux / macOS
+bash ./install.sh        # 或 setup.sh / register.sh，看项目有什么
+# PowerShell
+powershell -File .\install.ps1
+```
+
+如果脚本里调用了 `npm install` / `npx`，**离线机会失败**，这就是你卡住的常见原因。解决：
+
+```bash
+# 跳过依赖安装，只跑注册逻辑
+SKIP_INSTALL=1 bash ./install.sh
+# 或手动执行脚本里"复制文件 / 写配置"那几行，绕过联网部分
+```
+
+### 方式 C：opencode 自动扫描
+
+部分版本 opencode 会自动扫 `~/.config/opencode/agents/` 目录。这种情况要把 agent 文件**直接平铺**进去，而不是套一层 `oh-my-opencode/` 子目录：
+
+```bash
+cp ~/.config/opencode/oh-my-opencode/agents/*.md ~/.config/opencode/agents/
+# 或者用软链
+ln -s ~/.config/opencode/oh-my-opencode/agents ~/.config/opencode/agents
+```
+
+---
+
+## 第五步：验证是否真的注册成功
+
+不要靠"感觉装上了"，**用命令查**：
+
+```bash
+# 1. opencode 能列出 agent 吗？
+opencode agent list
+# 或
+opencode --list-agents
+
+# 2. 启动后在 TUI 里
+opencode
+# 输入 /agents 或 /agent list 看下拉里有没有 oh-my-opencode 提供的那些
+
+# 3. 直接调用某个 agent
+opencode run --agent <agent_name> "hello"
+```
+
+**如果列表里看不到**，按下面表格逐项排查：
+
+| 现象 | 检查 | 原因 |
+|---|---|---|
+| 列表完全空 | `cat ~/.config/opencode/config.json` | 配置没指向 agent 目录 |
+| 列表有但少几个 | `ls <agents目录>` 看文件数 | 解压不完整 / 子目录套错层 |
+| 启动报 `Cannot find module xxx` | `ls oh-my-opencode/node_modules` | 离线包没带依赖，重新打包 |
+| 启动报 `command not found: npx` | 看 install 脚本内容 | 脚本里有联网调用，要手动绕过 |
+| 配置改了没生效 | `pkill opencode` 再重启 | opencode 缓存了旧配置 |
+
+---
+
+## 你"怎么都装不进"最常见的三个真因
+
+按出现频率排：
+
+1. **`node_modules` 没拷过来** — 你只拷了源码，目标机一跑就缺依赖。打包时必须 `tar` 整个目录含 `node_modules`，或者用 `npm pack` 打 tarball。
+2. **放错目录层级** — 套了一层 `oh-my-opencode/` 子目录，但 opencode 只扫顶层 `agents/`。
+3. **install 脚本里偷偷联网** — 脚本里有 `npm install` / `curl` / `git clone`，离线机静默失败，看上去"跑过了"其实啥也没注册。
+
+---
+
+## 给你一个最小可复核流程
+
+在目标机上执行，**每一步都看输出**，哪步对不上就停在那排查：
+
+```bash
+# 1. opencode 本体
+opencode --version
+
+# 2. 配置目录存在
+ls ~/.config/opencode/ || mkdir -p ~/.config/opencode/
+
+# 3. 解压离线包（含 node_modules）
+tar xzf oh-my-opencode.tar.gz -C ~/.config/opencode/
+ls ~/.config/opencode/oh-my-opencode/node_modules | head   # 必须非空
+
+# 4. 写配置 或 跑离线注册
+cat > ~/.config/opencode/config.json <<'EOF'
+{ "agents": { "include": ["~/.config/opencode/oh-my-opencode/agents"] } }
+EOF
+
+# 5. 验证
+opencode agent list | grep -i oh-my
+```
+
+最后一行能 grep 到内容，才算装好。
+
+---
+
+如果你把**第 5 步的实际输出**和 **`ls ~/.config/opencode/oh-my-opencode/`** 的目录结构贴出来，我可以直接告诉你卡在哪一层。
