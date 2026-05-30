@@ -2,12 +2,6 @@
 
 给 Vue 单文件组件的指定行范围添加标记，支持 template/script/style 三种块。
 
-## 安装
-
-```bash
-npm install @vue/compiler-sfc
-```
-
 ## 使用方法
 
 ```bash
@@ -169,8 +163,7 @@ node validate.js
 
 ## 依赖
 
-- Node.js >= 14
-- @vue/compiler-sfc
+- Node.js >= 14（无需安装其他依赖）
 
 ## License
 
