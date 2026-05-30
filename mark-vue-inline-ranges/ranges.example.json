@@ -1,7 +1,5 @@
 {
-  "src/views/Home.vue": [[23, 49]],
-  "src/views/About.vue": [[1, 30], [60, 90]],
-  "src/App.vue": [{ "start": 10, "end": 25 }],
-  "src/components/Foo.vue": ["12,40"],
-  "src/components/Bar.vue": ["（5，18）", "[20,33]"]
+  "src/views/Home.vue": [[1, 50]],
+  "src/components/Button.vue": [[23, 49], [100, 120]],
+  "src/App.vue": ["5-10", "（20，30）"]
 }
