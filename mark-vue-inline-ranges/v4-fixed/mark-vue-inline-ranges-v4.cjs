@@ -1,0 +1,1724 @@
+#!/usr/bin/env node
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+
+const options = parseCliArgs(process.argv.slice(2));
+
+if (!options.inputFile) {
+  console.error("用法: node mark-vue-inline-ranges.js ranges.json");
+  console.error("");
+  console.error("可选参数:");
+  console.error("  --dry-run                只预览，不写入文件");
+  console.error("  --backup                 写入前生成 .bak 备份");
+  console.error("  --no-template-comments   template 中无法插 data 属性时直接跳过，不追加 HTML 注释");
+  console.error("  --mark-style <style>     标记样式:");
+  console.error("                           default        - script: //, style: /* */");
+  console.error("                           block          - script: /* */, style: /* */");
+  console.error("                           semicolon      - style: ;;/* */");
+  console.error("                           random         - script 随机 // 或 /* */");
+  console.error("                           random-semicolon - style 随机加分号");
+  process.exit(1);
+}
+
+let rangeMap;
+
+try {
+  rangeMap = JSON.parse(fs.readFileSync(options.inputFile, "utf8"));
+} catch (error) {
+  console.error(`[错误] 读取或解析 JSON 失败: ${options.inputFile}`);
+  console.error(error.message);
+  process.exit(1);
+}
+
+if (!rangeMap || typeof rangeMap !== "object" || Array.isArray(rangeMap)) {
+  console.error("[错误] ranges.json 顶层必须是对象，例如：");
+  console.error(JSON.stringify({ "src/App.vue": [[1, 10]] }, null, 2));
+  process.exit(1);
+}
+
+for (const [filePath, rawRanges] of Object.entries(rangeMap)) {
+  processVueFile(filePath, rawRanges, options);
+}
+
+function parseCliArgs(args) {
+  const options = {
+    inputFile: null,
+    dryRun: false,
+    backup: false,
+    noTemplateComments: false,
+    markStyle: "random"
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+
+    if (arg === "--backup") {
+      options.backup = true;
+      continue;
+    }
+
+    if (arg === "--no-template-comments") {
+      options.noTemplateComments = true;
+      continue;
+    }
+
+    if (arg === "--mark-style") {
+      options.markStyle = args[++i] || "default";
+      continue;
+    }
+
+    if (!options.inputFile) {
+      options.inputFile = arg;
+      continue;
+    }
+
+    console.warn(`[警告] 忽略未知参数: ${arg}`);
+  }
+
+  return options;
+}
+
+function processVueFile(filePath, rawRanges, options) {
+  if (!fs.existsSync(filePath)) {
+    console.warn(`[跳过] 文件不存在: ${filePath}`);
+    return;
+  }
+
+  if (!filePath.endsWith(".vue")) {
+    console.warn(`[跳过] 不是 vue 文件: ${filePath}`);
+    return;
+  }
+
+  const content = fs.readFileSync(filePath, "utf8");
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+  const lines = content.split(/\r?\n/);
+
+  const rawRangeList = normalizeRawRanges(rawRanges);
+
+  const ranges = rawRangeList
+    .map(parseRange)
+    .filter(Boolean)
+    .map(([start, end]) => ({
+      start: Math.min(Number(start), Number(end)),
+      end: Math.max(Number(start), Number(end))
+    }))
+    .filter(r => Number.isInteger(r.start) && Number.isInteger(r.end))
+    .filter(r => r.start >= 1 && r.end >= 1 && r.start <= lines.length);
+
+  if (!ranges.length) {
+    console.warn(`[跳过] 没有有效 range: ${filePath}`);
+    return;
+  }
+
+  const blocks = detectVueBlocks(lines);
+  const rootTagLines = collectVueRootBlockTagLines(blocks);
+
+  const templateUnsafeLines = collectTemplateUnsafeLines(lines, blocks);
+  const templateRawTextLines = collectTemplateRawTextLines(lines, blocks);
+  const scriptUnsafeLines = collectScriptUnsafeLines(lines, blocks);
+  const styleUnsafeLines = collectStyleUnsafeLines(lines, blocks);
+
+  const lineMarks = new Map();
+
+  for (const range of ranges) {
+    const startLine = clamp(range.start, 1, lines.length);
+    const endLine = clamp(range.end, 1, lines.length);
+
+    const fileName = makeSafePayloadFileName(path.basename(filePath));
+    const rangeText = `${startLine}-${endLine}`;
+
+    /**
+     * 一个 range 一个 random。
+     * 同一个 range 内所有行使用同一个 random。
+     */
+    const rangeRandom = randomNumber8();
+
+    /**
+     * payload 不要有空格。
+     *
+     * 注意：
+     * - 文件名做了安全化，避免 HTML comment 里出现 -- / < / > 等问题。
+     * - payload 里保留 range:1-2 random:12345678，方便 alreadyMarked 识别。
+     */
+    const payload = `${fileName}|range:${rangeText}|random:${rangeRandom}`;
+
+    for (let lineNo = startLine; lineNo <= endLine; lineNo++) {
+      const line = lines[lineNo - 1];
+
+      if (shouldSkipEmptyLine(line)) {
+        continue;
+      }
+
+      /**
+       * 跳过所有 SFC 顶层块标签行。
+       *
+       * 包括：
+       * <script setup>
+       *
+       * 也包括：
+       * <script
+       *   setup
+       *   lang="ts"
+       * >
+       */
+      if (rootTagLines.has(lineNo)) {
+        continue;
+      }
+
+      /**
+       * 重叠 range：
+       * 同一行只允许被第一个覆盖它的 range 标记。
+       */
+      if (lineMarks.has(lineNo)) {
+        continue;
+      }
+
+      const block = getBlockByLine(blocks, lineNo);
+
+      /**
+       * unknown 区域直接跳过。
+       *
+       * 这样可以避免破坏：
+       * - SFC 顶层空白区域
+       * - <i18n lang="json">
+       * - <route lang="json">
+       * - <docs>
+       * - 其他自定义块
+       */
+      if (block.type === "unknown") {
+        continue;
+      }
+
+      /**
+       * 只处理白名单 block。
+       */
+      if (!isSupportedVueBlock(block)) {
+        continue;
+      }
+
+      /**
+       * template 里处于多行属性值、多行插值、多行 HTML 注释、raw text 标签内时跳过。
+       */
+      if (block.type === "template") {
+        if (templateUnsafeLines.has(lineNo)) {
+          continue;
+        }
+
+        if (templateRawTextLines.has(lineNo)) {
+          continue;
+        }
+      }
+
+      /**
+       * script 里处于多行字符串、多行注释时跳过。
+       */
+      if (block.type === "script" && scriptUnsafeLines.has(lineNo)) {
+        continue;
+      }
+
+      /**
+       * style 里处于多行字符串、多行注释时跳过。
+       */
+      if (block.type === "style" && styleUnsafeLines.has(lineNo)) {
+        continue;
+      }
+
+      lineMarks.set(lineNo, {
+        block,
+        payload
+      });
+    }
+  }
+
+  let changedCount = 0;
+
+  /**
+   * 按行号从小到大处理。
+   * 虽然这里只改当前行，不增删行，但排序后更稳定。
+   */
+  const entries = Array.from(lineMarks.entries()).sort((a, b) => a[0] - b[0]);
+
+  for (const [lineNo, mark] of entries) {
+    const index = lineNo - 1;
+    const originalLine = lines[index];
+
+    if (alreadyMarked(originalLine)) {
+      continue;
+    }
+
+    let newLine = originalLine;
+    const block = mark.block;
+    const payload = mark.payload;
+
+    if (block.type === "template") {
+      newLine = appendTemplateMarkSafely(lines, blocks, lineNo, originalLine, payload, options);
+    } else if (block.type === "script") {
+      newLine = appendScriptMarkSafely(originalLine, payload, options);
+    } else if (block.type === "style") {
+      newLine = appendStyleMarkSafely(originalLine, payload, options);
+    }
+
+    if (newLine !== originalLine) {
+      lines[index] = newLine;
+      changedCount++;
+    }
+  }
+
+  if (changedCount || true) {
+    const origLines = content.split(/\r?\n/);
+    console.log("\n" + "=".repeat(78));
+    console.log("V4 边界场景验证报告 — " + filePath);
+    console.log("=".repeat(78));
+    let tplCnt=0, scrCnt=0, styCnt=0, skipCnt=0;
+    for (const [lineNo, mark] of entries) {
+      const orig = origLines[lineNo - 1];
+      const result = lines[lineNo - 1];
+      const changed = result !== orig;
+      if (!changed) { skipCnt++; continue; }
+      const blk = mark.block.type;
+      if(blk==="template")tplCnt++; else if(blk==="script")scrCnt++; else if(blk==="style")styCnt++;
+    }
+    console.log(`\n  总行: ${entries.length} | 已标记: ${changedCount} | 跳过: ${skipCnt}`);
+    console.log(`  template: ${tplCnt} | script: ${scrCnt} | style: ${styCnt}`);
+    
+    // 逐行详情
+    const SECTIONS = [
+      { name: "【TEMPLATE 块】", lines: [] },
+      { name: "【SCRIPT 块】", lines: [] },
+      { name: "【STYLE 块】", lines: [] },
+      { name: "【其他区域】", lines: [] }
+    ];
+    for (const [lineNo, mark] of entries) {
+      const orig = origLines[lineNo - 1];
+      const result = lines[lineNo - 1];
+      const changed = result !== orig;
+      const blk = mark.block.type;
+      const secIdx = blk==="template"?0:blk==="script"?1:blk==="style"?2:3;
+      let reason = "";
+      if (!changed) {
+        if (shouldSkipEmptyLine(orig)) reason="(空行)";
+        else if (rootTagLines.has(lineNo)) reason="(SFC根块标签)";
+        else if (alreadyMarked(orig)) reason="(已有标记)";
+        else if (templateUnsafeLines && templateUnsafeLines.has(lineNo)) reason="(template unsafe: 多行属性值/插值/注释)";
+        else if (templateRawTextLines && templateRawTextLines.has(lineNo)) reason="(raw text 标签)";
+        else if (scriptUnsafeLines && scriptUnsafeLines.has(lineNo)) reason="(script unsafe: 多行字符串/注释)";
+        else if (styleUnsafeLines && styleUnsafeLines.has(lineNo)) reason="(style unsafe: 多行字符串/注释)";
+        else reason="(v4新增跳过: Transition/slot/template风险 / 特殊指令 / JSX)";
+      }
+      SECTIONS[secIdx].lines.push({ lineNo, changed, reason, result: result.trim().slice(-90), original: orig.trim().slice(0,55) });
+    }
+    for (const sec of SECTIONS) {
+      if (!sec.lines.length) continue;
+      console.log(`\n${"─".repeat(72)}`);
+      console.log(`${sec.name} (${sec.lines.filter(l=>l.changed).length} 标记 / ${sec.lines.filter(l=>!l.changed).length} 跳过)`);
+      console.log(`${"─".repeat(72)}`);
+      for (const l of sec.lines) {
+        if (l.changed) console.log(`  L${String(l.lineNo).padStart(3)} ✅ → ${l.result}`);
+        else console.log(`  L${String(l.lineNo).padStart(3)} ⏭️  ${l.reason}  | ${l.original}`);
+      }
+    }
+    // 完整文件
+    console.log(`\n${"=".repeat(78)}`);
+    console.log("完整处理后的文件:");
+    console.log("=".repeat(78));
+    console.log(lines.join("\n"));
+  }
+
+  if (!changedCount) {
+    return;
+  }
+
+  if (options.dryRun) {
+    console.log(`\n[预览] ${filePath}，将标记 ${changedCount} 行，未写入`);
+    return;
+  }
+
+  if (options.backup) {
+    const backupPath = `${filePath}.bak`;
+    fs.writeFileSync(backupPath, content, "utf8");
+    console.log(`[备份] ${backupPath}`);
+  }
+
+  fs.writeFileSync(filePath, lines.join(newline), "utf8");
+  console.log(`[完成] ${filePath}，标记 ${changedCount} 行`);
+}
+
+function normalizeRawRanges(rawRanges) {
+  if (Array.isArray(rawRanges)) {
+    return rawRanges;
+  }
+
+  if (
+    typeof rawRanges === "number" ||
+    typeof rawRanges === "string" ||
+    rawRanges && typeof rawRanges === "object"
+  ) {
+    return [rawRanges];
+  }
+
+  return [];
+}
+
+function parseRange(item) {
+  if (typeof item === "number") {
+    return [item, item];
+  }
+
+  if (Array.isArray(item) && item.length >= 2) {
+    return [Number(item[0]), Number(item[1])];
+  }
+
+  if (item && typeof item === "object") {
+    const start = item.start ?? item.begin ?? item.from ?? item.line;
+    const end = item.end ?? item.to ?? item.line ?? start;
+
+    if (start != null && end != null) {
+      return [Number(start), Number(end)];
+    }
+  }
+
+  if (typeof item === "string") {
+    /**
+     * 兼容：
+     * (23,49)
+     * （23，49）
+     * [23,49]
+     * 【23，49】
+     * 23,49
+     * 23-49
+     * 23~49
+     * 23:49
+     * range:23-49
+     */
+    const normalized = item
+      .replace(/（/g, "(")
+      .replace(/）/g, ")")
+      .replace(/，/g, ",")
+      .replace(/【/g, "[")
+      .replace(/】/g, "]")
+      .replace(/－/g, "-")
+      .replace(/—/g, "-")
+      .replace(/～/g, "~");
+
+    const pairMatch = normalized.match(/(\d+)\s*(?:,|-|~|:)\s*(\d+)/);
+
+    if (pairMatch) {
+      return [Number(pairMatch[1]), Number(pairMatch[2])];
+    }
+
+    const singleMatch = normalized.match(/^\s*(\d+)\s*$/);
+
+    if (singleMatch) {
+      const line = Number(singleMatch[1]);
+      return [line, line];
+    }
+  }
+
+  console.warn(`[警告] 无法解析 range: ${JSON.stringify(item)}`);
+  return null;
+}
+
+/**
+ * 识别 Vue SFC 顶层块。
+ *
+ * 这版会识别所有顶层块：
+ * - template
+ * - script
+ * - style
+ * - i18n
+ * - route
+ * - docs
+ * - 其他自定义块
+ *
+ * 但是后续只会处理 template/script/style 白名单。
+ *
+ * 注意：
+ * 为了避免把缩进的 <template v-if> 误判成 SFC 根块，
+ * 这里只识别"行首顶格"的标签。
+ */
+function detectVueBlocks(lines) {
+  const blocks = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const lineForMatch = stripBomAtFirstLine(lines[i], i);
+    const openMatch = lineForMatch.match(/^<\s*([A-Za-z][A-Za-z0-9:_-]*)\b/i);
+
+    if (!openMatch) {
+      i++;
+      continue;
+    }
+
+    const type = openMatch[1].toLowerCase();
+    const openLine = i + 1;
+    const openEnd = findRootOpenTagEnd(lines, i);
+
+    /**
+     * 根块开始标签都没有闭合，说明这个 SFC 本身就异常。
+     * 为避免误伤，直接把后面视作这个块内容并停止扫描。
+     */
+    if (!openEnd) {
+      blocks.push({
+        type,
+        lang: null,
+        hasSrc: false,
+        openLine,
+        openEndLine: openLine,
+        startLine: openLine + 1,
+        endLine: lines.length,
+        closeLine: null,
+        openTagText: lines[i]
+      });
+      break;
+    }
+
+    const openEndLine = openEnd.index + 1;
+    const openTagText = lines.slice(i, openEnd.index + 1).join("\n");
+    const lang = normalizeLang(extractAttr(openTagText, "lang"));
+    const hasSrc = extractAttr(openTagText, "src") != null;
+
+    const selfClosing = isSelfClosingRootOpenTag(openTagText);
+
+    let closeIndex = null;
+
+    if (selfClosing) {
+      closeIndex = openEnd.index;
+    } else {
+      const closeInfo = findRootCloseTag(lines, type, openEnd.index, openEnd.column);
+      closeIndex = closeInfo ? closeInfo.index : null;
+    }
+
+    const closeLine = closeIndex != null ? closeIndex + 1 : null;
+    const startLine = openEndLine + 1;
+
+    /**
+     * closeIndex 是 0-based。
+     * closeIndex 对应的上一行，1-based 行号就是 closeIndex。
+     */
+    const endLine = closeIndex != null ? closeIndex : lines.length;
+
+    blocks.push({
+      type,
+      lang,
+      hasSrc,
+      openLine,
+      openEndLine,
+      startLine,
+      endLine,
+      closeLine,
+      openTagText
+    });
+
+    if (closeIndex != null) {
+      i = closeIndex + 1;
+    } else {
+      break;
+    }
+  }
+
+  return blocks;
+}
+
+/**
+ * 找到 SFC 根块开始标签的 >。
+ * 会忽略引号里的 >。
+ */
+function findRootOpenTagEnd(lines, startIndex) {
+  let inQuote = null;
+
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i];
+
+    for (let column = 0; column < line.length; column++) {
+      const ch = line[column];
+
+      if (inQuote) {
+        if (ch === inQuote) {
+          inQuote = null;
+        }
+
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        inQuote = ch;
+        continue;
+      }
+
+      if (ch === ">") {
+        return {
+          index: i,
+          column
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function findRootCloseTag(lines, type, openEndIndex, openEndColumn) {
+  /**
+   * 支持极少见的一行块：
+   * <template><div /></template>
+   *
+   * 这种行整体会被 rootTagLines 跳过，不尝试在里面打标。
+   */
+  const sameLineRest = lines[openEndIndex].slice(openEndColumn + 1);
+  const inlineCloseRe = new RegExp(`<\\s*\\/\\s*${escapeRegExp(type)}\\s*>`, "i");
+
+  if (inlineCloseRe.test(sameLineRest)) {
+    return {
+      index: openEndIndex
+    };
+  }
+
+  const closeLineRe = new RegExp(`^<\\s*\\/\\s*${escapeRegExp(type)}\\s*>\\s*$`, "i");
+
+  for (let i = openEndIndex + 1; i < lines.length; i++) {
+    if (closeLineRe.test(stripBomAtFirstLine(lines[i], i))) {
+      return {
+        index: i
+      };
+    }
+  }
+
+  return null;
+}
+
+function isSelfClosingRootOpenTag(openTagText) {
+  return /\/\s*>\s*$/.test(openTagText);
+}
+
+function collectVueRootBlockTagLines(blocks) {
+  const set = new Set();
+
+  for (const block of blocks) {
+    for (let lineNo = block.openLine; lineNo <= block.openEndLine; lineNo++) {
+      set.add(lineNo);
+    }
+
+    if (block.closeLine) {
+      set.add(block.closeLine);
+    }
+  }
+
+  return set;
+}
+
+function getBlockByLine(blocks, lineNo) {
+  const block = blocks.find(b => lineNo >= b.startLine && lineNo <= b.endLine);
+
+  if (block) {
+    return block;
+  }
+
+  return {
+    type: "unknown",
+    lang: null,
+    hasSrc: false,
+    startLine: 1,
+    endLine: Number.MAX_SAFE_INTEGER
+  };
+}
+
+function extractAttr(tagText, attrName) {
+  const re = new RegExp(
+    "\\b" +
+      escapeRegExp(attrName) +
+      "\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'=<>`]+))",
+    "i"
+  );
+
+  const match = tagText.match(re);
+
+  if (!match) {
+    return null;
+  }
+
+  return match[1] ?? match[2] ?? match[3] ?? null;
+}
+
+function normalizeLang(lang) {
+  if (lang == null) {
+    return null;
+  }
+
+  return String(lang).trim().toLowerCase();
+}
+
+function isSupportedVueBlock(block) {
+  /**
+   * src 外链块不处理。
+   */
+  if (block.hasSrc) {
+    return false;
+  }
+
+  if (block.type === "template") {
+    return block.lang == null || block.lang === "" || block.lang === "html";
+  }
+
+  if (block.type === "script") {
+    return block.lang == null || block.lang === "" || block.lang === "js" || block.lang === "ts";
+  }
+
+  if (block.type === "style") {
+    return (
+      block.lang == null ||
+      block.lang === "" ||
+      block.lang === "css" ||
+      block.lang === "scss" ||
+      block.lang === "less" ||
+      block.lang === "postcss"
+    );
+  }
+
+  return false;
+}
+
+function shouldSkipEmptyLine(line) {
+  return line.trim() === "";
+}
+
+function alreadyMarked(line) {
+  /**
+   * 防止重复运行后重复追加。
+   *
+   * 兼容旧格式：
+   * Home.vue range:23-49 random:12345678
+   *
+   * 和新格式：
+   * Home.vue|range:23-49|random:12345678
+   */
+  return /range:\d+-\d+(?:\s+|\|)random:\d+/.test(line) || /\bdata-mark-r\d+\s*=/.test(line);
+}
+
+/**
+ * template 打标策略：
+ *
+ * 1. 如果当前行处于多行开始标签内部：
+ *    <div
+ *      class="a"
+ *    >
+ *
+ *    则插入 data-mark 属性。
+ *
+ * 2. 如果当前行本身包含完整开始标签：
+ *    <div class="a"></div>
+ *
+ *    则优先插入 data-mark 属性。
+ *
+ * 3. 如果没有可插入属性的位置，才追加 HTML 注释。
+ *
+ * 4. 对 v-else / v-else-if 邻接风险场景，跳过 HTML 注释。
+ */
+function appendTemplateMarkSafely(lines, blocks, lineNo, line, payload, options) {
+  const block = getBlockByLine(blocks, lineNo);
+  const state = getTemplateTagStateAtLine(lines, block, lineNo);
+
+  /**
+   * 当前行开始时已经在某个标签内部。
+   *
+   * 例如：
+   * <div
+   *   class="a"
+   * >
+   */
+  if (state.startsInsideAnyTag) {
+    if (state.startsInsideOpenTag) {
+      return appendDataMarkToOpenTagContinuationLine(line, payload);
+    }
+
+    /**
+     * 如果是 closing tag 的异常多行状态，保守跳过。
+     */
+    return line;
+  }
+
+  /**
+   * 当前行结束后仍在某个开始标签内部。
+   *
+   * 例如：
+   * <div
+   */
+  if (state.endsInsideAnyTag) {
+    if (state.endsInsideOpenTag) {
+      return appendTemplateDataMarkAtLineEnd(line, payload);
+    }
+
+    return line;
+  }
+
+  /**
+   * 普通单行标签，优先插 data 属性。
+   */
+  const inserted = tryInsertDataMarkIntoTemplateLine(line, payload);
+
+  if (inserted.changed) {
+    return inserted.line;
+  }
+
+  if (options.noTemplateComments) {
+    return line;
+  }
+
+  if (hasTemplateElseAdjacencyRisk(lines, blocks, lineNo)) {
+    return line;
+  }
+
+  if (hasTemplateCommentRisk(lines, blocks, lineNo)) {
+    return line;
+  }
+
+  return appendCommentWithSpace(line, `<!--${payload}-->`);
+}
+
+function getTemplateTagStateAtLine(lines, block, lineNo) {
+  const state = createTemplateScanState();
+
+  for (let i = block.startLine; i < lineNo; i++) {
+    scanTemplateLineForState(lines[i - 1], state);
+  }
+
+  const before = cloneTemplateScanState(state);
+
+  scanTemplateLineForState(lines[lineNo - 1], state);
+
+  const after = cloneTemplateScanState(state);
+
+  return {
+    startsInsideAnyTag: Boolean(before.inTag),
+    startsInsideOpenTag: Boolean(
+      before.inTag &&
+        !before.inClosingTag &&
+        isTemplateAttrEligibleTag(before.tagName)
+    ),
+    startsTagName: before.tagName,
+
+    endsInsideAnyTag: Boolean(after.inTag),
+    endsInsideOpenTag: Boolean(
+      after.inTag &&
+        !after.inClosingTag &&
+        isTemplateAttrEligibleTag(after.tagName)
+    ),
+    endsTagName: after.tagName
+  };
+}
+
+function createTemplateScanState() {
+  return {
+    inTag: false,
+    inClosingTag: false,
+    tagName: null,
+    inQuote: null,
+    inMustache: false,
+    inHtmlComment: false
+  };
+}
+
+function cloneTemplateScanState(state) {
+  return {
+    inTag: state.inTag,
+    inClosingTag: state.inClosingTag,
+    tagName: state.tagName,
+    inQuote: state.inQuote,
+    inMustache: state.inMustache,
+    inHtmlComment: state.inHtmlComment
+  };
+}
+
+/**
+ * template 扫描器。
+ *
+ * 不是完整 HTML parser，但比简单正则更稳：
+ * - 忽略 HTML 注释里的标签
+ * - 忽略 {{ }} 里的 < 和 >
+ * - 只在标签内部识别属性引号
+ * - 能识别跨行开始标签状态
+ */
+function scanTemplateLineForState(line, state) {
+  let i = 0;
+
+  while (i < line.length) {
+    const ch = line[i];
+    const next = line[i + 1];
+
+    if (state.inHtmlComment) {
+      if (ch === "-" && next === "-" && line[i + 2] === ">") {
+        state.inHtmlComment = false;
+        i += 3;
+        continue;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (state.inMustache) {
+      if (ch === "}" && next === "}") {
+        state.inMustache = false;
+        i += 2;
+        continue;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (state.inQuote) {
+      if (ch === state.inQuote) {
+        state.inQuote = null;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (!state.inTag) {
+      if (
+        ch === "<" &&
+        next === "!" &&
+        line[i + 2] === "-" &&
+        line[i + 3] === "-"
+      ) {
+        state.inHtmlComment = true;
+        i += 4;
+        continue;
+      }
+
+      if (ch === "{" && next === "{") {
+        state.inMustache = true;
+        i += 2;
+        continue;
+      }
+
+      const tagStart = parseTemplateTagStartAt(line, i);
+
+      if (tagStart) {
+        state.inTag = true;
+        state.inClosingTag = tagStart.closing;
+        state.tagName = tagStart.name;
+        i = tagStart.nameEnd;
+        continue;
+      }
+
+      i++;
+      continue;
+    }
+
+    /**
+     * 已经在标签内部。
+     */
+    if (ch === '"' || ch === "'") {
+      state.inQuote = ch;
+      i++;
+      continue;
+    }
+
+    if (ch === ">") {
+      state.inTag = false;
+      state.inClosingTag = false;
+      state.tagName = null;
+      i++;
+      continue;
+    }
+
+    i++;
+  }
+
+  return state;
+}
+
+function parseTemplateTagStartAt(line, index) {
+  if (line[index] !== "<") {
+    return null;
+  }
+
+  let i = index + 1;
+  let closing = false;
+
+  if (line[i] === "/") {
+    closing = true;
+    i++;
+  }
+
+  if (!line[i] || !/[A-Za-z]/.test(line[i])) {
+    return null;
+  }
+
+  const nameStart = i;
+
+  while (i < line.length && /[A-Za-z0-9:_\-.]/.test(line[i])) {
+    i++;
+  }
+
+  const name = line.slice(nameStart, i).toLowerCase();
+
+  return {
+    closing,
+    name,
+    nameEnd: i
+  };
+}
+
+function isTemplateAttrEligibleTag(tagName) {
+  if (!tagName) {
+    return false;
+  }
+
+  /**
+   * 不给 Vue 的内层 <template> 插 data 属性。
+   *
+   * <template v-if="ok">
+   *
+   * 这种不是实际 DOM 元素，插普通 data-* 属性有兼容风险。
+   */
+  if (tagName === "template") {
+    return false;
+  }
+
+  return true;
+}
+
+function appendDataMarkToOpenTagContinuationLine(line, payload) {
+  const attr = buildDataMarkAttr(payload);
+
+  const trailingWhitespaceMatch = line.match(/\s+$/);
+  const trailingWhitespace = trailingWhitespaceMatch ? trailingWhitespaceMatch[0] : "";
+  const body = trailingWhitespace ? line.slice(0, -trailingWhitespace.length) : line;
+
+  const tagEndIndex = findTagEndInLine(body, 0);
+
+  if (tagEndIndex >= 0) {
+    return insertAttrBeforeTagEnd(body, tagEndIndex, attr) + trailingWhitespace;
+  }
+
+  return `${body} ${attr}${trailingWhitespace}`;
+}
+
+function appendTemplateDataMarkAtLineEnd(line, payload) {
+  const attr = buildDataMarkAttr(payload);
+
+  const trailingWhitespaceMatch = line.match(/\s+$/);
+  const trailingWhitespace = trailingWhitespaceMatch ? trailingWhitespaceMatch[0] : "";
+  const body = trailingWhitespace ? line.slice(0, -trailingWhitespace.length) : line;
+
+  if (body.trim() === "") {
+    return line;
+  }
+
+  return `${body} ${attr}${trailingWhitespace}`;
+}
+
+function tryInsertDataMarkIntoTemplateLine(line, payload) {
+  const tag = findFirstEligibleCompleteOpenTag(line);
+
+  if (!tag) {
+    return {
+      changed: false,
+      line
+    };
+  }
+
+  const attr = buildDataMarkAttr(payload);
+  const newLine = insertAttrBeforeTagEnd(line, tag.endIndex, attr);
+
+  return {
+    changed: newLine !== line,
+    line: newLine
+  };
+}
+
+function findFirstEligibleCompleteOpenTag(line) {
+  const state = {
+    inHtmlComment: false,
+    inMustache: false
+  };
+
+  let i = 0;
+
+  while (i < line.length) {
+    const ch = line[i];
+    const next = line[i + 1];
+
+    if (state.inHtmlComment) {
+      if (ch === "-" && next === "-" && line[i + 2] === ">") {
+        state.inHtmlComment = false;
+        i += 3;
+        continue;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (state.inMustache) {
+      if (ch === "}" && next === "}") {
+        state.inMustache = false;
+        i += 2;
+        continue;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (
+      ch === "<" &&
+      next === "!" &&
+      line[i + 2] === "-" &&
+      line[i + 3] === "-"
+    ) {
+      state.inHtmlComment = true;
+      i += 4;
+      continue;
+    }
+
+    if (ch === "{" && next === "{") {
+      state.inMustache = true;
+      i += 2;
+      continue;
+    }
+
+    const tagStart = parseTemplateTagStartAt(line, i);
+
+    if (!tagStart || tagStart.closing) {
+      i++;
+      continue;
+    }
+
+    const endIndex = findTagEndInLine(line, tagStart.nameEnd);
+
+    if (endIndex < 0) {
+      return null;
+    }
+
+    if (isTemplateAttrEligibleTag(tagStart.name)) {
+      return {
+        startIndex: i,
+        endIndex,
+        tagName: tagStart.name
+      };
+    }
+
+    i = endIndex + 1;
+  }
+
+  return null;
+}
+
+function findTagEndInLine(line, startIndex) {
+  let inQuote = null;
+
+  for (let i = startIndex; i < line.length; i++) {
+    const ch = line[i];
+
+    if (inQuote) {
+      if (ch === inQuote) {
+        inQuote = null;
+      }
+
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inQuote = ch;
+      continue;
+    }
+
+    if (ch === ">") {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
+function insertAttrBeforeTagEnd(line, tagEndIndex, attr) {
+  const before = line.slice(0, tagEndIndex);
+  const after = line.slice(tagEndIndex);
+
+  /**
+   * 自闭合：
+   *
+   * <input />
+   *
+   * 变成：
+   *
+   * <input data-mark-rxxx="..." />
+   */
+  if (/\/\s*$/.test(before)) {
+    return before.replace(/\s*\/\s*$/, ` ${attr} /`) + after;
+  }
+
+  /**
+   * 只有缩进和 >：
+   *
+   * >
+   *
+   * 变成：
+   *
+   * data-mark-rxxx="...">
+   */
+  if (before.trim() === "") {
+    return `${before}${attr}${after}`;
+  }
+
+  return before.replace(/\s*$/, "") + ` ${attr}` + after;
+}
+
+function buildDataMarkAttr(payload) {
+  const attrName = `data-mark-r${randomNumber8()}`;
+  const attrValue = escapeHtmlAttr(payload);
+  return `${attrName}="${attrValue}"`;
+}
+
+function hasTemplateElseAdjacencyRisk(lines, blocks, lineNo) {
+  const block = getBlockByLine(blocks, lineNo);
+
+  if (block.type !== "template") {
+    return false;
+  }
+
+  const next = findNextSignificantTemplateLine(lines, block, lineNo + 1);
+
+  if (!next) {
+    return false;
+  }
+
+  return startsWithVueElseDirective(next.text);
+}
+
+function hasTemplateCommentRisk(lines, blocks, lineNo) {
+  const block = getBlockByLine(blocks, lineNo);
+
+  if (block.type !== "template") {
+    return false;
+  }
+
+  const line = lines[lineNo - 1];
+  const trimmed = line.trim();
+
+  if (
+    /<Transition\b/i.test(trimmed) ||
+    /<transition\b/i.test(trimmed) ||
+    /<slot\b/i.test(trimmed) ||
+    /<template\b/i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  const next = findNextSignificantTemplateLine(lines, block, lineNo + 1);
+  if (next) {
+    const nextTrimmed = next.text;
+    if (
+      /<Transition\b/i.test(nextTrimmed) ||
+      /<transition\b/i.test(nextTrimmed) ||
+      /<slot\b/i.test(nextTrimmed) ||
+      /<template\b/i.test(nextTrimmed)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function findNextSignificantTemplateLine(lines, block, startLineNo) {
+  for (let lineNo = startLineNo; lineNo <= block.endLine; lineNo++) {
+    const text = lines[lineNo - 1].trim();
+
+    if (!text) {
+      continue;
+    }
+
+    /**
+     * 已有纯 HTML 注释不算有效内容。
+     */
+    if (/^<!--[\s\S]*-->$/.test(text)) {
+      continue;
+    }
+
+    return {
+      lineNo,
+      text
+    };
+  }
+
+  return null;
+}
+
+function startsWithVueElseDirective(text) {
+  const tag = findFirstEligibleCompleteOpenTag(text);
+
+  if (!tag) {
+    /**
+     * 处理多行 v-else 开始标签的第一行：
+     *
+     * <div
+     *   v-else
+     * >
+     *
+     * 这种第一行本身看不到 v-else，保守不判断。
+     */
+    return /^\s*<\s*[A-Za-z][A-Za-z0-9:_\-.]*\b[^>]*\bv-else(?:-if)?\b/i.test(text);
+  }
+
+  const openPart = text.slice(tag.startIndex, tag.endIndex + 1);
+  return /\bv-else(?:-if)?(?:\s|=|>|$)/i.test(openPart);
+}
+
+function appendCommentWithSpace(line, comment) {
+  const trailingWhitespaceMatch = line.match(/\s+$/);
+  const trailingWhitespace = trailingWhitespaceMatch ? trailingWhitespaceMatch[0] : "";
+  const body = trailingWhitespace ? line.slice(0, -trailingWhitespace.length) : line;
+
+  if (body.trim() === "") {
+    return line;
+  }
+
+  return `${body} ${comment}${trailingWhitespace}`;
+}
+
+/**
+ * script 打标策略：
+ *
+ * 1. 行尾 // 注释（默认）
+ * 2. 行尾 /* *\/ 注释（--mark-style block）
+ * 3. 随机选择 // 或 /* *\/（--mark-style random）
+ */
+function appendScriptMarkSafely(line, payload, options) {
+  if (isSpecialDirectiveLine(line)) {
+    return line;
+  }
+
+  if (isJsxLine(line)) {
+    return line;
+  }
+
+  const style = options.markStyle || "default";
+
+  if (style === "random") {
+    const useBlock = Math.random() > 0.5;
+    if (useBlock) {
+      return appendCommentWithSpace(line, `/*${payload}*/`);
+    }
+    return appendCommentWithSpace(line, `//${payload}`);
+  }
+
+  if (style === "block") {
+    return appendCommentWithSpace(line, `/*${payload}*/`);
+  }
+
+  return appendCommentWithSpace(line, `//${payload}`);
+}
+
+function isSpecialDirectiveLine(line) {
+  const trimmed = line.trim();
+  return (
+    trimmed.startsWith("/// <reference") ||
+    trimmed.startsWith("/// <amd-") ||
+    trimmed.startsWith("//# sourceMappingURL=") ||
+    trimmed.startsWith("//# sourceURL=")
+  );
+}
+
+function isJsxLine(line) {
+  let jsxDepth = 0;
+  let inString = null;
+  let escapeNext = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    const next = line[i + 1];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (inString) {
+      if (ch === "\\") {
+        escapeNext = true;
+        continue;
+      }
+      if (ch === inString) {
+        inString = null;
+      }
+      continue;
+    }
+
+    if (ch === '"' || ch === "'" || ch === "`") {
+      inString = ch;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      break;
+    }
+
+    if (ch === "<") {
+      if (/[A-Za-z]/.test(next)) {
+        jsxDepth++;
+      }
+      continue;
+    }
+
+    if (ch === ">" && jsxDepth > 0) {
+      jsxDepth--;
+    }
+  }
+
+  return jsxDepth > 0;
+}
+
+/**
+ * style 打标策略：
+ *
+ * 1. 行尾 /* *\/ 注释（默认）
+ * 2. 分号 + 注释（--mark-style semicolon，每行都加）
+ * 3. 随机分号 + 注释（--mark-style random-semicolon，50% 概率加分号）
+ */
+function appendStyleMarkSafely(line, payload, options) {
+  const style = options.markStyle || "default";
+
+  if (style === "random-semicolon") {
+    const trailingWhitespaceMatch = line.match(/\s+$/);
+    const trailingWhitespace = trailingWhitespaceMatch ? trailingWhitespaceMatch[0] : "";
+    const body = trailingWhitespace ? line.slice(0, -trailingWhitespace.length) : line;
+
+    if (body.trim() === "") {
+      return line;
+    }
+
+    const semicolonCount = Math.floor(Math.random() * 4);
+    
+    if (/;\s*$/.test(body) && semicolonCount > 0) {
+      const semicolons = ";".repeat(semicolonCount);
+      return `${body}${semicolons}/*${payload}*/${trailingWhitespace}`;
+    }
+
+    return appendCommentWithSpace(line, `/*${payload}*/`);
+  }
+
+  if (style === "semicolon") {
+    const trailingWhitespaceMatch = line.match(/\s+$/);
+    const trailingWhitespace = trailingWhitespaceMatch ? trailingWhitespaceMatch[0] : "";
+    const body = trailingWhitespace ? line.slice(0, -trailingWhitespace.length) : line;
+
+    if (body.trim() === "") {
+      return line;
+    }
+
+    if (/;\s*$/.test(body)) {
+      return `${body};/*${payload}*/${trailingWhitespace}`;
+    }
+
+    return appendCommentWithSpace(line, `/*${payload}*/`);
+  }
+
+  return appendCommentWithSpace(line, `/*${payload}*/`);
+}
+
+function escapeHtmlAttr(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * 收集 template 中不适合追加标记的行。
+ *
+ * 跳过：
+ * - 多行属性值内部
+ * - 多行 {{ }} 插值内部
+ * - 多行 <!-- --> HTML 注释内部
+ *
+ * 但不把"多行开始标签内部"本身视为 unsafe，
+ * 因为那里可以安全插 data-mark 属性。
+ */
+function collectTemplateUnsafeLines(lines, blocks) {
+  const unsafe = new Set();
+
+  for (const block of blocks.filter(b => b.type === "template" && isSupportedVueBlock(b))) {
+    const state = createTemplateScanState();
+
+    for (let lineNo = block.startLine; lineNo <= block.endLine; lineNo++) {
+      const startsUnsafe = Boolean(state.inQuote || state.inMustache || state.inHtmlComment);
+
+      scanTemplateLineForState(lines[lineNo - 1], state);
+
+      const endsUnsafe = Boolean(state.inQuote || state.inMustache || state.inHtmlComment);
+
+      if (startsUnsafe || endsUnsafe) {
+        unsafe.add(lineNo);
+      }
+    }
+  }
+
+  return unsafe;
+}
+
+/**
+ * 跳过 template 内部 raw text 标签区域。
+ *
+ * 主要避免这种罕见情况：
+ *
+ * <template>
+ *   <script>
+ *     const a = 1
+ *   </script>
+ * </template>
+ *
+ * 如果往里面加 HTML 注释，可能破坏嵌入脚本/样式/文本内容。
+ */
+function collectTemplateRawTextLines(lines, blocks) {
+  const unsafe = new Set();
+  const rawTagNames = ["script", "style", "textarea", "title"];
+
+  for (const block of blocks.filter(b => b.type === "template" && isSupportedVueBlock(b))) {
+    let rawTag = null;
+
+    for (let lineNo = block.startLine; lineNo <= block.endLine; lineNo++) {
+      const line = lines[lineNo - 1];
+
+      if (rawTag) {
+        unsafe.add(lineNo);
+
+        const closeRe = new RegExp(`<\\s*\\/\\s*${escapeRegExp(rawTag)}\\s*>`, "i");
+
+        if (closeRe.test(line)) {
+          rawTag = null;
+        }
+
+        continue;
+      }
+
+      for (const tagName of rawTagNames) {
+        const openRe = new RegExp(`<\\s*${escapeRegExp(tagName)}\\b`, "i");
+
+        if (openRe.test(line)) {
+          unsafe.add(lineNo);
+
+          const closeRe = new RegExp(`<\\s*\\/\\s*${escapeRegExp(tagName)}\\s*>`, "i");
+
+          if (!closeRe.test(line)) {
+            rawTag = tagName;
+          }
+
+          break;
+        }
+      }
+    }
+  }
+
+  return unsafe;
+}
+
+/**
+ * 收集 script 中不适合追加 // 注释的行。
+ *
+ * 保守跳过：
+ * - 多行块注释内部
+ * - 多行字符串内部
+ * - 模板字符串内部
+ */
+function collectScriptUnsafeLines(lines, blocks) {
+  const unsafe = new Set();
+
+  for (const block of blocks.filter(b => b.type === "script" && isSupportedVueBlock(b))) {
+    let inBlockComment = false;
+    let inString = null;
+    let escapeNext = false;
+
+    for (let lineNo = block.startLine; lineNo <= block.endLine; lineNo++) {
+      const line = lines[lineNo - 1];
+      const startsUnsafe = Boolean(inBlockComment || inString);
+
+      let i = 0;
+
+      while (i < line.length) {
+        const ch = line[i];
+        const next = line[i + 1];
+
+        if (escapeNext) {
+          escapeNext = false;
+          i++;
+          continue;
+        }
+
+        if (inString) {
+          if (ch === "\\") {
+            escapeNext = true;
+            i++;
+            continue;
+          }
+
+          if (ch === inString) {
+            inString = null;
+          }
+
+          i++;
+          continue;
+        }
+
+        if (inBlockComment) {
+          if (ch === "*" && next === "/") {
+            inBlockComment = false;
+            i += 2;
+            continue;
+          }
+
+          i++;
+          continue;
+        }
+
+        if (ch === "/" && next === "/") {
+          break;
+        }
+
+        if (ch === "/" && next === "*") {
+          inBlockComment = true;
+          i += 2;
+          continue;
+        }
+
+        if (ch === '"' || ch === "'" || ch === "`") {
+          inString = ch;
+          i++;
+          continue;
+        }
+
+        i++;
+      }
+
+      if (startsUnsafe || inBlockComment || inString) {
+        unsafe.add(lineNo);
+      }
+    }
+  }
+
+  return unsafe;
+}
+
+/**
+ * 收集 style 中不适合追加 CSS 块注释的行。
+ *
+ * 保守跳过：
+ * - 多行块注释内部
+ * - 多行字符串内部
+ * - 多行圆括号 () 内部（如 linear-gradient(、calc()、var() 等）
+ */
+function collectStyleUnsafeLines(lines, blocks) {
+  const unsafe = new Set();
+
+  for (const block of blocks.filter(b => b.type === "style" && isSupportedVueBlock(b))) {
+    let inBlockComment = false;
+    let inString = null;
+    let escapeNext = false;
+    let parenDepth = 0;
+
+    for (let lineNo = block.startLine; lineNo <= block.endLine; lineNo++) {
+      const line = lines[lineNo - 1];
+      const startsUnsafe = Boolean(inBlockComment || inString || parenDepth > 0);
+
+      let i = 0;
+
+      while (i < line.length) {
+        const ch = line[i];
+        const next = line[i + 1];
+
+        if (escapeNext) {
+          escapeNext = false;
+          i++;
+          continue;
+        }
+
+        if (inString) {
+          if (ch === "\\") {
+            escapeNext = true;
+            i++;
+            continue;
+          }
+          if (ch === inString) {
+            inString = null;
+          }
+          i++;
+          continue;
+        }
+
+        if (inBlockComment) {
+          if (ch === "*" && next === "/") {
+            inBlockComment = false;
+            i += 2;
+            continue;
+          }
+          i++;
+          continue;
+        }
+
+        // 不在字符串或注释内，追踪括号深度
+        if (ch === "(") { parenDepth++; i++; continue; }
+        if (ch === ")") { parenDepth = Math.max(0, parenDepth - 1); i++; continue; }
+
+        if (ch === "/" && next === "*") {
+          inBlockComment = true;
+          i += 2;
+          continue;
+        }
+
+        if (ch === '"' || ch === "'") {
+          inString = ch;
+          i++;
+          continue;
+        }
+
+        i++;
+      }
+
+      if (startsUnsafe || inBlockComment || inString || parenDepth > 0) {
+        unsafe.add(lineNo);
+      }
+    }
+  }
+
+  return unsafe;
+}
+
+function makeSafePayloadFileName(fileName) {
+  return String(fileName)
+    .replace(/\s+/g, "_")
+    .replace(/\|/g, "_")
+    .replace(/--+/g, "-")
+    .replace(/[<>"'&]/g, "_");
+}
+
+function randomNumber8() {
+  return crypto.randomInt(10000000, 100000000);
+}
+
+function clamp(num, min, max) {
+  return Math.max(min, Math.min(max, num));
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripBomAtFirstLine(line, index) {
+  if (index !== 0) {
+    return line;
+  }
+
+  return line.replace(/^\uFEFF/, "");
+}

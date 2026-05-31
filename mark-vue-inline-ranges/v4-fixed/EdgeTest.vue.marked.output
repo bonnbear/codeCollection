@@ -1,0 +1,202 @@
+<template>
+  <!-- L1: template open tag --> <!--EdgeTest.vue|range:1-175|random:83966963-->
+  <div class="container" data-mark-r10139425="EdgeTest.vue|range:1-175|random:83966963">
+    <!-- L3: normal div --> <!--EdgeTest.vue|range:1-175|random:83966963-->
+    <p data-mark-r26286218="EdgeTest.vue|range:1-175|random:83966963">Hello {{ name }}</p>
+
+    <!-- L5: mustache interpolation --> <!--EdgeTest.vue|range:1-175|random:83966963-->
+    <span>{{ message.length > 0
+      ? 'yes'
+      : 'no'
+    }}</span>
+
+    <!-- L10: multi-line HTML attribute value --> <!--EdgeTest.vue|range:1-175|random:83966963-->
+    <div :class="[
+      'foo',
+      'bar',
+      isActive ? 'active' : ''
+    ]">
+      inner text <!--EdgeTest.vue|range:1-175|random:83966963-->
+    </div> <!--EdgeTest.vue|range:1-175|random:83966963-->
+
+    <!-- L19: multi-line attribute continued --> <!--EdgeTest.vue|range:1-175|random:83966963-->
+    <input data-mark-r92726103="EdgeTest.vue|range:1-175|random:83966963"
+      type="text" data-mark-r96086571="EdgeTest.vue|range:1-175|random:83966963"
+      :value="val" data-mark-r65033695="EdgeTest.vue|range:1-175|random:83966963"
+      @click="handleClick" data-mark-r17605373="EdgeTest.vue|range:1-175|random:83966963"
+      placeholder="type here" data-mark-r91986157="EdgeTest.vue|range:1-175|random:83966963"
+ data-mark-r73895394="EdgeTest.vue|range:1-175|random:83966963" />
+
+    <!-- L27: normal element after multi-line attr --> <!--EdgeTest.vue|range:1-175|random:83966963-->
+    <button @click="submit" data-mark-r75624222="EdgeTest.vue|range:1-175|random:83966963">Submit</button>
+
+    <!-- L29: v-if / v-else adjacency risk --> <!--EdgeTest.vue|range:1-175|random:83966963-->
+    <div v-if="showA" data-mark-r33387611="EdgeTest.vue|range:1-175|random:83966963">Content A</div>
+    <!-- L31: v-else next line -->
+    <div v-else data-mark-r80133972="EdgeTest.vue|range:1-175|random:83966963">Content B</div>
+
+    <!-- L33: Transition component -->
+    <Transition name="fade" data-mark-r85181754="EdgeTest.vue|range:1-175|random:83966963">
+      <div key="a" v-if="ok" data-mark-r95322601="EdgeTest.vue|range:1-175|random:83966963">Fade</div>
+    </Transition>
+
+    <!-- L38: slot -->
+    <slot name="header" data-mark-r66954969="EdgeTest.vue|range:1-175|random:83966963">Default header</slot>
+
+    <!-- L40: nested template v-if -->
+    <template v-if="canShow">
+      <div data-mark-r94819446="EdgeTest.vue|range:1-175|random:83966963">Nested content</div>
+    </template> <!--EdgeTest.vue|range:1-175|random:83966963-->
+
+    <!-- L44: self-closing --> <!--EdgeTest.vue|range:1-175|random:83966963-->
+    <img src="/logo.png" alt="logo" data-mark-r91025357="EdgeTest.vue|range:1-175|random:83966963" />
+
+    <!-- L46: inline complete tag --> <!--EdgeTest.vue|range:1-175|random:83966963-->
+    <strong data-mark-r38090277="EdgeTest.vue|range:1-175|random:83966963">Bold text</strong>
+
+    <!-- L48: HTML comment inside template --> <!--EdgeTest.vue|range:1-175|random:83966963-->
+    <!-- this is an existing comment --> <!--EdgeTest.vue|range:1-175|random:83966963-->
+
+    <!-- L51: raw text area --> <!--EdgeTest.vue|range:1-175|random:83966963-->
+    <textarea>v-if should not parse this</textarea>
+
+    <!-- L53: multi-line HTML comment --> <!--EdgeTest.vue|range:1-175|random:83966963-->
+    <!--
+      This is a
+      multi-line comment
+      that spans several lines
+    -->
+
+    <!-- L60: after multi-line comment --> <!--EdgeTest.vue|range:1-175|random:83966963-->
+    <footer data-mark-r71365465="EdgeTest.vue|range:1-175|random:83966963">Footer</footer>
+  </div> <!--EdgeTest.vue|range:1-175|random:83966963-->
+</template>
+
+<script setup>
+// L65: script open tag /*EdgeTest.vue|range:1-175|random:83966963*/
+import { ref, computed } from 'vue' //EdgeTest.vue|range:1-175|random:83966963
+
+// L67: normal statement /*EdgeTest.vue|range:1-175|random:83966963*/
+const name = ref('World') /*EdgeTest.vue|range:1-175|random:83966963*/
+const message = ref('hello') /*EdgeTest.vue|range:1-175|random:83966963*/
+const isActive = ref(true) /*EdgeTest.vue|range:1-175|random:83966963*/
+const showA = ref(true) /*EdgeTest.vue|range:1-175|random:83966963*/
+const ok = ref(true) //EdgeTest.vue|range:1-175|random:83966963
+const canShow = ref(true) //EdgeTest.vue|range:1-175|random:83966963
+
+// L73: empty line below //EdgeTest.vue|range:1-175|random:83966963
+
+// L75: multi-line string /*EdgeTest.vue|range:1-175|random:83966963*/
+const longText = `This is a template
+  literal that spans
+  multiple lines
+  here`
+
+// L81: after template literal /*EdgeTest.vue|range:1-175|random:83966963*/
+const short = 'single' /*EdgeTest.vue|range:1-175|random:83966963*/
+
+/* L84: multi-line block comment start
+   this is inside
+   a block comment
+   should be skipped
+*/
+
+// L89: after block comment //EdgeTest.vue|range:1-175|random:83966963
+const x = 1 /*EdgeTest.vue|range:1-175|random:83966963*/
+
+/*
+ * Another block
+ * comment here
+ */
+
+// L96: after second block comment /*EdgeTest.vue|range:1-175|random:83966963*/
+const obj = { /*EdgeTest.vue|range:1-175|random:83966963*/
+  a: 1, //EdgeTest.vue|range:1-175|random:83966963
+  b: 2, //EdgeTest.vue|range:1-175|random:83966963
+  c: 3 /*EdgeTest.vue|range:1-175|random:83966963*/
+} //EdgeTest.vue|range:1-175|random:83966963
+
+// L103: after object /*EdgeTest.vue|range:1-175|random:83966963*/
+const arr = [ //EdgeTest.vue|range:1-175|random:83966963
+  'one', //EdgeTest.vue|range:1-175|random:83966963
+  'two', //EdgeTest.vue|range:1-175|random:83966963
+  'three' //EdgeTest.vue|range:1-175|random:83966963
+] //EdgeTest.vue|range:1-175|random:83966963
+
+// L110: after array //EdgeTest.vue|range:1-175|random:83966963
+
+/// <reference types="vite/client" />
+//# sourceMappingURL=app.js.map
+
+// L114: special directive lines above //EdgeTest.vue|range:1-175|random:83966963
+
+// L116: arrow function with JSX-like /*EdgeTest.vue|range:1-175|random:83966963*/
+const fn = () => { /*EdgeTest.vue|range:1-175|random:83966963*/
+  return null //EdgeTest.vue|range:1-175|random:83966963
+} //EdgeTest.vue|range:1-175|random:83966963
+
+// L120: destructuring //EdgeTest.vue|range:1-175|random:83966963
+const { foo, bar } = someObj //EdgeTest.vue|range:1-175|random:83966963
+const [first, ...rest] = items /*EdgeTest.vue|range:1-175|random:83966963*/
+
+// L124: import/export /*EdgeTest.vue|range:1-175|random:83966963*/
+export default { //EdgeTest.vue|range:1-175|random:83966963
+  name: 'EdgeTest' //EdgeTest.vue|range:1-175|random:83966963
+} /*EdgeTest.vue|range:1-175|random:83966963*/
+
+// L129: already marked line /*EdgeTest.vue|range:1-175|random:83966963*/
+const existing = 42 //EdgeTest.vue|range:99-100|random:12345678
+
+// L131: already data-marked --> //EdgeTest.vue|range:1-175|random:83966963
+</script>
+
+<style scoped>
+/* L135: style open tag */ /*EdgeTest.vue|range:1-175|random:83966963*/
+.container { /*EdgeTest.vue|range:1-175|random:83966963*/
+  padding: 16px; /*EdgeTest.vue|range:1-175|random:83966963*/
+  color: #333; /*EdgeTest.vue|range:1-175|random:83966963*/
+} /*EdgeTest.vue|range:1-175|random:83966963*/
+
+/* L140: normal rule */ /*EdgeTest.vue|range:1-175|random:83966963*/
+p { /*EdgeTest.vue|range:1-175|random:83966963*/
+  margin: 8px 0; /*EdgeTest.vue|range:1-175|random:83966963*/
+} /*EdgeTest.vue|range:1-175|random:83966963*/
+
+/* L144: multi-line value */ /*EdgeTest.vue|range:1-175|random:83966963*/
+.button { /*EdgeTest.vue|range:1-175|random:83966963*/
+  background: linear-gradient(
+    to bottom,
+    #fff,
+    #000
+  );
+  border-radius: 4px; /*EdgeTest.vue|range:1-175|random:83966963*/
+} /*EdgeTest.vue|range:1-175|random:83966963*/
+
+/* L153: after multi-line value */ /*EdgeTest.vue|range:1-175|random:83966963*/
+span {
+  font-weight: bold;
+}
+
+/*
+ * Multi-line CSS
+ * comment block
+ * skip these
+ */
+
+/* L163: after css block comment */
+.footer {
+  border-top: 1px solid #eee;
+}
+
+/* L167: already CSS marked */
+h1 { color: red; } /*EdgeTest.vue|range:167-168|random:87654321*/
+</style>
+
+<!-- L171: custom i18n block below -->
+<i18n lang="json">
+{
+  "en": {
+    "hello": "Hello"
+  }
+}
+</i18n>
