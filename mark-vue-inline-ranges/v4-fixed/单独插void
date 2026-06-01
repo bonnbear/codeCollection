@@ -1,0 +1,956 @@
+#!/usr/bin/env node
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+
+const options = parseCliArgs(process.argv.slice(2));
+
+if (!options.inputFile) {
+  console.error("用法: node mark-vue-script-ranges.js ranges.json");
+  console.error("");
+  console.error("可选参数:");
+  console.error("  --dry-run    只预览，不写入文件");
+  console.error("  --backup     写入前生成 .bak 备份");
+  process.exit(1);
+}
+
+let rangeMap;
+
+try {
+  rangeMap = JSON.parse(fs.readFileSync(options.inputFile, "utf8"));
+} catch (error) {
+  console.error(`[错误] 读取或解析 JSON 失败: ${options.inputFile}`);
+  console.error(error.message);
+  process.exit(1);
+}
+
+if (!rangeMap || typeof rangeMap !== "object" || Array.isArray(rangeMap)) {
+  console.error("[错误] ranges.json 顶层必须是对象，例如：");
+  console.error(JSON.stringify({ "src/App.vue": [[1, 10]] }, null, 2));
+  process.exit(1);
+}
+
+for (const [filePath, rawRanges] of Object.entries(rangeMap)) {
+  processVueFile(filePath, rawRanges, options);
+}
+
+function parseCliArgs(args) {
+  const options = {
+    inputFile: null,
+    dryRun: false,
+    backup: false
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+
+    if (arg === "--backup") {
+      options.backup = true;
+      continue;
+    }
+
+    if (!options.inputFile) {
+      options.inputFile = arg;
+      continue;
+    }
+
+    console.warn(`[警告] 忽略未知参数: ${arg}`);
+  }
+
+  return options;
+}
+
+function processVueFile(filePath, rawRanges, options) {
+  if (!fs.existsSync(filePath)) {
+    console.warn(`[跳过] 文件不存在: ${filePath}`);
+    return;
+  }
+
+  if (!filePath.endsWith(".vue")) {
+    console.warn(`[跳过] 不是 vue 文件: ${filePath}`);
+    return;
+  }
+
+  const content = fs.readFileSync(filePath, "utf8");
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+  const lines = content.split(/\r?\n/);
+
+  const rawRangeList = normalizeRawRanges(rawRanges);
+
+  const ranges = rawRangeList
+    .map(parseRange)
+    .filter(Boolean)
+    .map(([start, end]) => ({
+      start: Math.min(Number(start), Number(end)),
+      end: Math.max(Number(start), Number(end))
+    }))
+    .filter(r => Number.isInteger(r.start) && Number.isInteger(r.end))
+    .filter(r => r.start >= 1 && r.end >= 1 && r.start <= lines.length);
+
+  if (!ranges.length) {
+    console.warn(`[跳过] 没有有效 range: ${filePath}`);
+    return;
+  }
+
+  const blocks = detectVueBlocks(lines);
+  const scriptBlocks = blocks.filter(block => block.type === "script" && isSupportedScriptBlock(block));
+
+  if (!scriptBlocks.length) {
+    console.warn(`[跳过] 没有可处理的 script 块: ${filePath}`);
+    return;
+  }
+
+  const scriptActions = [];
+  const usedScriptAnchors = new Set();
+
+  for (const range of ranges) {
+    const startLine = clamp(range.start, 1, lines.length);
+    const endLine = clamp(range.end, 1, lines.length);
+
+    const fileName = makeSafePayloadFileName(path.basename(filePath));
+    const rangeText = `${startLine}-${endLine}`;
+    const rangeRandom = randomNumber8();
+    const payload = `${fileName}|range:${rangeText}|random:${rangeRandom}`;
+
+    const currentScriptActions = collectScriptActionsForRange(
+      lines,
+      scriptBlocks,
+      startLine,
+      endLine,
+      payload,
+      usedScriptAnchors
+    );
+
+    for (const action of currentScriptActions) {
+      scriptActions.push(action);
+    }
+  }
+
+  const appliedScriptActions = [];
+  let changedScriptCount = 0;
+
+  const insertScriptActions = scriptActions
+    .filter(action => action.type === "insertAfter")
+    .sort((a, b) => b.afterLineNo - a.afterLineNo);
+
+  for (const action of insertScriptActions) {
+    const insertIndex = action.afterLineNo;
+
+    if (insertIndex < 0 || insertIndex > lines.length) continue;
+
+    const nearbyStart = Math.max(1, action.afterLineNo - 2);
+    const nearbyEnd = Math.min(lines.length, action.afterLineNo + 3);
+
+    if (hasExistingScriptMarkInRange(lines, nearbyStart, nearbyEnd)) continue;
+
+    lines.splice(insertIndex, 0, action.text);
+
+    changedScriptCount++;
+
+    appliedScriptActions.push({
+      type: "insertAfter",
+      lineNo: action.afterLineNo,
+      result: action.text.trim().slice(0, 160)
+    });
+  }
+
+  if (changedScriptCount || options.dryRun) {
+    console.log("\n" + "=".repeat(78));
+    console.log("SCRIPT 单独处理报告 — " + filePath);
+    console.log("=".repeat(78));
+
+    console.log(`\n  script void 插入数: ${changedScriptCount}`);
+    console.log("  规则: range 内每 3 行尝试插入 void \"文件名|range:start-end|random:随机数字\";");
+    console.log("  范围: 只处理 <script> / <script setup>，不处理 template/style");
+
+    if (appliedScriptActions.length) {
+      console.log(`\n${"─".repeat(72)}`);
+      console.log(`【SCRIPT 修改】 (${appliedScriptActions.length} 插入 void 标记)`);
+      console.log(`${"─".repeat(72)}`);
+
+      for (const action of appliedScriptActions.sort((a, b) => a.lineNo - b.lineNo)) {
+        console.log(`  L${String(action.lineNo).padStart(3)} ✅ 插入 void 标记 → ${action.result}`);
+      }
+    } else {
+      console.log("\n没有找到安全可插入位置，未修改 script。");
+    }
+
+    if (options.dryRun) {
+      console.log(`\n${"=".repeat(78)}`);
+      console.log("预览处理后的文件:");
+      console.log("=".repeat(78));
+      console.log(lines.join("\n"));
+    }
+  }
+
+  if (!changedScriptCount) {
+    return;
+  }
+
+  if (options.dryRun) {
+    console.log(`\n[预览] ${filePath}，script void 插入 ${changedScriptCount} 个，未写入`);
+    return;
+  }
+
+  if (options.backup) {
+    const backupPath = `${filePath}.bak`;
+    fs.writeFileSync(backupPath, content, "utf8");
+    console.log(`[备份] ${backupPath}`);
+  }
+
+  fs.writeFileSync(filePath, lines.join(newline), "utf8");
+  console.log(`[完成] ${filePath}，script void 插入 ${changedScriptCount} 个`);
+}
+
+function normalizeRawRanges(rawRanges) {
+  if (Array.isArray(rawRanges)) return rawRanges;
+
+  if (
+    typeof rawRanges === "number" ||
+    typeof rawRanges === "string" ||
+    (rawRanges && typeof rawRanges === "object")
+  ) {
+    return [rawRanges];
+  }
+
+  return [];
+}
+
+function parseRange(item) {
+  if (typeof item === "number") return [item, item];
+
+  if (Array.isArray(item) && item.length >= 2) {
+    return [Number(item[0]), Number(item[1])];
+  }
+
+  if (item && typeof item === "object") {
+    const start = item.start ?? item.begin ?? item.from ?? item.line;
+    const end = item.end ?? item.to ?? item.line ?? start;
+
+    if (start != null && end != null) {
+      return [Number(start), Number(end)];
+    }
+  }
+
+  if (typeof item === "string") {
+    const normalized = item
+      .replace(/（/g, "(")
+      .replace(/）/g, ")")
+      .replace(/，/g, ",")
+      .replace(/【/g, "[")
+      .replace(/】/g, "]")
+      .replace(/－/g, "-")
+      .replace(/—/g, "-")
+      .replace(/～/g, "~");
+
+    const pairMatch = normalized.match(/(\d+)\s*(?:,|-|~|:)\s*(\d+)/);
+
+    if (pairMatch) return [Number(pairMatch[1]), Number(pairMatch[2])];
+
+    const singleMatch = normalized.match(/^\s*(\d+)\s*$/);
+
+    if (singleMatch) {
+      const line = Number(singleMatch[1]);
+      return [line, line];
+    }
+  }
+
+  console.warn(`[警告] 无法解析 range: ${JSON.stringify(item)}`);
+  return null;
+}
+
+function detectVueBlocks(lines) {
+  const blocks = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const lineForMatch = stripBomAtFirstLine(lines[i], i);
+    const openMatch = lineForMatch.match(/^\s*<\s*([A-Za-z][A-Za-z0-9:_-]*)\b/i);
+
+    if (!openMatch) {
+      i++;
+      continue;
+    }
+
+    const type = openMatch[1].toLowerCase();
+    const openLine = i + 1;
+    const openEnd = findRootOpenTagEnd(lines, i);
+
+    if (!openEnd) {
+      blocks.push({
+        type,
+        lang: null,
+        hasSrc: false,
+        openLine,
+        openEndLine: openLine,
+        startLine: openLine + 1,
+        endLine: lines.length,
+        closeLine: null,
+        openTagText: lines[i]
+      });
+      break;
+    }
+
+    const openEndLine = openEnd.index + 1;
+    const openTagText = lines.slice(i, openEnd.index + 1).join("\n");
+    const lang = normalizeLang(extractAttr(openTagText, "lang"));
+    const hasSrc = extractAttr(openTagText, "src") != null;
+    const selfClosing = isSelfClosingRootOpenTag(openTagText);
+
+    let closeIndex = null;
+
+    if (selfClosing) {
+      closeIndex = openEnd.index;
+    } else {
+      const closeInfo = findRootCloseTag(lines, type, openEnd.index, openEnd.column);
+      closeIndex = closeInfo ? closeInfo.index : null;
+    }
+
+    const closeLine = closeIndex != null ? closeIndex + 1 : null;
+    const startLine = openEndLine + 1;
+    const endLine = closeIndex != null ? closeIndex : lines.length;
+
+    blocks.push({
+      type,
+      lang,
+      hasSrc,
+      openLine,
+      openEndLine,
+      startLine,
+      endLine,
+      closeLine,
+      openTagText
+    });
+
+    if (closeIndex != null) {
+      i = closeIndex + 1;
+    } else {
+      break;
+    }
+  }
+
+  return blocks;
+}
+
+function findRootOpenTagEnd(lines, startIndex) {
+  let inQuote = null;
+
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i];
+
+    for (let column = 0; column < line.length; column++) {
+      const ch = line[column];
+
+      if (inQuote) {
+        if (ch === inQuote) inQuote = null;
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        inQuote = ch;
+        continue;
+      }
+
+      if (ch === ">") {
+        return { index: i, column };
+      }
+    }
+  }
+
+  return null;
+}
+
+function findRootCloseTag(lines, type, openEndIndex, openEndColumn) {
+  const sameLineRest = lines[openEndIndex].slice(openEndColumn + 1);
+  const inlineCloseRe = new RegExp(`<\\s*\\/\\s*${escapeRegExp(type)}\\s*>`, "i");
+
+  if (inlineCloseRe.test(sameLineRest)) {
+    return { index: openEndIndex };
+  }
+
+  const closeLineRe = new RegExp(`^\\s*<\\s*\\/\\s*${escapeRegExp(type)}\\s*>\\s*$`, "i");
+
+  for (let i = openEndIndex + 1; i < lines.length; i++) {
+    if (closeLineRe.test(stripBomAtFirstLine(lines[i], i))) {
+      return { index: i };
+    }
+  }
+
+  return null;
+}
+
+function isSelfClosingRootOpenTag(openTagText) {
+  return /\/\s*>\s*$/.test(openTagText);
+}
+
+function extractAttr(tagText, attrName) {
+  const re = new RegExp(
+    "\\b" +
+      escapeRegExp(attrName) +
+      "\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'=<>`]+))",
+    "i"
+  );
+
+  const match = tagText.match(re);
+
+  if (!match) return null;
+
+  return match[1] ?? match[2] ?? match[3] ?? null;
+}
+
+function normalizeLang(lang) {
+  if (lang == null) return null;
+  return String(lang).trim().toLowerCase();
+}
+
+function isSupportedScriptBlock(block) {
+  if (!block) return false;
+  if (block.type !== "script") return false;
+  if (block.hasSrc) return false;
+
+  return (
+    block.lang == null ||
+    block.lang === "" ||
+    block.lang === "js" ||
+    block.lang === "ts" ||
+    block.lang === "javascript" ||
+    block.lang === "typescript"
+  );
+}
+
+function collectScriptActionsForRange(lines, scriptBlocks, startLine, endLine, payload, usedAnchors) {
+  const actions = [];
+
+  for (const block of scriptBlocks) {
+    const overlapStart = Math.max(startLine, block.startLine);
+    const overlapEnd = Math.min(endLine, block.endLine);
+
+    if (overlapStart > overlapEnd) continue;
+
+    for (let bucketStart = overlapStart; bucketStart <= overlapEnd; bucketStart += 3) {
+      const bucketEnd = Math.min(bucketStart + 2, overlapEnd);
+
+      if (hasExistingScriptMarkInRange(lines, bucketStart, bucketEnd)) continue;
+
+      const anchor = findSafeScriptAnchor(lines, block, bucketStart, bucketEnd, usedAnchors);
+
+      if (!anchor) continue;
+
+      const anchorKey = `${block.openLine}:insertAfter:${anchor.lineNo}`;
+
+      if (usedAnchors.has(anchorKey)) continue;
+
+      usedAnchors.add(anchorKey);
+
+      const indent = getScriptInsertionIndent(lines, anchor.lineNo);
+      const value = JSON.stringify(payload);
+
+      actions.push({
+        type: "insertAfter",
+        afterLineNo: anchor.lineNo,
+        text: `${indent}void ${value};`,
+        payload
+      });
+    }
+  }
+
+  return actions;
+}
+
+function findSafeScriptAnchor(lines, block, bucketStart, bucketEnd, usedAnchors) {
+  const state = createScriptScanState();
+
+  for (let lineNo = block.startLine; lineNo <= block.endLine; lineNo++) {
+    const line = lines[lineNo - 1];
+    const before = cloneScriptScanState(state);
+
+    scanScriptLineForState(line, state);
+
+    if (lineNo < bucketStart || lineNo > bucketEnd) continue;
+
+    if (usedAnchors.has(`${block.openLine}:insertAfter:${lineNo}`)) continue;
+    if (alreadyMarked(line)) continue;
+
+    const after = cloneScriptScanState(state);
+
+    if (isSafeScriptAnchorLine(line, before, after, lines, block, lineNo)) {
+      return {
+        type: "insertAfter",
+        lineNo
+      };
+    }
+  }
+
+  return null;
+}
+
+function createScriptScanState() {
+  return {
+    inBlockComment: false,
+    inString: null,
+    inTemplateString: false,
+    templateExprDepth: 0,
+    escapeNext: false,
+    parenDepth: 0,
+    bracketDepth: 0,
+    braceDepth: 0,
+    classDepthStack: [],
+    pendingClass: false,
+    pendingImport: false,
+    pendingExport: false
+  };
+}
+
+function cloneScriptScanState(state) {
+  return {
+    inBlockComment: state.inBlockComment,
+    inString: state.inString,
+    inTemplateString: state.inTemplateString,
+    templateExprDepth: state.templateExprDepth,
+    escapeNext: state.escapeNext,
+    parenDepth: state.parenDepth,
+    bracketDepth: state.bracketDepth,
+    braceDepth: state.braceDepth,
+    classDepthStack: state.classDepthStack.slice(),
+    pendingClass: state.pendingClass,
+    pendingImport: state.pendingImport,
+    pendingExport: state.pendingExport
+  };
+}
+
+function scanScriptLineForState(line, state) {
+  let i = 0;
+
+  while (i < line.length) {
+    const ch = line[i];
+    const next = line[i + 1];
+
+    if (state.escapeNext) {
+      state.escapeNext = false;
+      i++;
+      continue;
+    }
+
+    if (state.inBlockComment) {
+      if (ch === "*" && next === "/") {
+        state.inBlockComment = false;
+        i += 2;
+        continue;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (state.inString) {
+      if (ch === "\\") {
+        state.escapeNext = true;
+        i++;
+        continue;
+      }
+
+      if (ch === state.inString) {
+        state.inString = null;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (state.inTemplateString) {
+      if (ch === "\\") {
+        state.escapeNext = true;
+        i++;
+        continue;
+      }
+
+      if (state.templateExprDepth === 0 && ch === "`") {
+        state.inTemplateString = false;
+        i++;
+        continue;
+      }
+
+      if (ch === "$" && next === "{") {
+        state.templateExprDepth++;
+        state.braceDepth++;
+        i += 2;
+        continue;
+      }
+
+      if (state.templateExprDepth === 0) {
+        i++;
+        continue;
+      }
+    }
+
+    if (ch === "/" && next === "/") {
+      break;
+    }
+
+    if (ch === "/" && next === "*") {
+      state.inBlockComment = true;
+      i += 2;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      state.inString = ch;
+      i++;
+      continue;
+    }
+
+    if (ch === "`") {
+      state.inTemplateString = true;
+      state.templateExprDepth = 0;
+      i++;
+      continue;
+    }
+
+    if (/[A-Za-z_$]/.test(ch)) {
+      let token = ch;
+      i++;
+
+      while (i < line.length && /[A-Za-z0-9_$]/.test(line[i])) {
+        token += line[i];
+        i++;
+      }
+
+      if (token === "class") {
+        state.pendingClass = true;
+      }
+
+      if (token === "import") {
+        state.pendingImport = true;
+      }
+
+      if (token === "export") {
+        state.pendingExport = true;
+      }
+
+      continue;
+    }
+
+    if (ch === "(") {
+      state.parenDepth++;
+      i++;
+      continue;
+    }
+
+    if (ch === ")") {
+      state.parenDepth = Math.max(0, state.parenDepth - 1);
+      i++;
+      continue;
+    }
+
+    if (ch === "[") {
+      state.bracketDepth++;
+      i++;
+      continue;
+    }
+
+    if (ch === "]") {
+      state.bracketDepth = Math.max(0, state.bracketDepth - 1);
+      i++;
+      continue;
+    }
+
+    if (ch === "{") {
+      state.braceDepth++;
+
+      if (state.pendingClass) {
+        state.classDepthStack.push(state.braceDepth);
+        state.pendingClass = false;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (ch === "}") {
+      if (state.templateExprDepth > 0) {
+        state.templateExprDepth = Math.max(0, state.templateExprDepth - 1);
+      }
+
+      while (
+        state.classDepthStack.length &&
+        state.classDepthStack[state.classDepthStack.length - 1] >= state.braceDepth
+      ) {
+        state.classDepthStack.pop();
+      }
+
+      state.braceDepth = Math.max(0, state.braceDepth - 1);
+      i++;
+      continue;
+    }
+
+    if (ch === ";") {
+      state.pendingImport = false;
+      state.pendingExport = false;
+      i++;
+      continue;
+    }
+
+    i++;
+  }
+
+  return state;
+}
+
+function isSafeScriptAnchorLine(line, before, after, lines, block, lineNo) {
+  const trimmed = line.trim();
+
+  if (!trimmed) return false;
+  if (alreadyMarked(line)) return false;
+
+  if (before.inBlockComment || before.inString || before.inTemplateString) return false;
+  if (after.inBlockComment || after.inString || after.inTemplateString) return false;
+
+  if (before.parenDepth !== 0 || before.bracketDepth !== 0) return false;
+  if (after.parenDepth !== 0 || after.bracketDepth !== 0) return false;
+
+  if (before.classDepthStack.length || after.classDepthStack.length) return false;
+
+  if (isInsideMultilineImport(lines, block, lineNo)) return false;
+  if (isUnsafeScriptLineEnding(trimmed)) return false;
+  if (isUnsafeScriptLineBeginning(trimmed)) return false;
+  if (isScriptDirectiveLine(trimmed)) return false;
+  if (isOnlyCommentLine(trimmed)) return false;
+
+  if (looksLikeOpenObjectOrArrayContinuation(trimmed)) return false;
+  if (looksLikeControlHeaderWithoutBody(trimmed)) return false;
+
+  const next = findNextSignificantScriptLine(lines, block, lineNo + 1);
+
+  if (next && isUnsafeNextScriptLineAfterInsertion(next.text)) {
+    return false;
+  }
+
+  return true;
+}
+
+function isInsideMultilineImport(lines, block, lineNo) {
+  let start = lineNo;
+
+  while (start >= block.startLine) {
+    const text = stripLineCommentForScript(lines[start - 1]).trim();
+
+    if (!text) {
+      start--;
+      continue;
+    }
+
+    if (/^\s*import\b/.test(text)) {
+      for (let i = start; i <= lineNo; i++) {
+        const t = stripLineCommentForScript(lines[i - 1]).trim();
+
+        if (
+          /from\s+["'][^"']+["']\s*;?$/.test(t) ||
+          /^import\s+["'][^"']+["']\s*;?$/.test(t)
+        ) {
+          return i >= lineNo;
+        }
+      }
+
+      return true;
+    }
+
+    if (/[;{}]\s*$/.test(text)) {
+      return false;
+    }
+
+    start--;
+  }
+
+  return false;
+}
+
+function isUnsafeScriptLineEnding(trimmed) {
+  if (/[\\.]$/.test(trimmed)) return true;
+  if (/[,+\-*\/%&|^?:=<>!]$/.test(trimmed)) return true;
+  if (/\b(return|throw|yield|await|case|delete|void|typeof|instanceof|in|of|new)\s*$/.test(trimmed)) return true;
+  if (/=>\s*$/.test(trimmed)) return true;
+  if (/\(\s*$/.test(trimmed)) return true;
+  if (/\[\s*$/.test(trimmed)) return true;
+
+  if (
+    /\{\s*$/.test(trimmed) &&
+    !/\b(function|if|for|while|switch|try|catch|finally|else|do|class)\b/.test(trimmed)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function isUnsafeScriptLineBeginning(trimmed) {
+  if (/^[)\]}]/.test(trimmed)) return true;
+  if (/^(else|catch|finally)\b/.test(trimmed)) return true;
+  if (/^[?:,.;]/.test(trimmed)) return true;
+
+  return false;
+}
+
+function isScriptDirectiveLine(trimmed) {
+  return /^["']use\s+\w+["'];?$/.test(trimmed);
+}
+
+function isOnlyCommentLine(trimmed) {
+  return /^\/\//.test(trimmed) || /^\/\*/.test(trimmed) || /^\*/.test(trimmed);
+}
+
+function looksLikeOpenObjectOrArrayContinuation(trimmed) {
+  if (/[:=]\s*[{[]\s*$/.test(trimmed)) return true;
+  if (/return\s+[{[]\s*$/.test(trimmed)) return true;
+  if (/=>\s*[{[]\s*$/.test(trimmed)) return true;
+
+  return false;
+}
+
+function looksLikeControlHeaderWithoutBody(trimmed) {
+  if (/^\s*(if|for|while|switch|catch|with)\s*\([^)]*\)\s*$/.test(trimmed)) return true;
+  if (/^\s*else\s*$/.test(trimmed)) return true;
+  if (/^\s*do\s*$/.test(trimmed)) return true;
+
+  return false;
+}
+
+function findNextSignificantScriptLine(lines, block, startLineNo) {
+  for (let lineNo = startLineNo; lineNo <= block.endLine; lineNo++) {
+    const text = lines[lineNo - 1].trim();
+
+    if (!text) continue;
+    if (/^\/\//.test(text)) continue;
+    if (/^\/\*/.test(text)) continue;
+    if (/^\*/.test(text)) continue;
+
+    return { lineNo, text };
+  }
+
+  return null;
+}
+
+function isUnsafeNextScriptLineAfterInsertion(text) {
+  const trimmed = text.trim();
+
+  if (/^(else|catch|finally)\b/.test(trimmed)) return true;
+  if (/^[)\]}]/.test(trimmed)) return true;
+  if (/^[?:,.;]/.test(trimmed)) return true;
+  if (/^\.(?:\w|\[|\()/.test(trimmed)) return true;
+
+  return false;
+}
+
+function stripLineCommentForScript(line) {
+  let inString = null;
+  let inTemplate = false;
+  let escapeNext = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    const next = line[i + 1];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escapeNext = true;
+      continue;
+    }
+
+    if (inString) {
+      if (ch === inString) inString = null;
+      continue;
+    }
+
+    if (inTemplate) {
+      if (ch === "`") inTemplate = false;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inString = ch;
+      continue;
+    }
+
+    if (ch === "`") {
+      inTemplate = true;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      return line.slice(0, i);
+    }
+  }
+
+  return line;
+}
+
+function hasExistingScriptMarkInRange(lines, startLine, endLine) {
+  const start = clamp(startLine, 1, lines.length);
+  const end = clamp(endLine, 1, lines.length);
+
+  for (let lineNo = start; lineNo <= end; lineNo++) {
+    const line = lines[lineNo - 1];
+
+    if (
+      /\b__mark_r\d+\b/.test(line) ||
+      /range:\d+-\d+(?:\s+|\|)random:\d+/.test(line) ||
+      hasVoidScriptMark(line)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasVoidScriptMark(line) {
+  return /\bvoid\s*(?:\(\s*)?["'][^"']*\|range:\d+-\d+\|random:\d+["'](?:\s*\))?\s*;?/.test(line);
+}
+
+function alreadyMarked(line) {
+  return (
+    /range:\d+-\d+(?:\s+|\|)random:\d+/.test(line) ||
+    /\b__mark_r\d+\b/.test(line) ||
+    hasVoidScriptMark(line)
+  );
+}
+
+function getScriptInsertionIndent(lines, anchorLineNo) {
+  const line = lines[anchorLineNo - 1] || "";
+  return line.match(/^\s*/)[0];
+}
+
+function makeSafePayloadFileName(fileName) {
+  return String(fileName)
+    .replace(/\s+/g, "_")
+    .replace(/\|/g, "_")
+    .replace(/--+/g, "-")
+    .replace(/[<>"'&]/g, "_");
+}
+
+function randomNumber8() {
+  return crypto.randomInt(10000000, 100000000);
+}
+
+function clamp(num, min, max) {
+  return Math.max(min, Math.min(max, num));
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripBomAtFirstLine(line, index) {
+  if (index !== 0) return line;
+  return line.replace(/^\uFEFF/, "");
+}
