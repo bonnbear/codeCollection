@@ -1,0 +1,963 @@
+#!/usr/bin/env node
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+
+const options = parseCliArgs(process.argv.slice(2));
+
+if (!options.inputFile) {
+  console.error("用法: node swap-object-properties.js input.json");
+  console.error("");
+  console.error("input.json 支持：");
+  console.error("  1. 数组: [\"src/a.js\", \"src/App.vue\"]");
+  console.error("  2. 对象: {\"src/a.js\": true, \"src/App.vue\": true}");
+  console.error("");
+  console.error("可选参数:");
+  console.error("  --dry-run    只预览，不写入文件");
+  console.error("  --backup     写入前生成 .bak 备份");
+  process.exit(1);
+}
+
+let inputData;
+
+try {
+  inputData = JSON.parse(fs.readFileSync(options.inputFile, "utf8"));
+} catch (error) {
+  console.error(`[错误] 读取或解析 JSON 失败: ${options.inputFile}`);
+  console.error(error.message);
+  process.exit(1);
+}
+
+const filePaths = normalizeInputFiles(inputData);
+
+if (!filePaths.length) {
+  console.error("[错误] input.json 中没有可处理的文件路径。");
+  process.exit(1);
+}
+
+for (const filePath of filePaths) {
+  processFile(filePath, options);
+}
+
+function parseCliArgs(args) {
+  const options = {
+    inputFile: null,
+    dryRun: false,
+    backup: false
+  };
+
+  for (const arg of args) {
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+
+    if (arg === "--backup") {
+      options.backup = true;
+      continue;
+    }
+
+    if (!options.inputFile) {
+      options.inputFile = arg;
+      continue;
+    }
+
+    console.warn(`[警告] 忽略未知参数: ${arg}`);
+  }
+
+  return options;
+}
+
+function normalizeInputFiles(inputData) {
+  if (Array.isArray(inputData)) {
+    return inputData
+      .map(item => {
+        if (typeof item === "string") return item;
+
+        if (item && typeof item === "object") {
+          return item.file || item.filePath || item.path || null;
+        }
+
+        return null;
+      })
+      .filter(Boolean)
+      .map(String);
+  }
+
+  if (inputData && typeof inputData === "object") {
+    return Object.keys(inputData).map(String);
+  }
+
+  return [];
+}
+
+function processFile(filePath, options) {
+  if (!fs.existsSync(filePath)) {
+    console.warn(`[跳过] 文件不存在: ${filePath}`);
+    return;
+  }
+
+  const ext = path.extname(filePath).toLowerCase();
+
+  if (ext !== ".js" && ext !== ".vue") {
+    console.warn(`[跳过] 不支持的文件类型: ${filePath}`);
+    return;
+  }
+
+  const content = fs.readFileSync(filePath, "utf8");
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+
+  let result;
+
+  if (ext === ".vue") {
+    result = transformVueFile(content);
+  } else {
+    result = transformJsCode(content);
+  }
+
+  if (!result.changed) {
+    console.log(`[无变化] ${filePath}`);
+    return;
+  }
+
+  if (options.dryRun) {
+    console.log("\n" + "=".repeat(80));
+    console.log(`[预览] ${filePath}`);
+    console.log("=".repeat(80));
+    console.log(normalizeNewline(result.code, newline));
+    console.log(`[预览完成] ${filePath}，随机相邻交换 ${result.count} 处，未写入`);
+    return;
+  }
+
+  if (options.backup) {
+    fs.writeFileSync(`${filePath}.bak`, content, "utf8");
+    console.log(`[备份] ${filePath}.bak`);
+  }
+
+  fs.writeFileSync(filePath, normalizeNewline(result.code, newline), "utf8");
+  console.log(`[完成] ${filePath}，随机相邻交换 ${result.count} 处`);
+}
+
+function transformVueFile(content) {
+  let changed = false;
+  let count = 0;
+
+  const code = content.replace(
+    /<script\b([^>]*)>([\s\S]*?)<\/script>/gi,
+    (full, attrs, scriptCode) => {
+      if (/\bsrc\s*=/.test(attrs)) return full;
+
+      const langMatch = attrs.match(/\blang\s*=\s*["']([^"']+)["']/i);
+      const lang = langMatch ? langMatch[1].toLowerCase() : "";
+
+      if (lang && lang !== "js" && lang !== "javascript") {
+        return full;
+      }
+
+      const result = transformJsCode(scriptCode);
+
+      if (!result.changed) return full;
+
+      changed = true;
+      count += result.count;
+
+      return `<script${attrs}>${result.code}</script>`;
+    }
+  );
+
+  return {
+    code,
+    changed,
+    count
+  };
+}
+
+function transformJsCode(code) {
+  const objects = findObjectLiterals(code);
+
+  let changed = false;
+  let count = 0;
+
+  for (let i = objects.length - 1; i >= 0; i--) {
+    const obj = objects[i];
+
+    const innerStart = obj.start + 1;
+    const innerEnd = obj.end;
+
+    const inner = code.slice(innerStart, innerEnd);
+    const props = splitTopLevelObjectProperties(inner, innerStart);
+
+    if (props.length < 2) continue;
+    if (hasDuplicateKeys(props)) continue;
+
+    const pair = findSafeSwappablePair(props);
+
+    if (!pair) continue;
+
+    const first = pair.first;
+    const second = pair.second;
+
+    const beforeFirst = code.slice(0, first.start);
+    const firstText = code.slice(first.start, first.end);
+    const between = code.slice(first.end, second.start);
+    const secondText = code.slice(second.start, second.end);
+    const afterSecond = code.slice(second.end);
+
+    code = beforeFirst + secondText + between + firstText + afterSecond;
+
+    changed = true;
+    count++;
+  }
+
+  return {
+    code,
+    changed,
+    count
+  };
+}
+
+function findObjectLiterals(code) {
+  const tokens = scanTokens(code);
+  const stack = [];
+  const objects = [];
+
+  for (const token of tokens) {
+    if (token.type === "{") {
+      const kind = classifyBraceAsObject(code, token.index);
+
+      stack.push({
+        type: kind,
+        start: token.index
+      });
+
+      continue;
+    }
+
+    if (token.type === "}") {
+      const top = stack.pop();
+
+      if (!top) continue;
+
+      if (top.type === "object") {
+        objects.push({
+          start: top.start,
+          end: token.index
+        });
+      }
+    }
+  }
+
+  objects.sort((a, b) => a.start - b.start);
+  return objects;
+}
+
+function scanTokens(code) {
+  const tokens = [];
+
+  let i = 0;
+  let inString = null;
+  let inTemplate = false;
+  let inBlockComment = false;
+  let escapeNext = false;
+  let templateExprDepth = 0;
+
+  while (i < code.length) {
+    const ch = code[i];
+    const next = code[i + 1];
+
+    if (escapeNext) {
+      escapeNext = false;
+      i++;
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i += 2;
+        continue;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (inString) {
+      if (ch === "\\") {
+        escapeNext = true;
+        i++;
+        continue;
+      }
+
+      if (ch === inString) {
+        inString = null;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (inTemplate) {
+      if (ch === "\\") {
+        escapeNext = true;
+        i++;
+        continue;
+      }
+
+      if (templateExprDepth === 0 && ch === "`") {
+        inTemplate = false;
+        i++;
+        continue;
+      }
+
+      if (ch === "$" && next === "{") {
+        templateExprDepth++;
+        tokens.push({ type: "{", index: i + 1 });
+        i += 2;
+        continue;
+      }
+
+      if (templateExprDepth > 0 && ch === "}") {
+        templateExprDepth--;
+        tokens.push({ type: "}", index: i });
+        i++;
+        continue;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      i += 2;
+
+      while (i < code.length && code[i] !== "\n") {
+        i++;
+      }
+
+      continue;
+    }
+
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i += 2;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inString = ch;
+      i++;
+      continue;
+    }
+
+    if (ch === "`") {
+      inTemplate = true;
+      templateExprDepth = 0;
+      i++;
+      continue;
+    }
+
+    if (ch === "{" || ch === "}") {
+      tokens.push({
+        type: ch,
+        index: i
+      });
+    }
+
+    i++;
+  }
+
+  return tokens;
+}
+
+function classifyBraceAsObject(code, index) {
+  const before = getPreviousMeaningfulCode(code, index);
+
+  if (!before) return "object";
+
+  if (/(^|[\s=(,:[])(return|yield|await)\s*$/.test(before)) return "object";
+  if (/[=(:,[]\s*$/.test(before)) return "object";
+
+  if (/=>\s*$/.test(before)) return "block";
+
+  if (/\b(class|function|if|for|while|switch|catch|try|finally|else|do)\b[^{;()]*$/.test(before)) {
+    return "block";
+  }
+
+  if (/\)\s*$/.test(before)) return "block";
+
+  return "object";
+}
+
+function getPreviousMeaningfulCode(code, index) {
+  let i = index - 1;
+
+  while (i >= 0 && /\s/.test(code[i])) {
+    i--;
+  }
+
+  if (i < 0) return "";
+
+  return code.slice(Math.max(0, i - 200), index).trimEnd();
+}
+
+function splitTopLevelObjectProperties(inner, baseIndex) {
+  const props = [];
+
+  let start = 0;
+  let i = 0;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let braceDepth = 0;
+  let inString = null;
+  let inTemplate = false;
+  let inBlockComment = false;
+  let escapeNext = false;
+  let templateExprDepth = 0;
+
+  while (i < inner.length) {
+    const ch = inner[i];
+    const next = inner[i + 1];
+
+    if (escapeNext) {
+      escapeNext = false;
+      i++;
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i += 2;
+        continue;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (inString) {
+      if (ch === "\\") {
+        escapeNext = true;
+        i++;
+        continue;
+      }
+
+      if (ch === inString) {
+        inString = null;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (inTemplate) {
+      if (ch === "\\") {
+        escapeNext = true;
+        i++;
+        continue;
+      }
+
+      if (templateExprDepth === 0 && ch === "`") {
+        inTemplate = false;
+        i++;
+        continue;
+      }
+
+      if (ch === "$" && next === "{") {
+        templateExprDepth++;
+        braceDepth++;
+        i += 2;
+        continue;
+      }
+
+      if (templateExprDepth > 0 && ch === "}") {
+        templateExprDepth = Math.max(0, templateExprDepth - 1);
+        braceDepth = Math.max(0, braceDepth - 1);
+        i++;
+        continue;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      i += 2;
+
+      while (i < inner.length && inner[i] !== "\n") {
+        i++;
+      }
+
+      continue;
+    }
+
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i += 2;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inString = ch;
+      i++;
+      continue;
+    }
+
+    if (ch === "`") {
+      inTemplate = true;
+      templateExprDepth = 0;
+      i++;
+      continue;
+    }
+
+    if (ch === "(") {
+      parenDepth++;
+      i++;
+      continue;
+    }
+
+    if (ch === ")") {
+      parenDepth = Math.max(0, parenDepth - 1);
+      i++;
+      continue;
+    }
+
+    if (ch === "[") {
+      bracketDepth++;
+      i++;
+      continue;
+    }
+
+    if (ch === "]") {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+      i++;
+      continue;
+    }
+
+    if (ch === "{") {
+      braceDepth++;
+      i++;
+      continue;
+    }
+
+    if (ch === "}") {
+      braceDepth = Math.max(0, braceDepth - 1);
+      i++;
+      continue;
+    }
+
+    if (
+      ch === "," &&
+      parenDepth === 0 &&
+      bracketDepth === 0 &&
+      braceDepth === 0
+    ) {
+      const prop = makePropertyRecord(inner, baseIndex, start, i + 1);
+
+      if (prop) {
+        props.push(prop);
+      }
+
+      start = i + 1;
+    }
+
+    i++;
+  }
+
+  const last = makePropertyRecord(inner, baseIndex, start, inner.length);
+
+  if (last) {
+    props.push(last);
+  }
+
+  return props;
+}
+
+function makePropertyRecord(inner, baseIndex, start, end) {
+  const raw = inner.slice(start, end);
+
+  if (!raw.trim()) return null;
+
+  const leadingWhitespaceLength = raw.match(/^\s*/)[0].length;
+  const trailingWhitespaceLength = raw.match(/\s*$/)[0].length;
+
+  const realStart = start + leadingWhitespaceLength;
+  const realEnd = end - trailingWhitespaceLength;
+
+  const text = inner.slice(realStart, realEnd);
+
+  return {
+    start: baseIndex + realStart,
+    end: baseIndex + realEnd,
+    text,
+    key: extractSafeObjectKey(text)
+  };
+}
+
+function extractSafeObjectKey(text) {
+  const trimmed = text.trim().replace(/,\s*$/, "");
+
+  if (!trimmed) return null;
+
+  if (/^\.\.\./.test(trimmed)) return null;
+  if (/^[/.test(trimmed)) return null;
+  if (/^(get|set)\s+/.test(trimmed)) return null;
+  if (/^(async\s+)?\*/.test(trimmed)) return null;
+
+  let match = trimmed.match(/^([A-Za-z_$][\w$]*)\s*:/);
+
+  if (match) return match[1];
+
+  match = trimmed.match(/^["']([^"']+)["']\s*:/);
+
+  if (match) return match[1];
+
+  match = trimmed.match(/^([A-Za-z_$][\w$]*)\s*\(/);
+
+  if (match) return match[1];
+
+  return null;
+}
+
+function hasDuplicateKeys(props) {
+  const seen = new Set();
+
+  for (const prop of props) {
+    if (!prop.key) {
+      return true;
+    }
+
+    if (seen.has(prop.key)) {
+      return true;
+    }
+
+    seen.add(prop.key);
+  }
+
+  return false;
+}
+
+function findSafeSwappablePair(props) {
+  const pairs = [];
+
+  for (let i = 0; i < props.length - 1; i++) {
+    const first = props[i];
+    const second = props[i + 1];
+
+    if (!isSafePropertyForSwap(first.text)) continue;
+    if (!isSafePropertyForSwap(second.text)) continue;
+
+    pairs.push({
+      first,
+      second
+    });
+  }
+
+  if (!pairs.length) return null;
+
+  return pairs[randomInt(0, pairs.length - 1)];
+}
+
+function isSafePropertyForSwap(text) {
+  const trimmed = text.trim().replace(/,\s*$/, "");
+
+  if (!trimmed) return false;
+
+  if (isUnsafePropertyHeader(trimmed)) return false;
+
+  const value = extractPropertyValue(trimmed);
+
+  if (value == null) return false;
+
+  if (isPrimitiveLiteral(value)) return true;
+  if (isSafeArrayLiteral(value)) return true;
+  if (isSafeObjectLiteral(value)) return true;
+
+  return false;
+}
+
+function isUnsafePropertyHeader(trimmed) {
+  if (/^\.\.\./.test(trimmed)) return true;
+  if (/^[/.test(trimmed)) return true;
+  if (/^(get|set)\s+/.test(trimmed)) return true;
+  if (/^(async\s+)?\*/.test(trimmed)) return true;
+
+  if (/^[A-Za-z_$][\w$]*\s*\(/.test(trimmed)) return true;
+
+  return false;
+}
+
+function extractPropertyValue(trimmed) {
+  let i = 0;
+  let inString = null;
+  let inTemplate = false;
+  let escapeNext = false;
+  let bracketDepth = 0;
+  let parenDepth = 0;
+  let braceDepth = 0;
+
+  while (i < trimmed.length) {
+    const ch = trimmed[i];
+    const next = trimmed[i + 1];
+
+    if (escapeNext) {
+      escapeNext = false;
+      i++;
+      continue;
+    }
+
+    if (inString) {
+      if (ch === "\\") {
+        escapeNext = true;
+        i++;
+        continue;
+      }
+
+      if (ch === inString) {
+        inString = null;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (inTemplate) {
+      if (ch === "\\") {
+        escapeNext = true;
+        i++;
+        continue;
+      }
+
+      if (ch === "`") {
+        inTemplate = false;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      break;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inString = ch;
+      i++;
+      continue;
+    }
+
+    if (ch === "`") {
+      inTemplate = true;
+      i++;
+      continue;
+    }
+
+    if (ch === "[") {
+      bracketDepth++;
+      i++;
+      continue;
+    }
+
+    if (ch === "]") {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+      i++;
+      continue;
+    }
+
+    if (ch === "(") {
+      parenDepth++;
+      i++;
+      continue;
+    }
+
+    if (ch === ")") {
+      parenDepth = Math.max(0, parenDepth - 1);
+      i++;
+      continue;
+    }
+
+    if (ch === "{") {
+      braceDepth++;
+      i++;
+      continue;
+    }
+
+    if (ch === "}") {
+      braceDepth = Math.max(0, braceDepth - 1);
+      i++;
+      continue;
+    }
+
+    if (
+      ch === ":" &&
+      bracketDepth === 0 &&
+      parenDepth === 0 &&
+      braceDepth === 0
+    ) {
+      return trimmed.slice(i + 1).trim();
+    }
+
+    i++;
+  }
+
+  return null;
+}
+
+function isPrimitiveLiteral(value) {
+  return /^(true|false|null|undefined|NaN|Infinity|-?\d+(?:\.\d+)?|["'][^"']*["'])$/.test(
+    value
+  );
+}
+
+function isSafeArrayLiteral(value) {
+  if (!/^\[[\s\S]*\]$/.test(value)) return false;
+  return !hasUnsafeExpression(value);
+}
+
+function isSafeObjectLiteral(value) {
+  if (!/^\{[\s\S]*\}$/.test(value)) return false;
+  return !hasUnsafeExpression(value);
+}
+
+function hasUnsafeExpression(value) {
+  const cleaned = removeStringsAndComments(value);
+
+  if (/\.\.\./.test(cleaned)) return true;
+
+  if (/\b(function|async|await|new|this|super|class|import|require|eval)\b/.test(cleaned)) {
+    return true;
+  }
+
+  if (/=>/.test(cleaned)) return true;
+
+  if (/[A-Za-z_$][\w$]*\s*\(/.test(cleaned)) {
+    return true;
+  }
+
+  if (/(^|[^=!<>])=(?!=)/.test(cleaned)) {
+    return true;
+  }
+
+  if (/\+\+|--/.test(cleaned)) {
+    return true;
+  }
+
+  return false;
+}
+
+function removeStringsAndComments(code) {
+  let result = "";
+  let i = 0;
+  let inString = null;
+  let inTemplate = false;
+  let inBlockComment = false;
+  let escapeNext = false;
+
+  while (i < code.length) {
+    const ch = code[i];
+    const next = code[i + 1];
+
+    if (escapeNext) {
+      result += " ";
+      escapeNext = false;
+      i++;
+      continue;
+    }
+
+    if (inBlockComment) {
+      result += " ";
+
+      if (ch === "*" && next === "/") {
+        result += " ";
+        inBlockComment = false;
+        i += 2;
+        continue;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (inString) {
+      result += " ";
+
+      if (ch === "\\") {
+        escapeNext = true;
+        i++;
+        continue;
+      }
+
+      if (ch === inString) {
+        inString = null;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (inTemplate) {
+      result += " ";
+
+      if (ch === "\\") {
+        escapeNext = true;
+        i++;
+        continue;
+      }
+
+      if (ch === "`") {
+        inTemplate = false;
+      }
+
+      i++;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      result += "  ";
+      i += 2;
+
+      while (i < code.length && code[i] !== "\n") {
+        result += " ";
+        i++;
+      }
+
+      continue;
+    }
+
+    if (ch === "/" && next === "*") {
+      result += "  ";
+      inBlockComment = true;
+      i += 2;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      result += " ";
+      inString = ch;
+      i++;
+      continue;
+    }
+
+    if (ch === "`") {
+      result += " ";
+      inTemplate = true;
+      i++;
+      continue;
+    }
+
+    result += ch;
+    i++;
+  }
+
+  return result;
+}
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function normalizeNewline(code, newline) {
+  return code.replace(/\r?\n/g, newline);
+}
