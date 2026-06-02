@@ -1,0 +1,1482 @@
+#!/usr/bin/env node
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+
+const options = parseCliArgs(process.argv.slice(2));
+
+if (!options.inputFile) {
+  console.error("用法: node mark-vue-script-ranges.js ranges.json");
+  console.error("");
+  console.error("input.json 支持：");
+  console.error('  1. 数组: ["src/App.vue", "src/Test.vue"]');
+  console.error('  2. 对象: {"src/App.vue": [[1, 10]], "src/Test.vue": true}');
+  console.error("");
+  console.error("可选参数:");
+  console.error("  --dry-run    只预览，不写入文件");
+  console.error("  --backup     写入前生成 .bak 备份");
+  process.exit(1);
+}
+
+let inputData;
+
+try {
+  inputData = JSON.parse(fs.readFileSync(options.inputFile, "utf8"));
+} catch (error) {
+  console.error(`[错误] 读取或解析 JSON 失败: ${options.inputFile}`);
+  console.error(error.message);
+  process.exit(1);
+}
+
+const filePaths = normalizeInputFiles(inputData);
+
+if (!filePaths.length) {
+  console.error("[错误] 输入 JSON 中没有可处理的 vue 文件路径。");
+  console.error("支持对象格式，例如：");
+  console.error(JSON.stringify({ "src/App.vue": [[1, 10]] }, null, 2));
+  console.error("也支持数组格式，例如：");
+  console.error(JSON.stringify(["src/App.vue"], null, 2));
+  process.exit(1);
+}
+
+for (const filePath of filePaths) {
+  processVueFile(filePath, options);
+}
+
+/**
+ * 解析命令行参数
+ */
+function parseCliArgs(args) {
+  const options = {
+    inputFile: null,
+    dryRun: false,
+    backup: false
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+
+    if (arg === "--backup") {
+      options.backup = true;
+      continue;
+    }
+
+    if (!options.inputFile) {
+      options.inputFile = arg;
+      continue;
+    }
+
+    console.warn(`[警告] 忽略未知参数: ${arg}`);
+  }
+
+  return options;
+}
+
+/**
+ * 兼容两种输入：
+ * 1. ["src/App.vue"]
+ * 2. { "src/App.vue": [[1, 10]] }
+ */
+function normalizeInputFiles(inputData) {
+  if (Array.isArray(inputData)) {
+    return inputData
+      .map(item => {
+        if (typeof item === "string") return item;
+
+        if (item && typeof item === "object") {
+          return item.file ?? item.filePath ?? item.path ?? null;
+        }
+
+        return null;
+      })
+      .filter(Boolean)
+      .map(String);
+  }
+
+  if (inputData && typeof inputData === "object") {
+    return Object.keys(inputData).map(String);
+  }
+
+  return [];
+}
+
+/**
+ * 处理单个 Vue 文件
+ */
+function processVueFile(filePath, options) {
+  if (!fs.existsSync(filePath)) {
+    console.warn(`[跳过] 文件不存在: ${filePath}`);
+    return;
+  }
+
+  if (!filePath.endsWith(".vue")) {
+    console.warn(`[跳过] 不是 vue 文件: ${filePath}`);
+    return;
+  }
+
+  const content = fs.readFileSync(filePath, "utf8");
+
+  // 保留原文件换行符风格
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+
+  // 统一用 \n 分割，写回时再恢复原换行符
+  const lines = content.split(/\r?\n/);
+
+  // 找出 Vue SFC 的根块
+  const blocks = detectVueBlocks(lines);
+
+  // 只处理 <script> / <script setup>，只处理 JS，不处理 TS
+  const scriptBlocks = blocks.filter(block => {
+    return block.type === "script" && isSupportedScriptBlock(block);
+  });
+
+  if (!scriptBlocks.length) {
+    console.warn(`[跳过] 没有可处理的 script 块: ${filePath}`);
+    return;
+  }
+
+  const fileName = makeSafePayloadFileName(path.basename(filePath));
+  const allActions = [];
+
+  for (const block of scriptBlocks) {
+    const actions = collectScriptActions(lines, block, fileName);
+
+    for (const action of actions) {
+      allActions.push(action);
+    }
+  }
+
+  // 插入动作从后往前执行，避免前面的插入影响后面的行号
+  const insertActions = allActions
+    .filter(action => action.type === "insertAfter")
+    .sort((a, b) => b.afterLineNo - a.afterLineNo);
+
+  const appliedActions = [];
+
+  for (const action of insertActions) {
+    const insertIndex = action.afterLineNo;
+
+    if (insertIndex < 0 || insertIndex > lines.length) {
+      continue;
+    }
+
+    /**
+     * 重复检测范围：
+     * 只检查插入点后 2 行。
+     *
+     * 作用：
+     * 1. 允许识别下面这种已经插过的情况：
+     *
+     *    const a = 1;
+     *    void "...";
+     *
+     * 2. 也允许识别隔 1 个空行的情况：
+     *
+     *    const a = 1;
+     *
+     *    void "...";
+     *
+     * 3. 不再向前检查，避免前一个 void 影响后一个声明。
+     */
+    const nearbyStart = action.afterLineNo + 1;
+    const nearbyEnd = Math.min(lines.length, action.afterLineNo + 2);
+
+    if (hasExistingScriptMarkInRange(lines, nearbyStart, nearbyEnd)) {
+      continue;
+    }
+
+    lines.splice(insertIndex, 0, action.text);
+
+    appliedActions.push({
+      kind: action.kind,
+      lineNo: action.afterLineNo,
+      result: action.text.trim()
+    });
+  }
+
+  if (appliedActions.length || options.dryRun) {
+    console.log("\n" + "=".repeat(78));
+    console.log("SCRIPT 标记插入报告 — " + filePath);
+    console.log("=".repeat(78));
+
+    const varCount = appliedActions.filter(item => item.kind === "var").length;
+    const fnCount = appliedActions.filter(item => item.kind === "function-body").length;
+
+    console.log(`\n  变量声明后插入数: ${varCount}`);
+    console.log(`  函数块第一行插入数: ${fnCount}`);
+    console.log("  范围: 只处理 <script> / <script setup>，不处理 template/style");
+    console.log("  支持:");
+    console.log("    - const / let / var 单行或多行声明");
+    console.log("    - function foo() {}");
+    console.log("    - async function foo() {}");
+    console.log("    - export function foo() {}");
+    console.log("    - export default function foo() {}");
+    console.log("    - const foo = function () {}");
+    console.log("    - const foo = async function () {}");
+    console.log("    - const foo = () => {}");
+    console.log("    - const foo = async () => {}");
+    console.log("  跳过:");
+    console.log("    - 普通对象字面量内部");
+    console.log("    - Vue2 Options API 对象内部");
+    console.log("    - methods / computed / watch 等对象方法内部");
+    console.log("    - lang='ts' / lang='tsx' 的 script 块");
+    console.log("    - src 外链 script 块");
+
+    if (appliedActions.length) {
+      console.log(`\n${"─".repeat(72)}`);
+      console.log(`【SCRIPT 修改】 (${appliedActions.length} 个 void 标记)`);
+      console.log(`${"─".repeat(72)}`);
+
+      for (const action of appliedActions.sort((a, b) => a.lineNo - b.lineNo)) {
+        const kindText = action.kind === "var" ? "变量声明后" : "函数块第一行";
+        console.log(`  L${String(action.lineNo).padStart(3)} ✅ ${kindText} → ${action.result}`);
+      }
+    } else {
+      console.log("\n没有找到可插入位置，未修改 script。");
+    }
+
+    if (options.dryRun) {
+      console.log(`\n${"=".repeat(78)}`);
+      console.log("预览处理后的文件:");
+      console.log("=".repeat(78));
+      console.log(lines.join("\n"));
+    }
+  }
+
+  if (!appliedActions.length) {
+    return;
+  }
+
+  if (options.dryRun) {
+    console.log(`\n[预览] ${filePath}，插入 ${appliedActions.length} 个 void，未写入`);
+    return;
+  }
+
+  if (options.backup) {
+    const backupPath = `${filePath}.bak`;
+    fs.writeFileSync(backupPath, content, "utf8");
+    console.log(`[备份] ${backupPath}`);
+  }
+
+  fs.writeFileSync(filePath, lines.join(newline), "utf8");
+  console.log(`[完成] ${filePath}，插入 ${appliedActions.length} 个 void`);
+}
+
+/**
+ * 收集 script 内需要插入的动作
+ *
+ * 核心规则：
+ * 1. 变量声明语句结束后插入
+ * 2. 普通函数体打开的 { 后插入，也就是函数块第一行
+ * 3. 整个对象字面量内部都不插
+ *
+ * 重点：
+ * Vue2 Options API 本质是 export default { ... } 对象。
+ * 所以 methods / computed / watch 里面的变量声明也不插。
+ */
+function collectScriptActions(lines, block, fileName) {
+  const actions = [];
+  const usedInsertLine = new Set();
+
+  let lineNo = block.startLine;
+
+  while (lineNo <= block.endLine) {
+    const line = lines[lineNo - 1];
+    const trimmed = stripLineCommentForScript(line).trim();
+
+    if (!trimmed) {
+      lineNo++;
+      continue;
+    }
+
+    if (alreadyMarked(line)) {
+      lineNo++;
+      continue;
+    }
+
+    /**
+     * 关键修复：
+     * 当前行只要处在对象字面量定义块里，就完全不插。
+     *
+     * 例如这些都不会插：
+     *
+     * export default {
+     *   methods: {
+     *     test() {
+     *       const a = 1;
+     *     }
+     *   }
+     * }
+     *
+     * const obj = {
+     *   foo() {
+     *     const a = 1;
+     *   }
+     * }
+     */
+    const insideObjectDefinitionBlock = isLikelyInsideObjectDefinitionBlock(
+      lines,
+      block,
+      lineNo
+    );
+
+    // 变量声明：const / let / var
+    if (!insideObjectDefinitionBlock && isVariableDeclarationStart(trimmed)) {
+      const endLineNo = findStatementEndLine(lines, block, lineNo);
+
+      if (endLineNo != null) {
+        addInsertAction({
+          actions,
+          usedInsertLine,
+          lines,
+          block,
+          fileName,
+          afterLineNo: endLineNo,
+          kind: "var"
+        });
+      }
+    }
+
+    // 函数块第一行
+    if (!insideObjectDefinitionBlock) {
+      const functionOpenLineNo = detectFunctionBodyOpenLine(lines, block, lineNo);
+
+      if (functionOpenLineNo != null) {
+        addInsertAction({
+          actions,
+          usedInsertLine,
+          lines,
+          block,
+          fileName,
+          afterLineNo: functionOpenLineNo,
+          kind: "function-body"
+        });
+      }
+    }
+
+    lineNo++;
+  }
+
+  return actions;
+}
+
+/**
+ * 添加插入动作
+ */
+function addInsertAction({
+  actions,
+  usedInsertLine,
+  lines,
+  block,
+  fileName,
+  afterLineNo,
+  kind
+}) {
+  if (afterLineNo == null) return;
+  if (afterLineNo < block.startLine) return;
+  if (afterLineNo > block.endLine) return;
+
+  // 同一行后面不要重复插入同类型 void
+  const key = `${kind}:${afterLineNo}`;
+  if (usedInsertLine.has(key)) return;
+
+  /**
+   * 重复检测范围：
+   * 只检查插入点后 2 行，不向前检查。
+   *
+   * 这样可以避免：
+   * const a = 1;
+   * void "...";
+   * const b = 2;
+   *
+   * 处理 const b 时被 const a 后面的 void 误伤。
+   */
+  const nearbyStart = afterLineNo + 1;
+  const nearbyEnd = Math.min(block.endLine, afterLineNo + 2);
+
+  if (hasExistingScriptMarkInRange(lines, nearbyStart, nearbyEnd)) {
+    return;
+  }
+
+  const anchorLine = lines[afterLineNo - 1] || "";
+  const indent = getInsertionIndentForAction(lines, block, afterLineNo, kind);
+  const scriptText = `${block.startLine}-${block.endLine}`;
+  const random = randomNumber8();
+  const payload = `${fileName}|script:${scriptText}|random:${random}`;
+  const value = JSON.stringify(payload);
+
+  /**
+   * 单行函数体不插。
+   *
+   * 例如：
+   * function a() { return 1; }
+   *
+   * 避免破坏原有单行格式。
+   */
+  if (kind === "function-body" && isSingleLineFunctionBody(anchorLine)) {
+    return;
+  }
+
+  actions.push({
+    type: "insertAfter",
+    afterLineNo,
+    text: `${indent}void ${value};`,
+    payload,
+    kind
+  });
+
+  usedInsertLine.add(key);
+}
+
+/**
+ * 判断是否是变量声明开头
+ */
+function isVariableDeclarationStart(trimmed) {
+  return /^(?:export\s+)?(?:const|let|var)\b/.test(trimmed);
+}
+
+/**
+ * 找变量声明或普通语句的结束行
+ *
+ * 原理：
+ * 1. 从开始行往后扫描
+ * 2. 维护括号深度：
+ *    - ()
+ *    - []
+ *    - {}
+ * 3. 只有括号深度都回到 0，并且遇到分号或明显语句结束，才认为声明结束
+ */
+function findStatementEndLine(lines, block, startLineNo) {
+  const state = createMiniScanState();
+
+  for (let lineNo = startLineNo; lineNo <= block.endLine; lineNo++) {
+    const line = lines[lineNo - 1];
+
+    scanLineMini(line, state);
+
+    const code = stripLineCommentForScript(line).trim();
+
+    if (!code) continue;
+
+    if (state.inBlockComment || state.inString || state.inTemplateString) {
+      continue;
+    }
+
+    if (state.parenDepth !== 0 || state.bracketDepth !== 0 || state.braceDepth !== 0) {
+      continue;
+    }
+
+    // 标准分号结束
+    if (/;\s*$/.test(code)) {
+      return lineNo;
+    }
+
+    // JS 项目经常不写分号，如果下一行不是延续，就认为当前语句结束
+    const next = findNextSignificantScriptLine(lines, block, lineNo + 1);
+
+    if (!next) {
+      return lineNo;
+    }
+
+    const nextText = stripLineCommentForScript(next.text).trim();
+
+    if (!isLikelyContinuationLine(code, nextText)) {
+      return lineNo;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 判断下一行是否像当前语句的延续
+ */
+function isLikelyContinuationLine(currentText, nextText) {
+  if (!nextText) return false;
+
+  // 当前行以操作符、逗号、点号等结尾，下一行大概率是延续
+  if (/[,+*/%&|^?:=<>!\-.]\s*$/.test(currentText)) {
+    return true;
+  }
+
+  // 下一行以这些符号开头，大概率是延续
+  if (/^[)\]}.,?:]/.test(nextText)) {
+    return true;
+  }
+
+  // 链式调用
+  if (/^\./.test(nextText)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * 检测某一行是否是函数体打开的位置
+ *
+ * 返回值：
+ * - 如果这一行或者从这一行开始的多行签名最终打开了函数体，则返回 { 所在的行号
+ * - 否则返回 null
+ *
+ * 注意：
+ * 对象字面量内部会在 collectScriptActions 里统一跳过。
+ */
+function detectFunctionBodyOpenLine(lines, block, lineNo) {
+  const line = lines[lineNo - 1];
+  const code = stripLineCommentForScript(line).trim();
+
+  if (!code) return null;
+  if (isOnlyCommentLine(code)) return null;
+
+  // 排除控制流语句
+  if (/^(if|for|while|switch|catch|with|else|do|try|finally)\b/.test(code)) {
+    return null;
+  }
+
+  // 再兜底判断一次：对象定义块内部不插函数体
+  if (isLikelyInsideObjectDefinitionBlock(lines, block, lineNo)) {
+    return null;
+  }
+
+  // function foo() {
+  // async function foo() {
+  // export function foo() {
+  // export default function foo() {
+  if (
+    /^(?:export\s+default\s+|export\s+)?(?:async\s+)?function(?:\s+|\*)/.test(code)
+  ) {
+    return findFunctionOpenBraceLine(lines, block, lineNo);
+  }
+
+  // const foo = function () {
+  // let foo = async function () {
+  // var foo = function* () {
+  if (
+    /^(?:export\s+)?(?:const|let|var)\s+[$A-Z_a-z][$\w]*\s*=\s*(?:async\s+)?function(?:\s+|\*)?/.test(
+      code
+    )
+  ) {
+    return findFunctionOpenBraceLine(lines, block, lineNo);
+  }
+
+  // const foo = () => {
+  // const foo = async () => {
+  // const foo = async value => {
+  if (
+    /^(?:export\s+)?(?:const|let|var)\s+[$A-Z_a-z][$\w]*\s*=/.test(code) &&
+    /=>/.test(code)
+  ) {
+    return findFunctionOpenBraceLine(lines, block, lineNo);
+  }
+
+  return null;
+}
+
+/**
+ * 判断当前行是否大概率处在对象字面量定义块里
+ *
+ * 注意：
+ * 这是启发式扫描，不是完整 AST。
+ *
+ * 目标：
+ * 1. 跳过 Vue2 Options API：
+ *
+ *    export default {
+ *      methods: {
+ *        foo() {
+ *          const a = 1;
+ *        }
+ *      }
+ *    }
+ *
+ * 2. 跳过普通对象：
+ *
+ *    const obj = {
+ *      foo() {
+ *        const a = 1;
+ *      }
+ *    }
+ */
+function isLikelyInsideObjectDefinitionBlock(lines, block, lineNo) {
+  const stack = createObjectContextStack(lines, block, lineNo);
+
+  if (!stack.length) {
+    return false;
+  }
+
+  return stack.some(item => item.kind === "object");
+}
+
+/**
+ * 创建当前行之前的大括号上下文栈
+ *
+ * 只扫描 block.startLine 到 lineNo - 1。
+ *
+ * kind:
+ * - object：大概率是对象字面量
+ * - block：普通代码块，比如函数体、if 块、for 块
+ */
+function createObjectContextStack(lines, block, lineNo) {
+  const state = createMiniScanState();
+  const stack = [];
+
+  for (let currentLineNo = block.startLine; currentLineNo < lineNo; currentLineNo++) {
+    const line = lines[currentLineNo - 1];
+
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      const next = line[i + 1];
+
+      if (state.escapeNext) {
+        state.escapeNext = false;
+        continue;
+      }
+
+      if (state.inBlockComment) {
+        if (ch === "*" && next === "/") {
+          state.inBlockComment = false;
+          i++;
+        }
+        continue;
+      }
+
+      if (state.inString) {
+        if (ch === "\\") {
+          state.escapeNext = true;
+          continue;
+        }
+
+        if (ch === state.inString) {
+          state.inString = null;
+        }
+
+        continue;
+      }
+
+      if (state.inTemplateString) {
+        if (ch === "\\") {
+          state.escapeNext = true;
+          continue;
+        }
+
+        if (ch === "`") {
+          state.inTemplateString = false;
+        }
+
+        continue;
+      }
+
+      if (ch === "/" && next === "/") {
+        break;
+      }
+
+      if (ch === "/" && next === "*") {
+        state.inBlockComment = true;
+        i++;
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        state.inString = ch;
+        continue;
+      }
+
+      if (ch === "`") {
+        state.inTemplateString = true;
+        continue;
+      }
+
+      if (ch === "{") {
+        const before = stripLineCommentForScript(line.slice(0, i)).trim();
+
+        stack.push({
+          kind: looksLikeObjectOpenBeforeBrace(before) ? "object" : "block",
+          lineNo: currentLineNo
+        });
+
+        continue;
+      }
+
+      if (ch === "}") {
+        if (stack.length) {
+          stack.pop();
+        }
+
+        continue;
+      }
+    }
+  }
+
+  return stack;
+}
+
+/**
+ * 判断某个 { 前面的内容是否像对象字面量开始
+ *
+ * 会识别：
+ * export default {
+ * return {
+ * const obj = {
+ * let obj = {
+ * var obj = {
+ * foo: {
+ * data: {
+ * options = {
+ * ({
+ *
+ * 会排除：
+ * function foo() {
+ * if (a) {
+ * for (...) {
+ * while (...) {
+ * switch (...) {
+ * try {
+ * catch (...) {
+ * class Foo {
+ * const fn = () => {
+ */
+function looksLikeObjectOpenBeforeBrace(before) {
+  if (!before) {
+    return false;
+  }
+
+  // 普通函数声明，不是对象
+  if (/\bfunction\b/.test(before)) {
+    return false;
+  }
+
+  // 箭头函数块，不是对象
+  if (/=>\s*$/.test(before)) {
+    return false;
+  }
+
+  // 控制流代码块，不是对象
+  if (/^(if|for|while|switch|catch|with|else|do|try|finally)\b/.test(before)) {
+    return false;
+  }
+
+  // class Foo { 不是对象字面量
+  if (/^class\b/.test(before)) {
+    return false;
+  }
+
+  // 对象方法 foo() { 不是对象开始，而是函数块开始
+  if (looksLikeObjectMethodBeforeBrace(before)) {
+    return false;
+  }
+
+  // export default {
+  if (/^export\s+default\s*$/.test(before)) {
+    return true;
+  }
+
+  // return {
+  if (/^return\s*$/.test(before)) {
+    return true;
+  }
+
+  // const obj = {
+  // let obj = {
+  // var obj = {
+  if (/^(?:export\s+)?(?:const|let|var)\s+[$A-Z_a-z][$\w]*\s*=\s*$/.test(before)) {
+    return true;
+  }
+
+  // obj = {
+  // this.obj = {
+  // options.foo = {
+  if (/^(?:this\.)?[$A-Z_a-z][$\w]*(?:\.[_$A-Z_a-z][$\w]*)*\s*=\s*$/.test(before)) {
+    return true;
+  }
+
+  // foo: {
+  // methods: {
+  // components: {
+  if (/^[$A-Z_a-z][$\w]*\s*:\s*$/.test(before)) {
+    return true;
+  }
+
+  // ({
+  if (/\(\s*$/.test(before)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * 从函数签名开始行往后找真正打开函数体的 {
+ *
+ * 注意：
+ * - 箭头函数如果是 const a = () => 1，没有函数块，不插
+ * - 只有找到 { 才插
+ */
+function findFunctionOpenBraceLine(lines, block, startLineNo) {
+  const state = createMiniScanState();
+  let sawArrow = false;
+  let sawFunctionKeyword = false;
+
+  for (let lineNo = startLineNo; lineNo <= block.endLine; lineNo++) {
+    const line = lines[lineNo - 1];
+    const code = stripLineCommentForScript(line);
+
+    if (/\bfunction\b/.test(code)) {
+      sawFunctionKeyword = true;
+    }
+
+    if (/=>/.test(code)) {
+      sawArrow = true;
+    }
+
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      const next = line[i + 1];
+
+      if (state.escapeNext) {
+        state.escapeNext = false;
+        continue;
+      }
+
+      if (state.inBlockComment) {
+        if (ch === "*" && next === "/") {
+          state.inBlockComment = false;
+          i++;
+        }
+        continue;
+      }
+
+      if (state.inString) {
+        if (ch === "\\") {
+          state.escapeNext = true;
+          continue;
+        }
+
+        if (ch === state.inString) {
+          state.inString = null;
+        }
+
+        continue;
+      }
+
+      if (state.inTemplateString) {
+        if (ch === "\\") {
+          state.escapeNext = true;
+          continue;
+        }
+
+        if (ch === "`") {
+          state.inTemplateString = false;
+        }
+
+        continue;
+      }
+
+      if (ch === "/" && next === "/") {
+        break;
+      }
+
+      if (ch === "/" && next === "*") {
+        state.inBlockComment = true;
+        i++;
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        state.inString = ch;
+        continue;
+      }
+
+      if (ch === "`") {
+        state.inTemplateString = true;
+        continue;
+      }
+
+      // 找到了函数体 {
+      if (ch === "{") {
+        // function 关键字函数，一定是函数体
+        if (sawFunctionKeyword) {
+          return lineNo;
+        }
+
+        // 箭头函数必须已经看到 =>
+        if (sawArrow) {
+          return lineNo;
+        }
+
+        // 对象方法兜底
+        const before = stripLineCommentForScript(line.slice(0, i)).trim();
+
+        if (looksLikeObjectMethodBeforeBrace(before)) {
+          return lineNo;
+        }
+      }
+    }
+
+    const trimmed = stripLineCommentForScript(line).trim();
+
+    // 如果函数签名还没找到 {，但遇到分号，大概率不是函数块
+    if (/;\s*$/.test(trimmed) && !/[{]\s*$/.test(trimmed)) {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 判断 { 前面是否像对象方法声明
+ */
+function looksLikeObjectMethodBeforeBrace(before) {
+  if (!before) return false;
+
+  if (/^(if|for|while|switch|catch|with)\b/.test(before)) {
+    return false;
+  }
+
+  return /^(?:async\s+)?(?:get\s+|set\s+)?\*?\s*[$A-Z_a-z][$\w]*\s*\([^)]*\)\s*$/.test(
+    before
+  );
+}
+
+/**
+ * 单行函数体判断
+ *
+ * 例如：
+ * function a() { return 1; }
+ */
+function isSingleLineFunctionBody(line) {
+  const code = stripLineCommentForScript(line).trim();
+
+  return /\{.+\}/.test(code);
+}
+
+/**
+ * 根据插入类型获取缩进
+ */
+function getInsertionIndentForAction(lines, block, anchorLineNo, kind) {
+  const line = lines[anchorLineNo - 1] || "";
+  const currentIndent = line.match(/^\s*/)[0];
+
+  // 函数体第一行：比函数声明行多两个空格
+  if (kind === "function-body") {
+    return currentIndent + "  ";
+  }
+
+  // 变量声明后：和变量声明当前行同级
+  if (line.trim()) {
+    return currentIndent;
+  }
+
+  const prev = findPrevIndentLine(lines, block, anchorLineNo - 1);
+  if (prev != null) return prev;
+
+  const next = findNextIndentLine(lines, block, anchorLineNo + 1);
+  if (next != null) return next;
+
+  return "";
+}
+
+/**
+ * 简化扫描状态
+ */
+function createMiniScanState() {
+  return {
+    inBlockComment: false,
+    inString: null,
+    inTemplateString: false,
+    escapeNext: false,
+
+    parenDepth: 0,
+    bracketDepth: 0,
+    braceDepth: 0
+  };
+}
+
+/**
+ * 扫描一行，维护括号和字符串状态
+ */
+function scanLineMini(line, state) {
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    const next = line[i + 1];
+
+    if (state.escapeNext) {
+      state.escapeNext = false;
+      continue;
+    }
+
+    if (state.inBlockComment) {
+      if (ch === "*" && next === "/") {
+        state.inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+
+    if (state.inString) {
+      if (ch === "\\") {
+        state.escapeNext = true;
+        continue;
+      }
+
+      if (ch === state.inString) {
+        state.inString = null;
+      }
+
+      continue;
+    }
+
+    if (state.inTemplateString) {
+      if (ch === "\\") {
+        state.escapeNext = true;
+        continue;
+      }
+
+      if (ch === "`") {
+        state.inTemplateString = false;
+      }
+
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      break;
+    }
+
+    if (ch === "/" && next === "*") {
+      state.inBlockComment = true;
+      i++;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      state.inString = ch;
+      continue;
+    }
+
+    if (ch === "`") {
+      state.inTemplateString = true;
+      continue;
+    }
+
+    if (ch === "(") {
+      state.parenDepth++;
+      continue;
+    }
+
+    if (ch === ")") {
+      state.parenDepth = Math.max(0, state.parenDepth - 1);
+      continue;
+    }
+
+    if (ch === "[") {
+      state.bracketDepth++;
+      continue;
+    }
+
+    if (ch === "]") {
+      state.bracketDepth = Math.max(0, state.bracketDepth - 1);
+      continue;
+    }
+
+    if (ch === "{") {
+      state.braceDepth++;
+      continue;
+    }
+
+    if (ch === "}") {
+      state.braceDepth = Math.max(0, state.braceDepth - 1);
+      continue;
+    }
+  }
+
+  return state;
+}
+
+/**
+ * 检测 Vue SFC 根块
+ */
+function detectVueBlocks(lines) {
+  const blocks = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const lineForMatch = stripBomAtFirstLine(lines[i], i);
+    const openMatch = lineForMatch.match(/^\s*<\s*([A-Za-z][A-Za-z0-9:_-]*)\b/i);
+
+    if (!openMatch) {
+      i++;
+      continue;
+    }
+
+    const type = openMatch[1].toLowerCase();
+    const openLine = i + 1;
+    const openEnd = findRootOpenTagEnd(lines, i);
+
+    if (!openEnd) {
+      blocks.push({
+        type,
+        lang: null,
+        hasSrc: false,
+        openLine,
+        openEndLine: openLine,
+        startLine: openLine + 1,
+        endLine: lines.length,
+        closeLine: null,
+        openTagText: lines[i]
+      });
+      break;
+    }
+
+    const openEndLine = openEnd.index + 1;
+    const openTagText = lines.slice(i, openEnd.index + 1).join("\n");
+    const lang = normalizeLang(extractAttr(openTagText, "lang"));
+    const hasSrc = extractAttr(openTagText, "src") != null;
+    const selfClosing = isSelfClosingRootOpenTag(openTagText);
+
+    let closeIndex = null;
+
+    if (selfClosing) {
+      closeIndex = openEnd.index;
+    } else {
+      const closeInfo = findRootCloseTag(lines, type, openEnd.index, openEnd.column);
+      closeIndex = closeInfo ? closeInfo.index : null;
+    }
+
+    const closeLine = closeIndex != null ? closeIndex + 1 : null;
+    const startLine = openEndLine + 1;
+    const endLine = closeIndex != null ? closeIndex : lines.length;
+
+    blocks.push({
+      type,
+      lang,
+      hasSrc,
+      openLine,
+      openEndLine,
+      startLine,
+      endLine,
+      closeLine,
+      openTagText
+    });
+
+    if (closeIndex != null) {
+      i = closeIndex + 1;
+    } else {
+      break;
+    }
+  }
+
+  return blocks;
+}
+
+/**
+ * 找根标签打开结束的 >
+ */
+function findRootOpenTagEnd(lines, startIndex) {
+  let inQuote = null;
+
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i];
+
+    for (let column = 0; column < line.length; column++) {
+      const ch = line[column];
+
+      if (inQuote) {
+        if (ch === inQuote) inQuote = null;
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        inQuote = ch;
+        continue;
+      }
+
+      if (ch === ">") {
+        return { index: i, column };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 找根标签关闭行
+ */
+function findRootCloseTag(lines, type, openEndIndex, openEndColumn) {
+  const sameLineRest = lines[openEndIndex].slice(openEndColumn + 1);
+  const inlineCloseRe = new RegExp(`<\\s*\\/\\s*${escapeRegExp(type)}\\s*>`, "i");
+
+  if (inlineCloseRe.test(sameLineRest)) {
+    return { index: openEndIndex };
+  }
+
+  const closeLineRe = new RegExp(`^\\s*<\\s*\\/\\s*${escapeRegExp(type)}\\s*>\\s*$`, "i");
+
+  for (let i = openEndIndex + 1; i < lines.length; i++) {
+    if (closeLineRe.test(stripBomAtFirstLine(lines[i], i))) {
+      return { index: i };
+    }
+  }
+
+  return null;
+}
+
+function isSelfClosingRootOpenTag(openTagText) {
+  return /\/\s*>\s*$/.test(openTagText);
+}
+
+/**
+ * 提取标签属性
+ */
+function extractAttr(tagText, attrName) {
+  const re = new RegExp(
+    "\\b" +
+      escapeRegExp(attrName) +
+      "\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'=<>`]+))",
+    "i"
+  );
+
+  const match = tagText.match(re);
+
+  if (!match) return null;
+
+  return match[1] ?? match[2] ?? match[3] ?? null;
+}
+
+function normalizeLang(lang) {
+  if (lang == null) return null;
+  return String(lang).trim().toLowerCase();
+}
+
+/**
+ * 只支持 JS script
+ */
+function isSupportedScriptBlock(block) {
+  if (!block) return false;
+  if (block.type !== "script") return false;
+  if (block.hasSrc) return false;
+
+  return (
+    block.lang == null ||
+    block.lang === "" ||
+    block.lang === "js" ||
+    block.lang === "javascript"
+  );
+}
+
+/**
+ * 去掉行注释
+ *
+ * 注意：
+ * 这里会避开字符串里的 //
+ */
+function stripLineCommentForScript(line) {
+  let inString = null;
+  let inTemplate = false;
+  let escapeNext = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    const next = line[i + 1];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escapeNext = true;
+      continue;
+    }
+
+    if (inString) {
+      if (ch === inString) inString = null;
+      continue;
+    }
+
+    if (inTemplate) {
+      if (ch === "`") inTemplate = false;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inString = ch;
+      continue;
+    }
+
+    if (ch === "`") {
+      inTemplate = true;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      return line.slice(0, i);
+    }
+  }
+
+  return line;
+}
+
+/**
+ * 判断某行是否纯注释
+ */
+function isOnlyCommentLine(trimmed) {
+  return /^\/\//.test(trimmed) || /^\/\*/.test(trimmed) || /^\*/.test(trimmed);
+}
+
+/**
+ * 查找上一行有效代码
+ */
+function findPrevSignificantScriptLine(lines, block, startLineNo) {
+  for (let lineNo = startLineNo; lineNo >= block.startLine; lineNo--) {
+    const text = lines[lineNo - 1].trim();
+
+    if (!text) continue;
+    if (/^\/\//.test(text)) continue;
+    if (/^\/\*/.test(text)) continue;
+    if (/^\*/.test(text)) continue;
+
+    return { lineNo, text };
+  }
+
+  return null;
+}
+
+/**
+ * 查找下一行有效代码
+ */
+function findNextSignificantScriptLine(lines, block, startLineNo) {
+  for (let lineNo = startLineNo; lineNo <= block.endLine; lineNo++) {
+    const text = lines[lineNo - 1].trim();
+
+    if (!text) continue;
+    if (/^\/\//.test(text)) continue;
+    if (/^\/\*/.test(text)) continue;
+    if (/^\*/.test(text)) continue;
+
+    return { lineNo, text };
+  }
+
+  return null;
+}
+
+/**
+ * 判断指定范围内是否已有标记
+ */
+function hasExistingScriptMarkInRange(lines, startLine, endLine) {
+  const start = clamp(startLine, 1, lines.length);
+  const end = clamp(endLine, 1, lines.length);
+
+  for (let lineNo = start; lineNo <= end; lineNo++) {
+    const line = lines[lineNo - 1];
+
+    if (
+      /\b__mark_r\d+\b/.test(line) ||
+      /(?:range|script):\d+-\d+(?:\s+|\|)random:\d+/.test(line) ||
+      hasVoidScriptMark(line)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * 判断是否是当前脚本生成的 void 标记
+ *
+ * 支持：
+ * void "App.vue|script:10-100|random:12345678";
+ * void 'App.vue|script:10-100|random:12345678';
+ *
+ * 也兼容旧的：
+ * void "App.vue|range:10-100|random:12345678";
+ */
+function hasVoidScriptMark(line) {
+  return /\bvoid\s+["'][^"']*\|(?:range|script):\d+-\d+\|random:\d+["']\s*;?/.test(line);
+}
+
+/**
+ * 当前行是否已经有标记
+ */
+function alreadyMarked(line) {
+  return (
+    /(?:range|script):\d+-\d+(?:\s+|\|)random:\d+/.test(line) ||
+    /\b__mark_r\d+\b/.test(line) ||
+    hasVoidScriptMark(line)
+  );
+}
+
+/**
+ * 找上一行缩进
+ */
+function findPrevIndentLine(lines, block, startLineNo) {
+  for (let lineNo = startLineNo; lineNo >= block.startLine; lineNo--) {
+    const line = lines[lineNo - 1] || "";
+    const trimmed = line.trim();
+
+    if (!trimmed) continue;
+    if (/^\./.test(trimmed)) continue;
+
+    return line.match(/^\s*/)[0];
+  }
+
+  return null;
+}
+
+/**
+ * 找下一行缩进
+ */
+function findNextIndentLine(lines, block, startLineNo) {
+  for (let lineNo = startLineNo; lineNo <= block.endLine; lineNo++) {
+    const line = lines[lineNo - 1] || "";
+    const trimmed = line.trim();
+
+    if (!trimmed) continue;
+    if (/^\./.test(trimmed)) continue;
+
+    return line.match(/^\s*/)[0];
+  }
+
+  return null;
+}
+
+/**
+ * 生成安全文件名，避免 payload 中出现特殊分隔符
+ */
+function makeSafePayloadFileName(fileName) {
+  return String(fileName)
+    .replace(/\s+/g, "_")
+    .replace(/\|/g, "_")
+    .replace(/--+/g, "-")
+    .replace(/[<>"'&]/g, "_");
+}
+
+/**
+ * 8 位随机数
+ */
+function randomNumber8() {
+  return crypto.randomInt(10000000, 100000000);
+}
+
+function clamp(num, min, max) {
+  return Math.max(min, Math.min(max, num));
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripBomAtFirstLine(line, index) {
+  if (index !== 0) return line;
+  return line.replace(/^\uFEFF/, "");
+}
