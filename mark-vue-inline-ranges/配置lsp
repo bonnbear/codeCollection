@@ -1,0 +1,66 @@
+**完整安装和配置步骤：**
+
+## 1. 安装 LSP 服务器
+
+```bash
+# Vue LSP (Vue 3)
+npm install -g @vue/language-server
+
+# TypeScript/JavaScript LSP
+npm install -g typescript typescript-language-server
+
+# HTML LSP
+npm install -g vscode-langservers-extracted
+
+# CSS/Style LSP (已包含在 vscode-langservers-extracted 中)
+# 包含: css-lsp, html-lsp, json-lsp
+```
+
+## 2. 配置 opencode.json
+
+在项目根目录或 `~/.config/opencode/opencode.json` 创建：
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "lsp": {
+    "vue": {
+      "command": ["vue-language-server", "--stdio"],
+      "extensions": [".vue"]
+    },
+    "typescript": {
+      "command": ["typescript-language-server", "--stdio"],
+      "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]
+    },
+    "html": {
+      "command": ["vscode-html-language-server", "--stdio"],
+      "extensions": [".html", ".htm"]
+    },
+    "css": {
+      "command": ["vscode-css-language-server", "--stdio"],
+      "extensions": [".css", ".scss", ".sass", ".less"]
+    }
+  }
+}
+```
+
+## 3. 验证安装
+
+```bash
+# 检查是否安装成功
+vue-language-server --version
+typescript-language-server --version
+vscode-html-language-server --version
+vscode-css-language-server --version
+```
+
+**注意：** 如果全部都要启用，可以简化为：
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "lsp": true
+}
+```
+
+OpenCode 会自动检测并启动已安装的 LSP 服务器。
