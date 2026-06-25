@@ -1,0 +1,14 @@
+{
+  "name": "vue-script-range-marker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Insert script range void markers into Vue SFC JavaScript script blocks.",
+  "type": "commonjs",
+  "bin": {
+    "mark-vue-script-ranges": "bin/mark-vue-script-ranges.js"
+  },
+  "scripts": {
+    "test": "node test/run-tests.js"
+  },
+  "license": "UNLICENSED"
+}
