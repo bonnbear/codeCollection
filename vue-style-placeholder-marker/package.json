@@ -1,0 +1,15 @@
+{
+  "name": "vue-style-placeholder-marker",
+  "version": "1.0.0",
+  "description": "Insert placeholder-mark-id CSS declarations into all style blocks of listed Vue SFC files.",
+  "bin": {
+    "mark-vue-style-placeholder": "bin/mark-vue-style-placeholder.js"
+  },
+  "scripts": {
+    "test": "node test/run-tests.js"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=14"
+  }
+}
