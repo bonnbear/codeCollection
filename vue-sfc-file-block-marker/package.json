@@ -1,0 +1,16 @@
+{
+  "name": "vue-sfc-file-block-marker",
+  "version": "1.0.0",
+  "description": "Insert template data-mark attributes and script void markers into full Vue SFC blocks selected by ranges.json file paths.",
+  "bin": {
+    "mark-vue-template-by-files": "bin/mark-vue-template-by-files.js",
+    "mark-vue-script-void-by-files": "bin/mark-vue-script-void-by-files.js"
+  },
+  "scripts": {
+    "test": "node test/run-tests.js"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=14"
+  }
+}
