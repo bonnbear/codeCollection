@@ -39,8 +39,8 @@ node bin/mark-vue-script-void-by-files.js ranges.json --backup
 - template 脚本只处理顶层 `<template>` 内容，不处理 `script` / `style`。
 - template 脚本跳过空行、注释行、结束标签、已经带 `data-mark-xxxxxxxx` 的行。
 - script 脚本只处理顶层 `<script>` / `<script setup>` 内容，不处理 `template` / `style`。
-- script 脚本会跳过 directive 和 import，支持多行 import，在完整语句结束后插入多个 void。
-- script 脚本只在顶层语句边界插入，避免插进对象字面量、import、未闭合函数参数等位置。
+- script 脚本会跳过 directive 和 import，支持多行 import，在完整语句结束后尽量插入多个 void。
+- script 脚本会处理函数、方法、普通代码块内部的安全语句边界；避免插进 import、未闭合函数参数、数组字面量、多行链式调用和 `else/catch/finally/while` 续接位置。
 - 两个脚本都支持 `--dry-run` 预览和 `--backup` 写入前生成 `.bak`。
 - 两个脚本重复运行不会重复插入已有标记。
 

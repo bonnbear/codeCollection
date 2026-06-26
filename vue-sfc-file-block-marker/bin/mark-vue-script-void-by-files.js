@@ -321,7 +321,11 @@ function getNextMeaningfulLine(lines, block, lineNo) {
 }
 
 function nextLineContinuesStatement(nextLine) {
-  return /^\s*(else|catch|finally|\?|\:|\.)\b/.test(nextLine) || /^\s*while\b/.test(nextLine);
+  return (
+    /^\s*(else|catch|finally|\?|\:)\b/.test(nextLine) ||
+    /^\s*while\b/.test(nextLine) ||
+    /^\s*[;,\)\]\.]/.test(nextLine)
+  );
 }
 
 function isStatementBoundaryLine(line) {
@@ -370,7 +374,7 @@ function collectScriptInsertTasks(lines, block, filePath) {
     parenDepth += delta.parens;
     bracketDepth += delta.brackets;
 
-    if (braceDepth !== 0 || parenDepth !== 0 || bracketDepth !== 0) {
+    if (parenDepth !== 0 || bracketDepth !== 0) {
       continue;
     }
 

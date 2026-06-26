@@ -288,7 +288,7 @@ export default config;
     fs.readFileSync(path.join(tmpDir, "src/BusinessObjective.vue"), "utf8")
   );
 
-  assert.match(output, /插入 4 条 void 标记/);
+  assert.match(output, /插入 6 条 void 标记/);
   assert.strictEqual(
     nextText,
     `<script setup>
@@ -299,12 +299,14 @@ void "BusinessObjective.vue|script:all|random:MARK";
 
 function inc() {
   return count + 1;
+  void "BusinessObjective.vue|script:all|random:MARK";
 }
 void "BusinessObjective.vue|script:all|random:MARK";
 
 const config = {
   inner: () => {
     return api.load();
+    void "BusinessObjective.vue|script:all|random:MARK";
   },
 };
 void "BusinessObjective.vue|script:all|random:MARK";
