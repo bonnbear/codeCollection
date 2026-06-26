@@ -207,8 +207,8 @@ import {
   one,
   two,
 } from "./more";
-void "App.vue|script:all|random:MARK";
 export default {};
+void "App.vue|script:all|random:MARK";
 </script>
 `
   );
@@ -244,12 +244,73 @@ const count = 1;
   assert.strictEqual(
     nextText,
     `<script>
-void "App.vue|script:all|random:MARK";
 export default {};
+void "App.vue|script:all|random:MARK";
 </script>
 <script setup>
-void "App.vue|script:all|random:MARK";
 const count = 1;
+void "App.vue|script:all|random:MARK";
+</script>
+`
+  );
+}
+
+function testScriptInsertsMultipleSafeStatementMarks() {
+  const tmpDir = makeTmpDir();
+  const vueText = `<script setup>
+import api from "./api";
+
+const count = 1;
+
+function inc() {
+  return count + 1;
+}
+
+const config = {
+  inner: () => {
+    return api.load();
+  },
+};
+
+export default config;
+</script>
+`;
+
+  writeFixture(tmpDir, "src/BusinessObjective.vue", vueText);
+  writeFixture(
+    tmpDir,
+    "ranges.json",
+    JSON.stringify({ "src/BusinessObjective.vue": [[75, 479]] }, null, 2)
+  );
+
+  const output = runCli(scriptBin, tmpDir, ["ranges.json"]);
+  const nextText = normalizeScriptMarks(
+    fs.readFileSync(path.join(tmpDir, "src/BusinessObjective.vue"), "utf8")
+  );
+
+  assert.match(output, /插入 4 条 void 标记/);
+  assert.strictEqual(
+    nextText,
+    `<script setup>
+import api from "./api";
+
+const count = 1;
+void "BusinessObjective.vue|script:all|random:MARK";
+
+function inc() {
+  return count + 1;
+}
+void "BusinessObjective.vue|script:all|random:MARK";
+
+const config = {
+  inner: () => {
+    return api.load();
+  },
+};
+void "BusinessObjective.vue|script:all|random:MARK";
+
+export default config;
+void "BusinessObjective.vue|script:all|random:MARK";
 </script>
 `
   );
@@ -262,5 +323,6 @@ testTemplateSkipsScriptAndStyle();
 testScriptDryRunDoesNotWriteAndIgnoresRanges();
 testScriptWriteBackupImportPositionAndIdempotency();
 testScriptSetupAndMultipleBlocks();
+testScriptInsertsMultipleSafeStatementMarks();
 
 console.log("All tests passed");

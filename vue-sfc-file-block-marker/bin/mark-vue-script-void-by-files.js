@@ -123,20 +123,6 @@ function hasVoidMark(line) {
   return /void\s+["'][^"']*\|script:all\|random:\d+["']\s*;?/.test(line);
 }
 
-function scriptBlockHasVoidMark(lines, block) {
-  for (
-    let lineNo = block.contentStartLine;
-    lineNo <= block.contentEndLine;
-    lineNo++
-  ) {
-    if (hasVoidMark(lines[lineNo - 1])) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 function getIndent(line) {
   const match = line.match(/^\s*/);
 
@@ -202,19 +188,223 @@ function createVoidMark(filePath) {
   return `void "${fileName}|script:all|random:${createRandomId()}";`;
 }
 
-function processScriptBlock(lines, block, filePath) {
-  if (scriptBlockHasVoidMark(lines, block)) {
-    return 0;
+function stripLineComment(line) {
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inTemplate = false;
+  let escaped = false;
+
+  for (let index = 0; index < line.length - 1; index++) {
+    const char = line[index];
+    const nextChar = line[index + 1];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === "'" && !inDoubleQuote && !inTemplate) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+
+    if (char === '"' && !inSingleQuote && !inTemplate) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+
+    if (char === "`" && !inSingleQuote && !inDoubleQuote) {
+      inTemplate = !inTemplate;
+      continue;
+    }
+
+    if (!inSingleQuote && !inDoubleQuote && !inTemplate && char === "/" && nextChar === "/") {
+      return line.slice(0, index);
+    }
   }
 
-  const insertIndex = findInsertIndex(lines, block);
-  const refLine = lines[insertIndex] || "";
-  const indent = getIndent(refLine);
-  const markLine = `${indent}${createVoidMark(filePath)}`;
+  return line;
+}
 
-  lines.splice(insertIndex, 0, markLine);
+function countCharOutsideString(line, targetChar) {
+  let count = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inTemplate = false;
+  let escaped = false;
 
-  return 1;
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === "'" && !inDoubleQuote && !inTemplate) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+
+    if (char === '"' && !inSingleQuote && !inTemplate) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+
+    if (char === "`" && !inSingleQuote && !inDoubleQuote) {
+      inTemplate = !inTemplate;
+      continue;
+    }
+
+    if (!inSingleQuote && !inDoubleQuote && !inTemplate && char === targetChar) {
+      count++;
+    }
+  }
+
+  return count;
+}
+
+function getLineNestingDelta(line) {
+  const code = stripLineComment(line);
+
+  return {
+    braces: countCharOutsideString(code, "{") - countCharOutsideString(code, "}"),
+    parens: countCharOutsideString(code, "(") - countCharOutsideString(code, ")"),
+    brackets: countCharOutsideString(code, "[") - countCharOutsideString(code, "]"),
+  };
+}
+
+function getImportLineSet(lines, block) {
+  const importLines = new Set();
+  let lineNo = block.contentStartLine;
+
+  while (lineNo <= block.contentEndLine) {
+    if (!isImportStartLine(lines[lineNo - 1])) {
+      lineNo++;
+      continue;
+    }
+
+    const endLineNo = findImportEndLine(lines, block, lineNo);
+
+    for (let currentLineNo = lineNo; currentLineNo <= endLineNo; currentLineNo++) {
+      importLines.add(currentLineNo);
+    }
+
+    lineNo = endLineNo + 1;
+  }
+
+  return importLines;
+}
+
+function getNextMeaningfulLine(lines, block, lineNo) {
+  for (let nextLineNo = lineNo + 1; nextLineNo <= block.contentEndLine; nextLineNo++) {
+    const nextLine = lines[nextLineNo - 1];
+
+    if (nextLine.trim() === "") {
+      continue;
+    }
+
+    return nextLine;
+  }
+
+  return "";
+}
+
+function nextLineContinuesStatement(nextLine) {
+  return /^\s*(else|catch|finally|\?|\:|\.)\b/.test(nextLine) || /^\s*while\b/.test(nextLine);
+}
+
+function isStatementBoundaryLine(line) {
+  const trimmed = stripLineComment(line).trim();
+
+  if (!trimmed) return false;
+  if (hasVoidMark(trimmed)) return false;
+  if (trimmed.startsWith("//")) return false;
+  if (trimmed.startsWith("/*") || trimmed.startsWith("*")) return false;
+  if (trimmed.endsWith(",") || trimmed.endsWith("(") || trimmed.endsWith("[") || trimmed.endsWith("{")) {
+    return false;
+  }
+
+  return /[;}]\s*$/.test(trimmed);
+}
+
+function hasAdjacentVoidMark(lines, block, lineNo) {
+  const nextLine = getNextMeaningfulLine(lines, block, lineNo);
+
+  return hasVoidMark(nextLine);
+}
+
+function collectScriptInsertTasks(lines, block, filePath) {
+  const tasks = [];
+  const importLines = getImportLineSet(lines, block);
+  let braceDepth = 0;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+
+  for (let lineNo = block.contentStartLine; lineNo <= block.contentEndLine; lineNo++) {
+    const line = lines[lineNo - 1];
+    const trimmed = line.trim();
+
+    if (trimmed === "" || importLines.has(lineNo) || isDirectiveLine(line) || hasVoidMark(line)) {
+      const delta = getLineNestingDelta(line);
+
+      braceDepth += delta.braces;
+      parenDepth += delta.parens;
+      bracketDepth += delta.brackets;
+      continue;
+    }
+
+    const delta = getLineNestingDelta(line);
+
+    braceDepth += delta.braces;
+    parenDepth += delta.parens;
+    bracketDepth += delta.brackets;
+
+    if (braceDepth !== 0 || parenDepth !== 0 || bracketDepth !== 0) {
+      continue;
+    }
+
+    if (!isStatementBoundaryLine(line)) {
+      continue;
+    }
+
+    if (nextLineContinuesStatement(getNextMeaningfulLine(lines, block, lineNo))) {
+      continue;
+    }
+
+    if (hasAdjacentVoidMark(lines, block, lineNo)) {
+      continue;
+    }
+
+    tasks.push({
+      lineIndex: lineNo - 1,
+      text: `${getIndent(line)}${createVoidMark(filePath)}`,
+    });
+  }
+
+  return tasks;
+}
+
+function processScriptBlock(lines, block, filePath) {
+  const tasks = collectScriptInsertTasks(lines, block, filePath);
+
+  for (let index = tasks.length - 1; index >= 0; index--) {
+    const task = tasks[index];
+
+    lines.splice(task.lineIndex + 1, 0, task.text);
+  }
+
+  return tasks.length;
 }
 
 function processVueFile(filePath, options) {
@@ -328,6 +518,7 @@ if (require.main === module) {
 
 module.exports = {
   detectScriptBlocks,
+  collectScriptInsertTasks,
   findInsertIndex,
   getVueFileListFromInput,
   processScriptBlock,
