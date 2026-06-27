@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenClaw/OpenCode Model Config"
+  short_description: "Configure and verify model providers in OpenClaw and OpenCode."
+  default_prompt: "Configure OpenClaw and OpenCode for the requested model provider, then verify the configuration with real model calls."

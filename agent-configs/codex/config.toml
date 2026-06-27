@@ -1,0 +1,21 @@
+# Codex 配置 —— 脱敏版示例
+# 路径 / 机器特定项已移除或泛化；真实密钥通过 auth.json 管理（不纳入版本控制）
+model = "gpt-5.5"
+model_reasoning_effort = "medium"
+approval_policy = "never"
+approvals_reviewer = "user"
+sandbox_mode = "danger-full-access"
+
+[mcp_servers.notion]
+url = "https://mcp.notion.com/mcp"
+
+[mcp_servers.codegraph]
+command = "codegraph"
+args = ["serve", "--mcp"]
+
+[features]
+js_repl = false
+
+[desktop]
+keepRemoteControlAwakeWhilePluggedIn = true
+followUpQueueMode = "queue"

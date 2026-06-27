@@ -1,0 +1,133 @@
+{
+  // OpenCode 配置 —— 脱敏版示例
+  // 真实使用时请将 ${...} 占位符替换为环境变量或实际密钥（见根目录 .env.example）
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "oh-my-openagent@latest"
+  ],
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 10000
+  },
+  "mcp": {
+    "notion": {
+      "type": "local",
+      "command": ["npx", "-y", "@ramidecodes/mcp-server-notion@latest"],
+      "enabled": true,
+      "environment": {
+        "NOTION_API_KEY": "${NOTION_API_KEY}"
+      }
+    },
+    "github": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-github@latest"],
+      "enabled": true,
+      "environment": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
+    "codegraph": {
+      "type": "local",
+      "command": ["codegraph", "serve", "--mcp"],
+      "enabled": true
+    }
+  },
+  "provider": {
+    "myprovider": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "My AI Provider Display Name",
+      "options": {
+        "baseURL": "https://api.poe.com/v1",
+        "apiKey": "${POE_API_KEY}"
+      },
+      "models": {
+        "gpt-5.4": {
+          "variants": {
+            "low": {
+              "reasoningEffort": "low",
+              "textVerbosity": "low",
+              "web_search": false
+            },
+            "xhigh": {
+              "reasoningEffort": "xhigh",
+              "textVerbosity": "high",
+              "web_search": true
+            }
+          }
+        }
+      }
+    },
+    "bigmodel": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "BigModel",
+      "options": {
+        "baseURL": "https://open.bigmodel.cn/api/paas/v4",
+        "apiKey": "${BIGMODEL_API_KEY}"
+      },
+      "models": {
+        "glm-5.2": {
+          "name": "GLM-5.2 (BigModel)",
+          "variants": {
+            "thinking": {
+              "thinking": { "type": "enabled" },
+              "reasoningEffort": "max",
+              "maxTokens": 65536,
+              "temperature": 1
+            },
+            "thinking-xhigh": {
+              "thinking": { "type": "enabled" },
+              "reasoningEffort": "xhigh",
+              "maxTokens": 65536,
+              "temperature": 1
+            },
+            "thinking-high": {
+              "thinking": { "type": "enabled" },
+              "reasoningEffort": "high",
+              "maxTokens": 32768,
+              "temperature": 1
+            },
+            "thinking-medium": {
+              "thinking": { "type": "enabled" },
+              "reasoningEffort": "medium",
+              "maxTokens": 32768,
+              "temperature": 1
+            },
+            "thinking-low": {
+              "thinking": { "type": "enabled" },
+              "reasoningEffort": "low",
+              "maxTokens": 16384,
+              "temperature": 1
+            },
+            "thinking-minimal": {
+              "thinking": { "type": "enabled" },
+              "reasoningEffort": "minimal",
+              "maxTokens": 8192,
+              "temperature": 1
+            },
+            "no-thinking": {
+              "thinking": { "type": "disabled" },
+              "reasoningEffort": "none",
+              "maxTokens": 8192,
+              "temperature": 1
+            }
+          }
+        }
+      }
+    },
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (local)",
+      "options": {
+        "baseURL": "http://127.0.0.1:11434/v1",
+        "apiKey": "ollama-local"
+      },
+      "models": {
+        "gemma4:31b": { "name": "Gemma 4 31B (local)" },
+        "qwen3-coder:30b": { "name": "Qwen3 Coder 30B (local)" },
+        "qwen3:14b": { "name": "Qwen3 14B (local)" }
+      }
+    }
+  },
+  "model": "poe/anthropic/claude-opus-4.8"
+}
