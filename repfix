@@ -1,0 +1,736 @@
+下面是按你这个逻辑整理后的完整 <script setup> 部分。
+
+核心规则已经改成：
+
+* tab 来回切换：优先保留原 industry
+* 优先保留原 department
+* 如果原 department 在当前产业下没有权限，则找当前产业下第一个有权限部门
+* 如果当前产业下面部门都没权限，department 就置空，不切到别的产业
+* 不再随便切产业
+* 修掉了你原来代码里的 name === 'myVersion' 未定义问题
+
+<script setup>
+import {
+  computed,
+  watch,
+  ref,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  getCurrentInstance,
+} from 'vue';
+import CardTitle from './CardTitle.vue';
+import CollapsibleCard from './CollapsibleCard.vue';
+import myResponsibility from './myResponsibility.vue';
+import StatusLegendFilter from '././cards/marketingRepresentative/StatusLegendFilter.vue';
+import repDashboard from '@/components/gridLayout/cards/marketingRepresentative/repDashboard.vue';
+import { useI18n } from 'vue-i18n';
+import { useStore } from 'vuex';
+const store = useStore();
+const { locale } = useI18n();
+const { proxy } = getCurrentInstance();
+const props = defineProps(['data', 'editMode']);
+defineEmits(['removeItem', 'expandItem']);
+/**
+ * 部门“全部”的固定值
+ * overall / 版本地图总览下才允许出现
+ */
+const ALL_DEPT_ID = 'All';
+/**
+ * 每批加载几个部门
+ * 当 department === All 时，用于滚动分页加载多个部门
+ */
+const batchSize = 2;
+/**
+ * 基础状态
+ */
+const open = ref(false);
+const refreshStatus = ref(true);
+const activeTab = ref('overall');
+const cards = ref([]);
+const selectedStatus = ref([]);
+const containerStyle = ref({});
+const isShowBoard = ref(false);
+/**
+ * 产业 / 部门选中值
+ */
+const industry = ref('');
+const department = ref('');
+/**
+ * 产业列表
+ */
+const industryList = ref([]);
+const fullIndustryList = ref([]);
+/**
+ * 加载状态
+ */
+const loading = ref(false);
+const isInitialLoading = ref(true);
+const isLoadingMore = ref(false);
+const hasMore = ref(true);
+/**
+ * 全部模式下的部门队列
+ */
+const deptQueue = ref([]);
+const loadedDeptIds = ref(new Set());
+/**
+ * IntersectionObserver 的触发节点
+ */
+const loadMoreTrigger = ref(null);
+let observer = null;
+/**
+ * 用于避免程序内部设置 industry / department 时触发重复请求
+ */
+const suppressSelectionWatch = ref(false);
+/**
+ * 记录最近一次是否是 myVersion 模式
+ * 这个字段目前主要用于调试/排查
+ */
+const lastUseMyRecord = ref(null);
+/**
+ * 状态筛选
+ */
+const statusFilter = ref({
+  mode: 'all',
+  selected: [],
+});
+/**
+ * tab 配置
+ */
+const tabs = ref([
+  {
+    label: '版本地图总览',
+    labelEn: 'Map Overview',
+    name: 'overall',
+  },
+  {
+    label: '我的履责版本',
+    labelEn: 'My Responsibilities',
+    name: 'myVersion',
+  },
+]);
+/**
+ * tab-change 事件
+ * 这里不直接写逻辑，因为 activeTab 的 watch 会统一处理
+ */
+const onTabChange = () => {};
+/**
+ * 跳转详情页
+ */
+function jumpFn(item) {
+  const lang = proxy.UTILS.threeCloudLangValue(store.getters.lang);
+  window.open(
+    `/responsibilityDetails?projectId=${item.id}&locale=${lang}&type=${item.projectType}`,
+    '_blank'
+  );
+}
+/**
+ * 状态筛选变化
+ *
+ * 子组件返回格式：
+ * {
+ *   mode: 'all' | 'partial',
+ *   selected: ['NotStarted', 'wait']
+ * }
+ */
+function onStatusChange(state) {
+  statusFilter.value = state;
+}
+/**
+ * 判断是否是版本地图总览
+ */
+const isOverallTab = computed(() => activeTab.value === 'overall');
+/**
+ * 获取指定产业
+ */
+function getIndustryById(industryId) {
+  return industryList.value.find((item) => item.id === industryId) || null;
+}
+/**
+ * 获取当前选中的产业
+ */
+function getCurrentIndustry() {
+  return getIndustryById(industry.value);
+}
+/**
+ * 获取产业下面的部门列表
+ */
+function getIndustryChildren(industryNode) {
+  return Array.isArray(industryNode?.children) ? industryNode.children : [];
+}
+/**
+ * 判断部门是否有权限
+ *
+ * 当前逻辑按 child.view === true 判断。
+ * 如果你们后端字段不是 view，需要只改这里。
+ */
+function hasDeptPermission(deptNode) {
+  return deptNode?.view === true;
+}
+/**
+ * 获取当前产业下所有有权限的部门
+ */
+function getPermittedChildren(industryNode) {
+  return getIndustryChildren(industryNode).filter((dept) => hasDeptPermission(dept));
+}
+/**
+ * 获取当前产业下第一个有权限部门 id
+ */
+function getFirstPermittedDeptId(industryNode) {
+  const firstDept = getPermittedChildren(industryNode)[0];
+  return firstDept?.id || '';
+}
+/**
+ * 判断当前产业下是否存在有权限部门
+ */
+function hasAnyPermittedDept(industryNode) {
+  return getPermittedChildren(industryNode).length > 0;
+}
+/**
+ * 判断当前产业是否有权限
+ *
+ * 这里兼容两种情况：
+ * 1. 产业自身 view === true
+ * 2. 产业下面至少有一个部门 view === true
+ */
+function hasIndustryPermission(industryNode) {
+  return industryNode?.view === true || hasAnyPermittedDept(industryNode);
+}
+/**
+ * 解析产业选中值
+ *
+ * 规则：
+ * 1. 优先保留原 industry
+ * 2. 如果原 industry 在新列表里不存在，才兜底找第一个有权限产业
+ * 3. 如果没有任何有权限产业，再取第一个产业
+ * 4. 如果列表为空，返回空
+ */
+function resolveIndustryId(preferredIndustryId) {
+  const list = industryList.value;
+  if (!Array.isArray(list) || list.length === 0) {
+    return '';
+  }
+  // 1. 原产业还存在，直接保留
+  const oldIndustry = list.find((item) => item.id === preferredIndustryId);
+  if (oldIndustry) {
+    return oldIndustry.id;
+  }
+  // 2. 原产业不存在，找第一个有权限产业
+  const firstPermittedIndustry = list.find((item) => hasIndustryPermission(item));
+  if (firstPermittedIndustry) {
+    return firstPermittedIndustry.id;
+  }
+  // 3. 全部没权限，则只能选第一个产业
+  return list[0]?.id || '';
+}
+/**
+ * 解析部门选中值
+ *
+ * 核心规则：
+ * 1. 优先保留原 department
+ * 2. 如果原 department 在当前产业下存在且有权限，直接保留
+ * 3. 如果原 department 没权限，找当前产业下第一个有权限部门
+ * 4. 如果当前产业下面部门都没权限，department 返回空
+ * 5. 不会因为当前产业没权限就切到别的产业
+ *
+ * 参数说明：
+ * tabName: 当前 tab，overall / myVersion
+ * preferredDeptId: 原 department
+ * industryNode: 当前产业
+ * options.initial: 是否初始化
+ */
+function resolveDepartmentId(tabName, preferredDeptId, industryNode, options = {}) {
+  const { initial = false } = options;
+  const children = getIndustryChildren(industryNode);
+  const permittedChildren = getPermittedChildren(industryNode);
+  // 当前产业不存在，部门直接置空
+  if (!industryNode) {
+    return '';
+  }
+  // 当前产业下面没有任何有权限部门，部门直接置空，不切别的产业
+  if (permittedChildren.length === 0) {
+    return '';
+  }
+  /**
+   * overall 下允许保留 All
+   *
+   * 注意：
+   * - 初始化进入 overall 时，如果没有历史部门，默认选 All
+   * - 非初始化时，只有原来就是 All，才继续保留 All
+   */
+  if (tabName === 'overall') {
+    if (preferredDeptId === ALL_DEPT_ID) {
+      return ALL_DEPT_ID;
+    }
+    if (initial && !preferredDeptId) {
+      return ALL_DEPT_ID;
+    }
+  }
+  /**
+   * 如果原 department 是具体部门：
+   * 必须同时满足：
+   * 1. 在当前产业 children 里存在
+   * 2. view === true，有权限
+   */
+  const oldDept = children.find((item) => item.id === preferredDeptId);
+  if (oldDept && hasDeptPermission(oldDept)) {
+    return oldDept.id;
+  }
+  /**
+   * 原部门没有权限 / 不存在：
+   * 只在当前产业下面找第一个有权限部门
+   * 找不到就返回空
+   */
+  return permittedChildren[0]?.id || '';
+}
+/**
+ * 根据 deptId 获取部门元信息
+ */
+function getDeptMetaById(deptId) {
+  const curIndustry = getCurrentIndustry();
+  const children = getIndustryChildren(curIndustry);
+  return (
+    children.find((dept) => dept.id === deptId) || {
+      id: deptId,
+      cn: `部门 ${deptId}`,
+      en: `Department ${deptId}`,
+    }
+  );
+}
+/**
+ * 清空卡片和滚动观察器
+ */
+function resetCardsAndObserver() {
+  cards.value = [];
+  hasMore.value = true;
+  deptQueue.value = [];
+  loadedDeptIds.value = new Set();
+  if (observer) {
+    observer.disconnect();
+    observer = null;
+  }
+}
+/**
+ * 请求产业列表
+ *
+ * 注意：
+ * 这个方法只负责请求和保存 industryList。
+ * 不在这里直接改 industry / department。
+ * 选中值统一交给 resolveIndustryId / resolveDepartmentId 处理。
+ */
+async function loadIndustryList(tabName = activeTab.value) {
+  loading.value = true;
+  try {
+    const resp = await proxy.$axios.get('/ugtm/api/v1/ipd/industry', {
+      params: {
+        filterMembers: true,
+        viewType: tabName === 'overall' ? 'VERSION_MAP' : 'MY_PERFORM',
+      },
+    });
+    const raw = resp?.data?.data ?? resp?.data ?? [];
+    fullIndustryList.value = Array.isArray(raw) ? raw : [];
+    // 深拷贝，避免后续处理污染原始响应对象
+    industryList.value = JSON.parse(JSON.stringify(fullIndustryList.value));
+    lastUseMyRecord.value = tabName === 'myVersion';
+  } catch (e) {
+    console.error('获取产业列表失败:', e);
+    fullIndustryList.value = [];
+    industryList.value = [];
+  } finally {
+    loading.value = false;
+  }
+}
+/**
+ * 加载产业列表后，按“保留选择，除非无权限”的规则修正 industry / department
+ */
+async function refreshIndustryAndSelection(tabName, preferredIndustryId, preferredDeptId, options = {}) {
+  const { initial = false } = options;
+  await loadIndustryList(tabName);
+  const nextIndustryId = resolveIndustryId(preferredIndustryId);
+  industry.value = nextIndustryId;
+  const nextIndustry = getIndustryById(nextIndustryId);
+  department.value = resolveDepartmentId(tabName, preferredDeptId, nextIndustry, {
+    initial,
+  });
+}
+/**
+ * API：按部门加载项目
+ */
+async function fetchProjectByDept(deptId) {
+  if (!deptId || deptId === ALL_DEPT_ID) {
+    return null;
+  }
+  try {
+    const deptMeta = getDeptMetaById(deptId);
+    const resp = await proxy.$axios.get('/ugtm/api/v1/ipd/project', {
+      params: {
+        spdtId: deptId,
+        viewType: activeTab.value === 'overall' ? 'VERSION_MAP' : 'MY_PERFORM',
+      },
+    });
+    const project = resp?.data?.data;
+    if (!project) {
+      return null;
+    }
+    let items = [];
+    if (Array.isArray(project)) {
+      items = project;
+    } else if (Array.isArray(project?.items)) {
+      items = project.items;
+    } else {
+      items = [project];
+    }
+    return {
+      ...deptMeta,
+      defaultExpanded: true,
+      items,
+    };
+  } catch (e) {
+    console.error('加载部门项目失败:', deptId, e);
+    return null;
+  }
+}
+/**
+ * 构建 All 模式下的部门加载队列
+ *
+ * 规则：
+ * 只加载当前产业下有权限的部门。
+ * 当前产业下没有权限部门时，队列为空。
+ */
+function buildDeptQueue() {
+  const curIndustry = getCurrentIndustry();
+  const allDeptIds = getPermittedChildren(curIndustry).map((dept) => dept.id);
+  deptQueue.value = allDeptIds;
+  hasMore.value = deptQueue.value.length > 0;
+}
+/**
+ * All 模式：加载下一批部门
+ */
+async function loadNextBatchForAll() {
+  if (isLoadingMore.value || !hasMore.value) {
+    return;
+  }
+  isLoadingMore.value = true;
+  const nextIds = [];
+  for (const id of deptQueue.value) {
+    if (!loadedDeptIds.value.has(id)) {
+      nextIds.push(id);
+    }
+    if (nextIds.length >= batchSize) {
+      break;
+    }
+  }
+  if (nextIds.length === 0) {
+    hasMore.value = false;
+    isLoadingMore.value = false;
+    return;
+  }
+  try {
+    const results = await Promise.all(nextIds.map((id) => fetchProjectByDept(id)));
+    const newCards = results.filter(Boolean);
+    cards.value.push(...newCards);
+    nextIds.forEach((id) => {
+      loadedDeptIds.value.add(id);
+    });
+    const remaining = deptQueue.value.filter((id) => !loadedDeptIds.value.has(id));
+    hasMore.value = remaining.length > 0;
+  } finally {
+    isLoadingMore.value = false;
+  }
+}
+/**
+ * 单部门模式：只加载一个部门
+ */
+async function loadSingleDepartment(deptId) {
+  cards.value = [];
+  if (!deptId || deptId === ALL_DEPT_ID) {
+    hasMore.value = false;
+    return;
+  }
+  isLoadingMore.value = true;
+  try {
+    const card = await fetchProjectByDept(deptId);
+    cards.value = card ? [card] : [];
+    hasMore.value = false;
+  } finally {
+    isLoadingMore.value = false;
+  }
+}
+/**
+ * 设置 All 模式滚动观察器
+ */
+function setupObserverForAll() {
+  if (observer) {
+    observer.disconnect();
+    observer = null;
+  }
+  const rootEl = document.querySelector('.card-content');
+  const options = {
+    root: rootEl,
+    rootMargin: '0px',
+    threshold: 1.0,
+  };
+  observer = new IntersectionObserver((entries) => {
+    const entry = entries[0];
+    if (entry.isIntersecting && hasMore.value) {
+      loadNextBatchForAll();
+    }
+  }, options);
+  if (loadMoreTrigger.value) {
+    observer.observe(loadMoreTrigger.value);
+  }
+}
+/**
+ * 根据当前 activeTab / industry / department 重新加载卡片
+ */
+async function reloadCardsByCurrentSelection() {
+  resetCardsAndObserver();
+  // 没有产业或没有部门，说明当前产业下无可用部门，保持空
+  if (!industry.value || !department.value) {
+    hasMore.value = false;
+    return;
+  }
+  if (activeTab.value === 'overall' && department.value === ALL_DEPT_ID) {
+    buildDeptQueue();
+    if (!hasMore.value) {
+      return;
+    }
+    await loadNextBatchForAll();
+    await nextTick();
+    setupObserverForAll();
+  } else {
+    await loadSingleDepartment(department.value);
+  }
+}
+/**
+ * 用锁执行程序化选择变更，避免 watch 重复触发请求
+ */
+async function runWithSelectionLock(fn) {
+  suppressSelectionWatch.value = true;
+  try {
+    await fn();
+  } finally {
+    suppressSelectionWatch.value = false;
+  }
+}
+/**
+ * 部门列表
+ *
+ * overall：
+ * - 显示 All
+ * - 显示当前产业下所有部门
+ *
+ * myVersion：
+ * - 不显示 All
+ * - 显示当前产业下所有部门
+ *
+ * 注意：
+ * 是否可选的最终逻辑由 resolveDepartmentId 控制。
+ * 如果你希望 UI 上也隐藏无权限部门，可以在这里 filter view === true。
+ */
+const departmentList = computed(() => {
+  const curIndustry = getCurrentIndustry();
+  let children = getIndustryChildren(curIndustry);
+  children = children.map((item) => {
+    const prefix = item.typename ? `[${item.typename}]` : '';
+    return {
+      ...item,
+      cn: `${prefix}${item.cn ?? ''}`,
+      en: `${prefix}${item.en ?? item.cn ?? ''}`,
+    };
+  });
+  if (activeTab.value === 'overall') {
+    return [
+      {
+        id: ALL_DEPT_ID,
+        cn: '全部',
+        en: 'All',
+        view: true,
+      },
+      ...children,
+    ];
+  }
+  return children;
+});
+/**
+ * 当前是否有权限
+ */
+const hasPermission = computed(() => {
+  const curIndustry = getCurrentIndustry();
+  if (!curIndustry) {
+    return false;
+  }
+  if (activeTab.value === 'overall') {
+    if (department.value === ALL_DEPT_ID) {
+      return hasIndustryPermission(curIndustry);
+    }
+    if (!department.value) {
+      return false;
+    }
+    const dept = getIndustryChildren(curIndustry).find((item) => item.id === department.value);
+    return hasDeptPermission(dept);
+  }
+  if (activeTab.value === 'myVersion') {
+    if (!department.value) {
+      return false;
+    }
+    const dept = getIndustryChildren(curIndustry).find((item) => item.id === department.value);
+    return hasDeptPermission(dept);
+  }
+  return false;
+});
+/**
+ * 状态筛选后的卡片
+ */
+const filteredCards = computed(() => {
+  const selected = statusFilter.value.selected || [];
+  // 全部状态 / 一个都没选，直接返回原始 cards
+  if (statusFilter.value.mode === 'all' || selected.length === 0) {
+    return cards.value;
+  }
+  return cards.value.map((card) => {
+    const filteredItems = Array.isArray(card.items)
+      ? card.items.filter((item) => {
+          const currentState = item.currentMilestoneState;
+          const milestones = Array.isArray(item.milestones) ? item.milestones : [];
+          return selected.some((filterStatus) => {
+            // NotStarted / NotSubmitted：按 currentMilestoneState 精确匹配
+            if (filterStatus === 'NotStarted' || filterStatus === 'NotSubmitted') {
+              return currentState === filterStatus;
+            }
+            // wait：currentMilestoneState 是 NearExpiry 或 Started
+            if (filterStatus === 'wait') {
+              return currentState === 'NearExpiry' || currentState === 'Started';
+            }
+            // submit：milestones 中只要有一个 state === Completed 且 perform 为 true
+            if (filterStatus === 'submit') {
+              return milestones.some(
+                (milestone) => milestone.state === 'Completed' && milestone.perform
+              );
+            }
+            return false;
+          });
+        })
+      : [];
+    return {
+      ...card,
+      items: filteredItems,
+    };
+  });
+});
+/**
+ * activeTab 切换逻辑
+ *
+ * 核心：
+ * 1. 保存旧 industry / department
+ * 2. 重新请求当前 tab 对应的产业列表
+ * 3. 优先保留旧 industry
+ * 4. 在当前 industry 下优先保留旧 department
+ * 5. department 无权限，则找当前 industry 下第一个有权限部门
+ * 6. 当前 industry 下没有任何有权限部门，则 department 置空
+ */
+watch(activeTab, async (newTab) => {
+  if (suppressSelectionWatch.value) {
+    return;
+  }
+  const previousIndustryId = industry.value;
+  const previousDeptId = department.value;
+  await runWithSelectionLock(async () => {
+    await refreshIndustryAndSelection(newTab, previousIndustryId, previousDeptId);
+    await reloadCardsByCurrentSelection();
+  });
+});
+/**
+ * industry 切换逻辑
+ *
+ * 核心：
+ * 1. 不切别的产业
+ * 2. 只在当前产业下处理 department
+ * 3. 原 department 有权限就保留
+ * 4. 原 department 没权限就找当前产业下第一个有权限部门
+ * 5. 当前产业下无权限部门，则 department 置空
+ */
+watch(industry, async () => {
+  if (suppressSelectionWatch.value) {
+    return;
+  }
+  const previousDeptId = department.value;
+  await runWithSelectionLock(async () => {
+    const curIndustry = getCurrentIndustry();
+    department.value = resolveDepartmentId(activeTab.value, previousDeptId, curIndustry);
+    await reloadCardsByCurrentSelection();
+  });
+});
+/**
+ * department 切换逻辑
+ *
+ * 核心：
+ * 1. 如果用户选的 department 有权限，正常加载
+ * 2. 如果用户选的 department 没权限，自动修正为当前产业第一个有权限部门
+ * 3. 如果当前产业下都没权限，department 置空
+ */
+watch(department, async (newDept) => {
+  if (suppressSelectionWatch.value) {
+    return;
+  }
+  await runWithSelectionLock(async () => {
+    const curIndustry = getCurrentIndustry();
+    const nextDept = resolveDepartmentId(activeTab.value, newDept, curIndustry);
+    if (nextDept !== newDept) {
+      department.value = nextDept;
+    }
+    await reloadCardsByCurrentSelection();
+  });
+});
+/**
+ * 统计看板入口显示逻辑
+ *
+ * overall 下，只要存在任意有权限产业，就显示统计看板入口。
+ */
+const isShowRepDashboard = () => {
+  if (activeTab.value !== 'overall') {
+    return false;
+  }
+  return industryList.value.some((item) => hasIndustryPermission(item));
+};
+/**
+ * 打开统计看板
+ */
+const viewStatistic = () => {
+  isShowBoard.value = true;
+};
+/**
+ * 关闭统计看板
+ */
+const hideStatisticBoard = () => {
+  isShowBoard.value = false;
+};
+/**
+ * 初始化
+ *
+ * 初始进入 overall：
+ * - 优先选第一个有权限产业
+ * - department 默认 All
+ * - 如果该产业下没有任何有权限部门，department 为空
+ */
+onMounted(async () => {
+  await runWithSelectionLock(async () => {
+    await refreshIndustryAndSelection(activeTab.value, industry.value, department.value, {
+      initial: true,
+    });
+    await reloadCardsByCurrentSelection();
+    isInitialLoading.value = false;
+  });
+});
+/**
+ * 卸载时清理 observer
+ */
+onUnmounted(() => {
+  if (observer) {
+    observer.disconnect();
+    observer = null;
+  }
+});
+</script>
+
+你原来的关键问题就是 loadIndustryList() 里面每次都会直接改 industry 和 department，所以 tab 一切换就被重置了。上面这个版本把它拆开了：请求列表归请求列表，选中值修正归选中值修正，这样“保留选择，除非无权限”的规则才稳定。
