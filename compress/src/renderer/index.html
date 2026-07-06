@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Electron 7z Drag & Compress/Extract (Sandbox)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #1e1e1e;
+      --panel: #252526;
+      --border: #3c3c3c;
+      --accent: #4ea1ff;
+      --text: #e5e5e5;
+      --muted: #9ca3af;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    .card {
+      width: min(720px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      box-sizing: border-box;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 20px;
+      font-weight: 600;
+    }
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      text-align: center;
+      transition: border-color 0.2s, background 0.2s;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .dropzone.dragover {
+      border-color: var(--accent);
+      background: rgba(78, 161, 255, 0.08);
+      color: var(--text);
+    }
+    .controls {
+      margin-top: 16px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    select {
+      background: #2f2f2f;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      outline: none;
+      cursor: pointer;
+    }
+    select:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .status {
+      margin-top: 16px;
+      font-size: 14px;
+      color: var(--muted);
+      word-break: break-all;
+    }
+    .progress-wrap {
+      margin-top: 14px;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 10px;
+      background: #2f2f2f;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid #3a3a3a;
+    }
+    .progress-bar-inner {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #4ea1ff, #7cd2ff);
+      transition: width 0.12s ease-out;
+    }
+    .actions {
+      margin-top: 16px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      background: #2f2f2f;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      font-size: 14px;
+    }
+    .btn:hover:not(:disabled) {
+      border-color: var(--accent);
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: #3d8bdb;
+      border-color: #3d8bdb;
+    }
+    code {
+      background: #111;
+      padding: 2px 6px;
+      border-radius: 6px;
+      border: 1px solid #333;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>拖拽文件/文件夹：自动压缩或解压</h1>
+    <div id="dropzone" class="dropzone">
+      将文件或文件夹拖到这里<br/>
+      - 拖目录/普通文件：准备压缩<br/>
+      - 拖压缩包(.7z/.zip/.rar...)：准备解压
+    </div>
+
+    <div class="controls">
+      <select id="compression-level" title="压缩比率">
+        <option value="0">存储 (Store)</option>
+        <option value="1">最快 (Fastest)</option>
+        <option value="3">快速 (Fast)</option>
+        <option value="5" selected>正常 (Normal)</option>
+        <option value="7">最大 (Maximum)</option>
+        <option value="9">极限 (Ultra)</option>
+      </select>
+      <button class="btn btn-primary" id="start-btn" disabled>开始处理</button>
+    </div>
+
+    <div class="status" id="status">请先拖入文件</div>
+    <div class="progress-wrap">
+      <div class="progress-bar">
+        <div id="pb-inner" class="progress-bar-inner"></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn" id="clear-log">清除状态</button>
+    </div>
+    <div class="status" style="margin-top:10px;font-size:12px;">
+      渲染进程为沙盒，使用 <code>webUtils.getPathForFile</code> 还原真实路径，再经 IPC 调主进程调用 7z。
+    </div>
+  </div>
+
+  <script>
+    const dropzone = document.getElementById('dropzone');
+    const statusEl = document.getElementById('status');
+    const pbInner = document.getElementById('pb-inner');
+    const clearBtn = document.getElementById('clear-log');
+    const startBtn = document.getElementById('start-btn');
+    const levelSelect = document.getElementById('compression-level');
+
+    let isBusy = false;
+    let dragCounter = 0;
+    let currentFile = null;
+    let isArchive = false;
+
+    function setStatus(text) { statusEl.textContent = text; }
+    function setProgress(p) { pbInner.style.width = `${p}%`; }
+
+    function preventDefaults(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      dropzone.addEventListener(eventName, preventDefaults, false);
+    });
+
+    dropzone.addEventListener('dragenter', () => {
+      dragCounter++;
+      dropzone.classList.add('dragover');
+    });
+    dropzone.addEventListener('dragleave', () => {
+      dragCounter = Math.max(0, dragCounter - 1);
+      if (dragCounter === 0) dropzone.classList.remove('dragover');
+    });
+
+    dropzone.addEventListener('drop', async (e) => {
+      dropzone.classList.remove('dragover');
+      dragCounter = 0;
+      if (isBusy) {
+        setStatus('已有任务进行中，请稍候...');
+        return;
+      }
+      const files = e.dataTransfer.files;
+      if (!files || files.length === 0) {
+        setStatus('未检测到文件');
+        return;
+      }
+      const fileObject = files[0];
+      const realPath = window.electronAPI.getFilePath(fileObject);
+      if (!realPath) {
+        setStatus('无法获取真实路径');
+        return;
+      }
+
+      currentFile = realPath;
+      isArchive = checkIsArchive(realPath);
+      
+      startBtn.disabled = false;
+      setProgress(0);
+
+      if (isArchive) {
+        setStatus(`已就绪 (解压)：${realPath}`);
+        levelSelect.disabled = true;
+      } else {
+        setStatus(`已就绪 (压缩)：${realPath}`);
+        levelSelect.disabled = false;
+      }
+    });
+
+    startBtn.addEventListener('click', async () => {
+      if (!currentFile || isBusy) return;
+
+      isBusy = true;
+      startBtn.disabled = true;
+      levelSelect.disabled = true;
+      
+      if (isArchive) {
+        setStatus(`正在解压：${currentFile}...`);
+        try {
+          await window.electronAPI.extractArchive(currentFile);
+          setProgress(100);
+          setStatus('解压完成 ✅');
+        } catch (err) {
+          console.error(err);
+          setStatus('解压出错：' + err.message);
+        } finally {
+          isBusy = false;
+          // 任务完成后，保持按钮禁用，直到拖入新文件或清除
+        }
+      } else {
+        const level = parseInt(levelSelect.value, 10);
+        setStatus(`正在压缩 (等级 ${level})：${currentFile}...`);
+        try {
+          await window.electronAPI.compressFolder(currentFile, { level });
+          setProgress(100);
+          setStatus('压缩完成 ✅');
+        } catch (err) {
+          console.error(err);
+          setStatus('压缩出错：' + err.message);
+        } finally {
+          isBusy = false;
+        }
+      }
+    });
+
+    // 订阅进度（压缩/解压）
+    const unsubZip = window.electronAPI.onZipProgress((p) => {
+      setProgress(p);
+      setStatus(`压缩中... ${p}%`);
+    });
+    const unsubUnzip = window.electronAPI.onUnzipProgress((p) => {
+      setProgress(p);
+      setStatus(`解压中... ${p}%`);
+    });
+
+    clearBtn.addEventListener('click', () => {
+      currentFile = null;
+      isBusy = false;
+      startBtn.disabled = true;
+      levelSelect.disabled = false;
+      setStatus('待机中');
+      setProgress(0);
+    });
+
+    window.addEventListener('beforeunload', () => {
+      unsubZip && unsubZip();
+      unsubUnzip && unsubUnzip();
+    });
+
+    function checkIsArchive(p) {
+      return /\.(7z|zip|rar|tar|tgz|tbz|gz|bz2|xz|lzma)$/i.test(p);
+    }
+  </script>
+</body>
+</html>

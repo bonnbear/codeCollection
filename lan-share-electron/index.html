@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>局域网目录分享</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --text: #17212f;
+      --muted: #5c6b82;
+      --primary: #1b66ff;
+      --danger: #d92d20;
+      --border: #dde3ee;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 10% 20%, #e8f0ff 0%, #f5f7fb 35%, #eef2f9 100%);
+      color: var(--text);
+      font-family: 'SF Pro Text', 'PingFang SC', 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: min(760px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 14px 48px rgba(23, 33, 47, 0.08);
+      padding: 24px;
+    }
+
+    h1 { margin-top: 0; font-size: 24px; }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 14px;
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .secondary {
+      background: #eef3ff;
+      color: #1d4bcc;
+    }
+
+    .primary {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .danger {
+      background: #ffe7e5;
+      color: var(--danger);
+    }
+
+    .action {
+      display: flex;
+      gap: 10px;
+      margin: 16px 0;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .status {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #f2f6ff;
+      font-size: 14px;
+    }
+
+    .urls {
+      margin-top: 16px;
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+    }
+
+    .url-list {
+      margin: 10px 0 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .url-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .url-item code {
+      font-size: 13px;
+      word-break: break-all;
+    }
+
+    @media (max-width: 620px) {
+      .row { grid-template-columns: 1fr; }
+      .url-item { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>局域网目录分享</h1>
+    <div class="muted">协议: SMB。启动时会弹出系统管理员授权窗口。</div>
+
+    <div style="height: 14px;"></div>
+
+    <label class="muted" for="dirInput">共享目录</label>
+    <div class="row">
+      <input id="dirInput" type="text" placeholder="请选择要分享的目录" />
+      <button class="secondary" id="chooseDirBtn">选择目录</button>
+    </div>
+
+    <label class="muted" for="shareNameInput">共享名</label>
+    <div class="row">
+      <input id="shareNameInput" type="text" placeholder="例如: 我的共享目录" />
+      <span></span>
+    </div>
+
+    <div class="action">
+      <button class="primary" id="startBtn">启动分享</button>
+      <button class="danger" id="stopBtn">停止分享</button>
+    </div>
+
+    <div id="status" class="status">未启动</div>
+
+    <section class="urls">
+      <div class="muted">访问链接</div>
+      <ul id="urlList" class="url-list"></ul>
+    </section>
+  </main>
+
+  <script src="./renderer.js"></script>
+</body>
+</html>

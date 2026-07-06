@@ -1,0 +1,856 @@
+<template>
+    <el-form :model="treeStructure" :rules="rules" ref="formRef" class="container mx-auto p-4" @submit.prevent="saveData">
+      <div class="table-container">
+        <div class="table-header">
+          <div class="header-cell checkbox-header">
+            <el-checkbox v-model="selectAll" @change="handleSelectAll">全选</el-checkbox>
+          </div>
+           <div class="header-group activity-process">
+      <div class="header-cell span-3">活动流程</div>
+      <div class="header-row">
+        <div class="header-cell">一级</div>
+        <div class="header-cell">
+          二级
+          <el-checkbox 
+            v-model="secondLevelChecked" 
+            @change="handleSecondLevelCheck"
+          ></el-checkbox>
+        </div>
+        <div class="header-cell">
+          三级
+          <el-checkbox 
+            v-model="thirdLevelChecked" 
+            :disabled="secondLevelChecked"
+          ></el-checkbox>
+        </div>
+      </div>
+    </div>
+          <div class="header-cell">活动描述</div>
+          <div class="header-cell">开始时间</div>
+          <div class="header-cell">结束时间</div>
+          <div class="months-header" ref="timelineRef">
+            <div v-for="month in months" :key="month" class="month-cell">{{ month }}</div>
+          </div>
+        </div>
+        <div class="table-body">
+          <template v-for="(firstLevel, firstIndex) in treeStructure.children" :key="firstLevel.name">
+            <div class="first-level-group">
+              <div class="checkbox-cell">
+                <el-checkbox v-model="firstLevel.selected" @change="(val) => handleSelect(val, firstIndex)"></el-checkbox>
+              </div>
+              <div class="table-cell first-level">
+                <el-form-item :prop="`children.${firstIndex}.name`" :rules="rules.firstLevel">
+                  <el-input v-model="firstLevel.name" size="small" />
+                </el-form-item>
+                <div class="button-group">
+                  <el-button size="small" @click="addSecondLevel(firstIndex)">增加</el-button>
+                  <el-button size="small" @click="deleteFirstLevel(firstIndex)">删除</el-button>
+                </div>
+              </div>
+              <div class="branch-content">
+                <template v-for="(branch, branchIndex) in firstLevel.children" :key="`${firstIndex}-${branchIndex}`">
+                  <div class="branch-row">
+                    <div class="table-cell second-level">
+                      <el-form-item :prop="`children.${firstIndex}.children.${branchIndex}.name`" :rules="rules.secondLevel">
+                        <el-input v-model="branch.name" size="small" />
+                      </el-form-item>
+                      <div class="button-group">
+                        <el-button size="small" @click="addThirdLevel(firstIndex, branchIndex)">增加</el-button>
+                        <el-button size="small" @click="deleteSecondLevel(firstIndex, branchIndex)">删除</el-button>
+                      </div>
+                    </div>
+                    <div class="leaf-content">
+                      <template v-if="branch.children && branch.children.length">
+                        <template v-for="(leaf, leafIndex) in branch.children" :key="`${firstIndex}-${branchIndex}-${leafIndex}`">
+                          <div class="leaf-row">
+                            <div class="table-cell third-level">
+                              <el-input v-model="leaf.name" size="small" />
+                              <div class="button-group">
+                                <el-button size="small" @click="addActivity(firstIndex, branchIndex, leafIndex)">增加活动</el-button>
+                                <el-button size="small" @click="deleteThirdLevel(firstIndex, branchIndex, leafIndex)">删除</el-button>
+                              </div>
+                            </div>
+                            <div class="activity-content">
+                              <template v-for="(activity, activityIndex) in leaf.activities" :key="`${firstIndex}-${branchIndex}-${leafIndex}-${activityIndex}`">
+                                <div class="activity-row">
+                                  <div class="table-cell activity-description">
+                                    <el-form-item :prop="`children.${firstIndex}.children.${branchIndex}.children.${leafIndex}.activities.${activityIndex}.description`" :rules="rules.activityDescription">
+                                      <el-input v-model="activity.description" size="small" />
+                                    </el-form-item>
+                                    <el-button size="small" @click="deleteActivity(firstIndex, branchIndex, leafIndex, activityIndex)">删除</el-button>
+                                  </div>
+                                  <div class="table-cell activity-start-time">
+                                    <el-form-item :prop="`children.${firstIndex}.children.${branchIndex}.children.${leafIndex}.activities.${activityIndex}.startTime`" :rules="rules.startTime">
+                                      <el-date-picker
+                                        v-model="activity.startTime"
+                                        type="date"
+                                        size="small"
+                                        placeholder="选择开始日期"
+                                        :clearable="false"
+                                        format="YYYY-MM-DD"
+                                        value-format="YYYY-MM-DD"
+                                        :disabled-date="(time) => disabledStartDate(time, activity.endTime)"
+                                        @change="(val) => handleStartDateChange(val, activity)"
+                                      />
+                                    </el-form-item>
+                                  </div>
+                                  <div class="table-cell activity-end-time">
+                                    <el-form-item :prop="`children.${firstIndex}.children.${branchIndex}.children.${leafIndex}.activities.${activityIndex}.endTime`" :rules="rules.endTime">
+                                      <el-date-picker
+                                        v-model="activity.endTime"
+                                        type="date"
+                                        size="small"
+                                        placeholder="选择结束日期"
+                                        :clearable="false"
+                                        format="YYYY-MM-DD"
+                                        value-format="YYYY-MM-DD"
+                                        :disabled-date="(time) => disabledEndDate(time, activity.startTime)"
+                                        @change="(val) => handleEndDateChange(val, activity)"
+                                      />
+                                    </el-form-item>
+                                  </div>
+                                  <div class="activity-timeline">
+                                    <div class="activity-block"
+                                         :style="getActivityStyle(activity)">
+                                      <span class="activity-text">
+                                        {{ activity.description }}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </template>
+                            </div>
+                          </div>
+                        </template>
+                      </template>
+                      <template v-else>
+                        <div class="leaf-row">
+                          <div class="table-cell third-level"></div>
+                          <div class="activity-content">
+                            <template v-for="(activity, activityIndex) in branch.activities" :key="`${firstIndex}-${branchIndex}-${activityIndex}`">
+                              <div class="activity-row">
+                                <div class="table-cell activity-description">
+                                  <el-form-item :prop="`children.${firstIndex}.children.${branchIndex}.activities.${activityIndex}.description`" :rules="rules.activityDescription">
+                                    <el-input v-model="activity.description" size="small" />
+                                  </el-form-item>
+                                  <el-button size="small" @click="deleteActivity(firstIndex, branchIndex, null, activityIndex)">删除</el-button>
+                                </div>
+                                <div class="table-cell activity-start-time">
+                                  <el-form-item :prop="`children.${firstIndex}.children.${branchIndex}.activities.${activityIndex}.startTime`" :rules="rules.startTime">
+                                    <el-date-picker
+                                      v-model="activity.startTime"
+                                      type="date"
+                                      size="small"
+                                      placeholder="选择开始日期"
+                                      :clearable="false"
+                                      format="YYYY-MM-DD"
+                                      value-format="YYYY-MM-DD"
+                                      :disabled-date="(time) => disabledStartDate(time, activity.endTime)"
+                                      @change="(val) => handleStartDateChange(val, activity)"
+                                    />
+                                  </el-form-item>
+                                </div>
+                                <div class="table-cell activity-end-time">
+                                  <el-form-item :prop="`children.${firstIndex}.children.${branchIndex}.activities.${activityIndex}.endTime`" :rules="rules.endTime">
+                                    <el-date-picker
+                                      v-model="activity.endTime"
+                                      type="date"
+                                      size="small"
+                                      placeholder="选择结束日期"
+                                      :clearable="false"
+                                      format="YYYY-MM-DD"
+                                      value-format="YYYY-MM-DD"
+                                      :disabled-date="(time) => disabledEndDate(time, activity.startTime)"
+                                      @change="(val) => handleEndDateChange(val, activity)"
+                                    />
+                                  </el-form-item>
+                                </div>
+                                <div class="activity-timeline">
+                                  <div class="activity-block"
+                                       :style="getActivityStyle(activity)">
+                                    <span class="activity-text">
+                                      {{ activity.description }}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div class="current-date-line" :style="currentDateLineStyle"></div>
+      <el-button class="mt-4" @click="addFirstLevel">添加一级</el-button>
+      <el-button class="mt-4" type="primary" native-type="submit">保存数据</el-button>
+    </el-form>
+  </template>
+  
+  <script setup>
+  import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
+  import { v4 as uuidv4 } from 'uuid';
+  
+  const containerRef = ref(null);
+  const timelineRef = ref(null);
+  const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+  const currentDate = ref(new Date());
+  const currentYear = computed(() => currentDate.value.getFullYear());
+  const currentDateLineStyle = ref({});
+  const selectAll = ref(false);
+  
+  const generateId = () => {
+    return uuidv4();
+  };
+  const secondLevelChecked = ref(false);
+  const thirdLevelChecked = ref(false);
+  
+  const handleSecondLevelCheck = (val) => {
+    if (val) {
+      thirdLevelChecked.value = true;
+    } else {
+      thirdLevelChecked.value = false;
+    }
+  };
+  const treeStructure = reactive({
+    id: generateId(),
+    name: "Root",
+    children: [
+      {
+        id: generateId(),
+        name: "产品开发",
+        selected: false,
+        children: [
+          {
+            id: generateId(),
+            name: "需求分析",
+            children: [
+              {
+                id: generateId(),
+                name: "用户调研",
+                activities: [
+                  { id: generateId(), description: "问卷调查", startTime: "2024-01-01", endTime: "2024-01-15" },
+                  { id: generateId(), description: "用户访谈", startTime: "2024-01-16", endTime: "2024-01-31" }
+                ]
+              }
+            ]
+          },
+          {
+            id: generateId(),
+            name: "设计阶段",
+            activities: [
+              { id: generateId(), description: "UI设计", startTime: "2024-02-01", endTime: "2024-02-28" },
+              { id: generateId(), description: "原型开发", startTime: "2024-03-01", endTime: "2024-03-31" }
+            ]
+          }
+        ]
+      },
+      {
+        id: generateId(),
+        name: "市场推广",
+        selected: false,
+        children: [
+          {
+            id: generateId(),
+            name: "社交媒体营销",
+            children: [
+              {
+                id: generateId(),
+                name: "Facebook广告",
+                activities: [
+                  { id: generateId(), description: "广告设计", startTime: "2024-04-01", endTime: "2024-04-15" },
+                  { id: generateId(), description: "广告投放", startTime: "2024-04-16", endTime: "2024-05-15" }
+                ]
+              },
+              {
+                id: generateId(),
+                name: "Twitter推广",
+                activities: [
+                  { id: generateId(), description: "内容创作", startTime: "2024-05-01", endTime: "2024-05-31" }
+                ]
+              }
+            ]
+          },
+          {
+            id: generateId(),
+            name: "线下活动",
+            children: [
+              {
+                id: generateId(),
+                name: "产品发布会",
+                activities: [
+                  { id: generateId(), description: "场地准备", startTime: "2024-06-01", endTime: "2024-06-15" },
+                  { id: generateId(), description: "活动执行", startTime: "2024-06-16", endTime: "2024-06-17" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: generateId(),
+        name: "客户支持",
+        selected: false,
+        children: [
+          {
+            id: generateId(),
+            name: "在线支持",
+            activities: [
+              { id: generateId(), description: "客服培训", startTime: "2024-07-01", endTime: "2024-07-15" },
+              { id: generateId(), description: "支持系统上线", startTime: "2024-07-16", endTime: "2024-07-31" }
+            ]
+          },
+          {
+            id: generateId(),
+            name: "售后服务",
+            children: [
+              {
+                id: generateId(),
+                name: "反馈收集",
+                activities: [
+                  { id: generateId(), description: "用户反馈分析", startTime: "2024-08-01", endTime: "2024-08-31" }
+                ]
+              },
+              {
+                id: generateId(),
+                name: "产品改进",
+                activities: [
+                  { id: generateId(), description: "版本更新", startTime: "2024-09-01", endTime: "2024-09-30" }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  });
+  
+  const processInitialData = (data, parentId = null) => {
+    data.children.forEach(l1 => {
+      l1.parentId = parentId;
+      l1.children.forEach(l2 => {
+        l2.parentId = l1.id;
+        if (l2.activities && l2.activities.length > 0) {
+          const l3 = {
+            id: generateId(),
+            name: "",
+            parentId: l2.id,
+            activities: l2.activities
+          };
+          l2.children = [l3];
+          delete l2.activities;
+        } else if (!l2.children) {
+          l2.children = [];
+        }
+        l2.children.forEach(l3 => {
+          l3.parentId = l2.id;
+          l3.activities.forEach(activity => {
+            activity.parentId = l3.id;
+          });
+        });
+      });
+    });
+    return data;
+  };
+  
+  const getActivityStyle = (activity) => {
+    if (!activity.startTime || !activity.endTime) return {};
+  
+    const startDate = new Date(activity.startTime);
+    const endDate = new Date(activity.endTime);
+    const yearStart = new Date(currentYear.value, 0, 1);
+    const yearEnd = new Date(currentYear.value, 11, 31);
+  
+    let left = ((startDate - yearStart) / (yearEnd - yearStart)) * 100;
+    let width = ((endDate - startDate) / (yearEnd - yearStart)) * 100;
+  
+    const isPastActivity = endDate < currentDate.value;
+  
+    return {
+      left: `${left}%`,
+      width: `${width}%`,
+      backgroundColor: isPastActivity ? '#CCCCCC' : '#4CAF50',
+    };
+  };
+  
+  const updateDateLine = () => {
+    if (!containerRef.value || !timelineRef.value) return;
+  
+    const containerRect = containerRef.value.getBoundingClientRect();
+    const timelineRect = timelineRef.value.getBoundingClientRect();
+    const timelineLeftOffset = timelineRect.left - containerRect.left;
+  
+    const startOfYear = new Date(currentYear.value, 0, 1);
+    const endOfYear = new Date(currentYear.value, 11, 31);
+    const totalDays = (endOfYear - startOfYear) / (24 * 60 * 60 * 1000) + 1;
+    const daysPassed = Math.floor((currentDate.value - startOfYear) / (24 * 60 * 60 * 1000));
+    const leftPosition = (daysPassed / totalDays) * timelineRect.width;
+  
+    currentDateLineStyle.value = {
+      left: `${timelineLeftOffset + leftPosition}px`,
+      height: `${containerRect.height}px`,
+    };
+  };
+  
+  const updateLayout = () => {
+    if (timelineRef.value) {
+      const timelineWidth = timelineRef.value.offsetWidth;
+      document.documentElement.style.setProperty('--timeline-width', `${timelineWidth}px`);
+    }
+    updateDateLine();
+  };
+  
+  onMounted(() => {
+    treeStructure.children = processInitialData(treeStructure).children;
+    updateLayout();
+    window.addEventListener('resize', updateLayout);
+  
+    const timer = setInterval(() => {
+      currentDate.value = new Date();
+      updateDateLine();
+    }, 1000 * 60 * 60);
+  
+    onUnmounted(() => {
+      clearInterval(timer);
+      window.removeEventListener('resize', updateLayout);
+    });
+  });
+  
+  const disabledStartDate = (time, endTime) => {
+    const start = new Date(currentYear.value, 0, 1);
+    const end = new Date(currentYear.value, 11, 31);
+    if (endTime) {
+      return time.getTime() > new Date(endTime).getTime() || time.getTime() < start.getTime() || time.getTime() > end.getTime();
+    }
+    return time.getTime() < start.getTime() || time.getTime() > end.getTime();
+  };
+  
+  const disabledEndDate = (time, startTime) => {
+    const start = new Date(currentYear.value, 0, 1);
+    const end = new Date(currentYear.value, 11, 31);
+    if (startTime) {
+      return time.getTime() < new Date(startTime).getTime() || time.getTime() < start.getTime() || time.getTime() > end.getTime();
+    }
+    return time.getTime() < start.getTime() || time.getTime() > end.getTime();
+  };
+  
+  const handleStartDateChange = (val, activity) => {
+    if (activity.endTime && new Date(val) > new Date(activity.endTime)) {
+      activity.endTime = val;
+    }
+  };
+  
+  const handleEndDateChange = (val, activity) => {
+    if (activity.startTime && new Date(val) < new Date(activity.startTime)) {
+      activity.startTime = val;
+    }
+  };
+  
+  const createNewActivity = () => {
+    return {
+      id: generateId(),
+      description: "",
+      startTime: "",
+      endTime: ""
+    };
+  };
+  
+  const addFirstLevel = () => {
+    const newFirstLevel = {
+      id: generateId(),
+      name: "",
+      selected: false,
+      parentId: treeStructure.id,
+      children: [{
+        id: generateId(),
+        name: "",
+        children: [{
+          id: generateId(),
+          name: "",
+          activities: [createNewActivity()]
+        }]
+      }]
+    };
+    newFirstLevel.children[0].parentId = newFirstLevel.id;
+    newFirstLevel.children[0].children[0].parentId = newFirstLevel.children[0].id;
+    newFirstLevel.children[0].children[0].activities[0].parentId = newFirstLevel.children[0].children[0].id;
+    treeStructure.children.push(newFirstLevel);
+  };
+  
+  const addSecondLevel = (firstIndex) => {
+    const newSecondLevel = {
+      id: generateId(),
+      name: "",
+      parentId: treeStructure.children[firstIndex].id,
+      children: [{
+        id: generateId(),
+        name: "",
+        activities: [createNewActivity()]
+      }]
+    };
+    newSecondLevel.children[0].parentId = newSecondLevel.id;
+    newSecondLevel.children[0].activities[0].parentId = newSecondLevel.children[0].id;
+    treeStructure.children[firstIndex].children.push(newSecondLevel);
+  };
+  
+  const addThirdLevel = (firstIndex, branchIndex) => {
+    const newThirdLevel = {
+      id: generateId(),
+      name: "",
+      parentId: treeStructure.children[firstIndex].children[branchIndex].id,
+      activities: [createNewActivity()]
+    };
+    newThirdLevel.activities[0].parentId = newThirdLevel.id;
+    treeStructure.children[firstIndex].children[branchIndex].children.push(newThirdLevel);
+  };
+  
+  const addActivity = (firstIndex, branchIndex, leafIndex) => {
+    const newActivity = createNewActivity();
+    newActivity.parentId = treeStructure.children[firstIndex].children[branchIndex].children[leafIndex].id;
+    treeStructure.children[firstIndex].children[branchIndex].children[leafIndex].activities.push(newActivity);
+  };
+  
+  const deleteFirstLevel = (firstIndex) => {
+    treeStructure.children.splice(firstIndex, 1);
+  };
+  
+  const deleteSecondLevel = (firstIndex, branchIndex) => {
+    treeStructure.children[firstIndex].children.splice(branchIndex, 1);
+  };
+  
+  const deleteThirdLevel = (firstIndex, branchIndex, leafIndex) => {
+    treeStructure.children[firstIndex].children[branchIndex].children.splice(leafIndex, 1);
+  };
+  
+  const deleteActivity = (firstIndex, branchIndex, leafIndex, activityIndex) => {
+    treeStructure.children[firstIndex].children[branchIndex].children[leafIndex].activities.splice(activityIndex, 1);
+  };
+  
+  const handleSelectAll = (val) => {
+    treeStructure.children.forEach(firstLevel => {
+      firstLevel.selected = val;
+    });
+  };
+  
+  const handleSelect = (val, firstIndex) => {
+    treeStructure.children[firstIndex].selected = val;
+    updateSelectAllStatus();
+  };
+  
+  const updateSelectAllStatus = () => {
+    selectAll.value = treeStructure.children.every(firstLevel => firstLevel.selected);
+  };
+  
+  const processDataBeforeSave = (data) => {
+    const processedData = JSON.parse(JSON.stringify(data));
+    processedData.children.forEach(l1 => {
+      l1.children.forEach(l2 => {
+        l2.children = l2.children.filter(l3 => {
+          if (l3.name.trim() === "") {
+            if (!l2.activities) l2.activities = [];
+            l2.activities.push(...(l3.activities || []));
+            l2.activities.forEach(activity => {
+              activity.parentId = l2.id;
+            });
+            return false;
+          }
+          return true;
+        });
+        if (l2.children.length === 0) delete l2.children;
+      });
+    });
+    return processedData;
+  };
+  
+  const formRef = ref(null);
+  
+  const rules = {
+    firstLevel: [
+      { required: true, message: '请输入一级名称', trigger: 'blur' }
+    ],
+    secondLevel: [
+      { required: true, message: '请输入二级名称', trigger: 'blur' }
+    ],
+    activityDescription: [
+      { required: true, message: '请输入活动描述', trigger: 'blur' }
+    ],
+    startTime: [
+      { required: true, message: '请选择开始时间', trigger: 'change' }
+    ],
+    endTime: [
+      { required: true, message: '请选择结束时间', trigger: 'change' }
+    ]
+  };
+  
+  const saveData = () => {
+    formRef.value.validate((valid) => {
+      if (valid) {
+        const dataToSave = processDataBeforeSave(treeStructure);
+        console.log("Processed data to save:", dataToSave);
+        // 这里可以添加实际的保存逻辑，比如发送到服务器
+      } else {
+        console.log('表单验证失败');
+        return false;
+      }
+    });
+  };
+  </script>
+  <style scoped>
+  .container {
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    position: relative;
+    overflow: auto;
+  }
+  
+  .table-container {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e2e8f0;
+    min-width: fit-content;
+  }
+  
+  .table-header {
+    display: grid;
+    grid-template-columns: 40px 300px 200px 100px 100px minmax(1200px, 1fr);
+    background-color: #f8fafc;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  
+  .header-group {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .header-cell {
+    padding: 12px 8px;
+    text-align: center;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .header-row {
+    display: flex;
+  }
+  
+  .span-3 {
+    grid-column: span 3;
+  }
+  
+  .activity-process .header-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  
+  .months-header {
+    display: flex;
+  }
+  
+  .month-cell {
+    flex: 1;
+    min-width: 100px;
+    box-sizing: border-box;
+    padding: 12px 8px;
+    text-align: center;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  
+  .table-body {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .first-level-group {
+    display: grid;
+    grid-template-columns: 40px 100px 1fr;
+    border-top: 1px solid #e2e8f0;
+  }
+  
+  .branch-content {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .branch-row {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    border-top: 1px solid #e2e8f0;
+  }
+  
+  .leaf-content {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .leaf-row {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    border-top: 1px solid #e2e8f0;
+  }
+  
+  .activity-row {
+    display: grid;
+    grid-template-columns: 200px 100px 100px minmax(1200px, 1fr);
+    border-top: 1px solid #e2e8f0;
+  }
+  
+  .table-cell {
+    padding: 8px;
+    border-right: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+  }
+  
+  .first-level {
+    grid-row: 1 / -1;
+  }
+  
+  .second-level {
+    grid-row: 1 / -1;
+  }
+  
+  .third-level {
+    border-right: 1px solid #e2e8f0;
+  }
+  
+  .activity-description, .activity-start-time, .activity-end-time {
+    border-right: 1px solid #e2e8f0;
+    min-height: 40px;
+  }
+  
+  .activity-content {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .table-cell:last-child {
+    border-right: none;
+  }
+  
+  .first-level-group:first-child {
+    border-top: none;
+  }
+  
+  .branch-row:first-child {
+    border-top: none;
+  }
+  
+  .leaf-row:first-child {
+    border-top: none;
+  }
+  
+  .activity-row:first-child {
+    border-top: none;
+  }
+  
+  .leaf-content > .leaf-row:first-child .activity-row {
+    border-top: none;
+  }
+  
+  .activity-timeline {
+    position: relative;
+    height: 40px;
+    overflow: hidden;
+  }
+  .header-cell {
+    padding: 12px 8px;
+    text-align: center;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column; /* 添加这行以使文本和复选框垂直排列 */
+  }
+  
+  .header-cell .el-checkbox {
+    margin-top: 5px; /* 在复选框和文本之间添加一些间距 */
+  }
+  .activity-block {
+    position: absolute;
+    top: 5px;
+    bottom: 5px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    padding: 0 5px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  
+  .activity-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: white;
+    font-size: 12px;
+  }
+  
+  .current-date-line {
+    position: absolute;
+    top: 0;
+    width: 2px;
+    background-color: red;
+    z-index: 10;
+  }
+  
+  .button-group {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+  }
+  
+  .checkbox-header, .checkbox-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid #e2e8f0;
+    grid-row: 1 / -1;
+  }
+  
+  /* Element Plus overrides */
+  .el-input {
+    width: 100%;
+  }
+  
+  .el-date-editor.el-input {
+    width: 100%;
+  }
+  
+  .el-input__inner {
+    height: 32px;
+    line-height: 32px;
+  }
+  
+  .el-date-editor .el-input__inner {
+    padding-left: 30px;
+  }
+  
+  .el-button--small {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  
+  .activity-description {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .activity-description .el-button {
+    margin-top: 4px;
+  }
+  </style>

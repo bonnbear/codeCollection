@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: spring-family-bucket
+
+  datasource:
+    url: jdbc:h2:mem:demo_db;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ''
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  cache:
+    type: simple
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  security:
+    username: admin
+    password: admin123

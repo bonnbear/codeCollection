@@ -1,0 +1,15 @@
+[
+  {
+    "source_name": "frontend-design",
+    "skill_name": "frontend-design",
+    "source_path": "/Users/lirunzhao/.config/opencode/skills/frontend-design",
+    "dest_path": "/Volumes/sk801/codecollection/my-vue3-project/migrated-skills/opencode-test/frontend-design",
+    "warnings": [
+      "source frontmatter included license; removed in migrated SKILL.md"
+    ],
+    "copied_dirs": [],
+    "copied_files": [
+      "LICENSE.txt"
+    ]
+  }
+]

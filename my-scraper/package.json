@@ -1,0 +1,25 @@
+{
+  "name": "playwright-scraper-project",
+  "version": "1.0.0",
+  "description": "一个使用 Playwright 的灵活配置的网络爬虫项目",
+  "main": "scraper-configurable.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "setup": "npx playwright install",
+    "scrape": "node scraper-configurable.js"
+  },
+  "keywords": [
+    "scraper",
+    "playwright",
+    "nodejs",
+    "web-scraping"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "oh-my-opencode-darwin-arm64": "^3.1.1",
+    "playwright": "^1.40.1",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    },
+    "browser": {
+      "command": "npx",
+      "args": ["-y", "@executeautomation/playwright-mcp-server", "--headful"],
+      "env": {
+        "PLAYWRIGHT_BROWSERS_PATH": "./pw-browsers"
+      }
+    },
+    "amap-maps": {
+      "command": "npx",
+      "args": ["-y", "@amap/amap-maps-mcp-server"],
+      "env": {
+        "AMAP_MAPS_API_KEY": "api_key"
+      }
+    },
+    "sequentialthinking": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "mcp/sequentialthinking"]
+    },
+    "fetch": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "mcp/fetch"]
+    },
+    "memory": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "-v",
+        "claude-memory:/app/dist",
+        "--rm",
+        "mcp/memory"
+      ]
+    },
+        "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest"]
+    }
+  },
+  "settings": {
+    "logLevel": "debug"
+  }
+}

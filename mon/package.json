@@ -1,0 +1,13 @@
+{
+  "name": "vue3-monorepo",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @vue3-monorepo/app dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vue-tsc": "^2.0.0"
+  }
+}

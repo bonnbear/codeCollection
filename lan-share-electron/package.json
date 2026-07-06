@@ -1,0 +1,14 @@
+{
+  "name": "lan-share-electron",
+  "version": "1.0.0",
+  "description": "SMB LAN directory sharing desktop app (macOS)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "playwright": "^1.58.2"
+  }
+}

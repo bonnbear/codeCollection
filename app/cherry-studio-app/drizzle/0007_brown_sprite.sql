@@ -1,0 +1,1 @@
+ALTER TABLE `mcp` RENAME COLUMN "enabled" TO "is_active";

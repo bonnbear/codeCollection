@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com">
+  <title>音频转换器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- 标题栏拖拽区域 -->
+    <div class="titlebar">
+      <div class="titlebar-drag"></div>
+      <h1 class="app-title">🎵 音频转换器</h1>
+    </div>
+
+    <!-- Sox 状态警告 -->
+    <div id="sox-warning" class="warning-banner hidden">
+      <span class="warning-icon">⚠️</span>
+      <span>未检测到 Sox，请先安装: <code>brew install sox</code></span>
+    </div>
+
+    <!-- 主内容区 -->
+    <main class="main-content">
+      <!-- 文件拖放区 -->
+      <div id="drop-zone" class="drop-zone">
+        <div class="drop-zone-content">
+          <div class="drop-icon">📁</div>
+          <p class="drop-text">拖拽音频文件到这里</p>
+          <p class="drop-subtext">或点击选择文件</p>
+          <p class="drop-formats">支持: MP3, WAV, FLAC, OGG, AAC, AIFF, M4A</p>
+        </div>
+      </div>
+
+      <!-- 文件列表 -->
+      <div id="file-list-container" class="file-list-container hidden">
+        <div class="section-header">
+          <h2>📋 文件列表</h2>
+          <button id="clear-files" class="btn-icon" title="清空列表">🗑️</button>
+        </div>
+        <ul id="file-list" class="file-list"></ul>
+        <button id="add-more-files" class="btn-secondary">+ 添加更多文件</button>
+      </div>
+
+      <!-- 转换设置 -->
+      <div id="settings-panel" class="settings-panel hidden">
+        <h2>⚙️ 转换设置</h2>
+        
+        <div class="settings-grid">
+          <div class="setting-group">
+            <label for="output-format">输出格式</label>
+            <select id="output-format" class="select-input">
+              <option value="mp3">MP3</option>
+              <option value="wav">WAV</option>
+              <option value="flac">FLAC</option>
+              <option value="ogg">OGG</option>
+            </select>
+          </div>
+
+          <div class="setting-group">
+            <label for="sample-rate">采样率</label>
+            <select id="sample-rate" class="select-input">
+              <option value="">保持原样</option>
+              <option value="44100">44100 Hz (CD)</option>
+              <option value="48000">48000 Hz</option>
+              <option value="96000">96000 Hz (高清)</option>
+              <option value="22050">22050 Hz</option>
+            </select>
+          </div>
+
+          <div class="setting-group">
+            <label for="channels">声道</label>
+            <select id="channels" class="select-input">
+              <option value="">保持原样</option>
+              <option value="1">单声道</option>
+              <option value="2">立体声</option>
+            </select>
+          </div>
+
+          <div class="setting-group" id="bitrate-group">
+            <label for="bitrate">比特率 (MP3)</label>
+            <select id="bitrate" class="select-input">
+              <option value="192">192 kbps</option>
+              <option value="256">256 kbps</option>
+              <option value="320">320 kbps (最高)</option>
+              <option value="128">128 kbps</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="output-dir-setting">
+          <label>输出目录</label>
+          <div class="output-dir-row">
+            <input type="text" id="output-dir" class="text-input" readonly placeholder="选择输出目录...">
+            <button id="select-output-dir" class="btn-secondary">浏览</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 转换按钮 -->
+      <button id="convert-btn" class="btn-primary hidden">
+        <span class="btn-icon">🔄</span>
+        <span>开始转换</span>
+      </button>
+
+      <!-- 进度区域 -->
+      <div id="progress-section" class="progress-section hidden">
+        <div class="progress-header">
+          <span id="progress-text">正在转换...</span>
+          <span id="progress-count">0/0</span>
+        </div>
+        <div class="progress-bar">
+          <div id="progress-fill" class="progress-fill"></div>
+        </div>
+        <p id="current-file" class="current-file"></p>
+      </div>
+
+      <!-- 完成结果 -->
+      <div id="results-section" class="results-section hidden">
+        <div class="results-header">
+          <span class="results-icon">✅</span>
+          <h3>转换完成!</h3>
+        </div>
+        <div id="results-summary" class="results-summary"></div>
+        <button id="open-output-dir" class="btn-secondary">打开输出目录</button>
+        <button id="convert-more" class="btn-primary">转换更多文件</button>
+      </div>
+    </main>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

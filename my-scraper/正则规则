@@ -1,0 +1,3 @@
+.*?(magnet:\?xt=urn:btih:[^"]+).*
+$1
+.*?(magnet:\?xt=urn:btih:[^"]+).*

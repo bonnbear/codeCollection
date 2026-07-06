@@ -1,0 +1,21 @@
+{
+  "name": "@vue3-monorepo/ui",
+  "version": "0.0.0",
+  "main": "dist/ui.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build && vue-tsc --declaration --emitDeclarationOnly"
+  },
+  "dependencies": {
+    "vue": "^3.3.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "typescript": "^5.0.0",
+    "vue-tsc": "^2.0.0"
+  }
+}

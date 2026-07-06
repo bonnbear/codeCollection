@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LZ4 Compressor</title>
+  <style>
+    :root {
+      --bg: #1e1e1e;
+      --panel: #252526;
+      --panel-2: #2d2d2d;
+      --border: #3c3c3c;
+      --text: #d4d4d4;
+      --muted: #9da2a6;
+      --accent: #0e639c;
+      --accent-hover: #1177bb;
+      --danger: #be1100;
+      --danger-hover: #d01806;
+      --success: #2ea043;
+      --warn: #d29922;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .titlebar {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      background: #181818;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .titlebar h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+
+    .titlebar .sub {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: #202020;
+    }
+
+    .tab {
+      appearance: none;
+      border: none;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+      padding: 10px 14px;
+      font-size: 13px;
+      border-right: 1px solid var(--border);
+      transition: background 0.15s ease;
+    }
+
+    .tab:hover {
+      background: #2a2a2a;
+      color: var(--text);
+    }
+
+    .tab.active {
+      color: #fff;
+      background: var(--panel);
+      border-bottom: 2px solid var(--accent);
+    }
+
+    .main {
+      width: min(1200px, 100%);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 12px;
+      padding: 12px;
+      flex: 1;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      min-width: 0;
+    }
+
+    .panel h2 {
+      margin: 2px 0 10px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .pane { display: none; }
+    .pane.active { display: block; }
+
+    .dropzone {
+      border: 1px dashed #5a5a5a;
+      border-radius: 8px;
+      padding: 18px;
+      text-align: center;
+      color: var(--muted);
+      background: var(--panel-2);
+      margin-bottom: 10px;
+      transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+      user-select: none;
+    }
+
+    .dropzone.dragover {
+      border-color: #8ab4f8;
+      background: #1f3a50;
+      color: #c8e1ff;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .field { margin-bottom: 10px; }
+
+    .field label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    input[type="text"], select {
+      width: 100%;
+      height: 34px;
+      color: var(--text);
+      background: #1f1f1f;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0 10px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    input[type="text"]:focus, select:focus { border-color: var(--accent); }
+
+    .btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: #313131;
+      color: var(--text);
+      border-radius: 6px;
+      height: 34px;
+      padding: 0 12px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+    }
+
+    .btn:hover { background: #3a3a3a; }
+
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .btn.primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+    }
+
+    .btn.danger {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #fff;
+    }
+
+    .btn.danger:hover {
+      background: var(--danger-hover);
+      border-color: var(--danger-hover);
+    }
+
+    .path-list {
+      list-style: none;
+      margin: 0 0 10px;
+      padding: 0;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: auto;
+      max-height: 200px;
+      background: #1f1f1f;
+    }
+
+    .path-list li {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-bottom: 1px solid #2d2d2d;
+      font-size: 12px;
+    }
+
+    .path-list li:last-child { border-bottom: none; }
+
+    .path-item {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #c8c8c8;
+    }
+
+    .remove-btn {
+      border: 1px solid var(--border);
+      background: #2f2f2f;
+      color: #c0c0c0;
+      border-radius: 4px;
+      height: 24px;
+      padding: 0 8px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .remove-btn:hover { background: #3a3a3a; }
+
+    .status {
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #1f1f1f;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .status[data-type="success"] {
+      border-color: var(--success);
+      color: #b6f0c0;
+    }
+
+    .status[data-type="warn"] {
+      border-color: var(--warn);
+      color: #ffe1a3;
+    }
+
+    .status[data-type="error"] {
+      border-color: #f85149;
+      color: #ffb4ae;
+    }
+
+    .progress-wrap {
+      height: 14px;
+      background: #1f1f1f;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0e639c, #3794ff);
+      transition: width 0.12s linear;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-size: 12px;
+      color: #c8c8c8;
+    }
+
+    .metrics .full {
+      grid-column: 1 / -1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .actions {
+      margin-top: 12px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 8px 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 960px) {
+      .main { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="titlebar">
+      <h1>LZ4 压缩工具（Electron）</h1>
+      <div class="sub">格式：<code>.tar.lz4</code>（通用 tar + lz4 frame）</div>
+    </header>
+
+    <div class="tabs">
+      <button id="tabCompress" class="tab active">压缩</button>
+      <button id="tabDecompress" class="tab">解压</button>
+    </div>
+
+    <main class="main">
+      <section id="paneCompress" class="panel pane active">
+        <h2>压缩</h2>
+
+        <div id="compressDrop" class="dropzone">拖拽文件/目录到这里（支持多选）</div>
+
+        <div class="row">
+          <button id="addSourceBtn" class="btn" data-lock="1">添加文件/目录</button>
+          <button id="clearSourceBtn" class="btn" data-lock="1">清空列表</button>
+        </div>
+
+        <ul id="sourceList" class="path-list"></ul>
+
+        <div class="field">
+          <label for="outputPathInput">输出文件</label>
+          <div class="row">
+            <input id="outputPathInput" type="text" placeholder="例如：D:\backup\project.tar.lz4" data-lock="1" />
+            <button id="pickOutputBtn" class="btn" data-lock="1">选择...</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="presetSelect">压缩策略</label>
+          <select id="presetSelect" data-lock="1">
+            <option value="max">最大压缩率（CPU 占用更高）</option>
+            <option value="balanced">平衡</option>
+          </select>
+        </div>
+      </section>
+
+      <section id="paneDecompress" class="panel pane">
+        <h2>解压</h2>
+
+        <div id="archiveDrop" class="dropzone">拖拽 .tar.lz4 文件到这里</div>
+
+        <div class="field">
+          <label for="archivePathInput">压缩包路径</label>
+          <div class="row">
+            <input id="archivePathInput" type="text" placeholder="选择 .tar.lz4 文件" data-lock="1" />
+            <button id="pickArchiveBtn" class="btn" data-lock="1">选择...</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="extractDirInput">解压目录</label>
+          <div class="row">
+            <input id="extractDirInput" type="text" placeholder="选择输出目录" data-lock="1" />
+            <button id="pickExtractDirBtn" class="btn" data-lock="1">选择...</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>任务进度</h2>
+        <div id="statusText" class="status" data-type="info">就绪</div>
+
+        <div class="progress-wrap">
+          <div id="progressFill" class="progress-fill"></div>
+        </div>
+
+        <div class="metrics">
+          <div>进度：<span id="percentText">0%</span></div>
+          <div>速率：<span id="speedText">0 B/s</span></div>
+          <div>剩余时间：<span id="etaText">--</span></div>
+          <div>已处理：<span id="bytesText">0 B / 0 B</span></div>
+          <div class="full">当前文件：<span id="currentFile">--</span></div>
+        </div>
+
+        <div class="actions">
+          <button id="startBtn" class="btn primary">开始压缩</button>
+          <button id="cancelBtn" class="btn danger" disabled>取消任务</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      可与命令行互通：<code>tar --use-compress-program=lz4 -xf xxx.tar.lz4</code>
+    </footer>
+  </div>
+
+  <script>
+    (() => {
+      const api = window.compressorAPI;
+      if (!api) {
+        document.body.innerHTML = '<pre style="color:#ff8b8b;padding:16px">preload API 未注入，请检查 preload.js</pre>';
+        return;
+      }
+
+      const state = {
+        tab: 'compress',
+        sources: [],
+        outputPath: '',
+        archivePath: '',
+        extractDir: '',
+        jobId: '',
+        running: false
+      };
+
+      const els = {
+        tabCompress: document.getElementById('tabCompress'),
+        tabDecompress: document.getElementById('tabDecompress'),
+        paneCompress: document.getElementById('paneCompress'),
+        paneDecompress: document.getElementById('paneDecompress'),
+
+        compressDrop: document.getElementById('compressDrop'),
+        archiveDrop: document.getElementById('archiveDrop'),
+
+        addSourceBtn: document.getElementById('addSourceBtn'),
+        clearSourceBtn: document.getElementById('clearSourceBtn'),
+        sourceList: document.getElementById('sourceList'),
+
+        outputPathInput: document.getElementById('outputPathInput'),
+        pickOutputBtn: document.getElementById('pickOutputBtn'),
+        presetSelect: document.getElementById('presetSelect'),
+
+        archivePathInput: document.getElementById('archivePathInput'),
+        pickArchiveBtn: document.getElementById('pickArchiveBtn'),
+        extractDirInput: document.getElementById('extractDirInput'),
+        pickExtractDirBtn: document.getElementById('pickExtractDirBtn'),
+
+        statusText: document.getElementById('statusText'),
+        progressFill: document.getElementById('progressFill'),
+        percentText: document.getElementById('percentText'),
+        speedText: document.getElementById('speedText'),
+        etaText: document.getElementById('etaText'),
+        bytesText: document.getElementById('bytesText'),
+        currentFile: document.getElementById('currentFile'),
+
+        startBtn: document.getElementById('startBtn'),
+        cancelBtn: document.getElementById('cancelBtn')
+      };
+
+      function formatBytes(bytes) {
+        const n = Number(bytes) || 0;
+        if (n < 1024) return `${n.toFixed(0)} B`;
+        if (n < 1024 * 1024) return `${(n / 1024).toFixed(2)} KB`;
+        if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+        return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+      }
+
+      function formatDuration(seconds) {
+        if (!Number.isFinite(seconds) || seconds == null) return '计算中';
+        const s = Math.max(0, Math.round(seconds));
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = s % 60;
+        if (h > 0) return `${h}h ${m}m ${sec}s`;
+        if (m > 0) return `${m}m ${sec}s`;
+        return `${sec}s`;
+      }
+
+      function setStatus(text, type = 'info') {
+        els.statusText.textContent = text;
+        els.statusText.setAttribute('data-type', type);
+      }
+
+      function resetProgress() {
+        els.progressFill.style.width = '0%';
+        els.percentText.textContent = '0%';
+        els.speedText.textContent = '0 B/s';
+        els.etaText.textContent = '--';
+        els.bytesText.textContent = '0 B / 0 B';
+        els.currentFile.textContent = '--';
+      }
+
+      function updateProgress(evt) {
+        const processed = Number(evt.processedBytes) || 0;
+        const total = Number(evt.totalBytes) || 0;
+        const speed = Number(evt.speedBps) || 0;
+
+        const percent = Number.isFinite(evt.percent)
+          ? Math.max(0, Math.min(100, evt.percent))
+          : total > 0
+            ? Math.max(0, Math.min(100, (processed / total) * 100))
+            : 0;
+
+        els.progressFill.style.width = `${percent.toFixed(2)}%`;
+        els.percentText.textContent = `${percent.toFixed(2)}%`;
+        els.speedText.textContent = `${formatBytes(speed)}/s`;
+        els.etaText.textContent = formatDuration(evt.etaSec);
+        els.bytesText.textContent = `${formatBytes(processed)} / ${formatBytes(total)}`;
+        els.currentFile.textContent = evt.currentFile || '--';
+      }
+
+      function platformKey(pathText) {
+        const isWindows = navigator.userAgent.toLowerCase().includes('windows');
+        return isWindows ? pathText.toLowerCase() : pathText;
+      }
+
+      function addSources(paths) {
+        const unique = new Set(state.sources.map(platformKey));
+        for (const p of paths) {
+          if (!p) continue;
+          const key = platformKey(p);
+          if (!unique.has(key)) {
+            unique.add(key);
+            state.sources.push(p);
+          }
+        }
+        renderSourceList();
+      }
+
+      function renderSourceList() {
+        els.sourceList.innerHTML = '';
+        if (state.sources.length === 0) {
+          const li = document.createElement('li');
+          const span = document.createElement('div');
+          span.className = 'path-item';
+          span.textContent = '暂无输入项';
+          li.appendChild(span);
+          els.sourceList.appendChild(li);
+          return;
+        }
+
+        state.sources.forEach((item, index) => {
+          const li = document.createElement('li');
+
+          const pathNode = document.createElement('div');
+          pathNode.className = 'path-item';
+          pathNode.textContent = item;
+
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'remove-btn';
+          removeBtn.textContent = '移除';
+          removeBtn.disabled = state.running;
+          removeBtn.addEventListener('click', () => {
+            if (state.running) return;
+            state.sources.splice(index, 1);
+            renderSourceList();
+          });
+
+          li.appendChild(pathNode);
+          li.appendChild(removeBtn);
+          els.sourceList.appendChild(li);
+        });
+      }
+
+      function syncInputs() {
+        els.outputPathInput.value = state.outputPath;
+        els.archivePathInput.value = state.archivePath;
+        els.extractDirInput.value = state.extractDir;
+      }
+
+      function setRunning(running) {
+        state.running = running;
+
+        document.querySelectorAll('[data-lock="1"]').forEach((el) => {
+          el.disabled = running;
+        });
+
+        els.startBtn.disabled = running;
+        els.cancelBtn.disabled = !running;
+        renderSourceList();
+      }
+
+      function setTab(tab) {
+        state.tab = tab;
+        const isCompress = tab === 'compress';
+
+        els.tabCompress.classList.toggle('active', isCompress);
+        els.tabDecompress.classList.toggle('active', !isCompress);
+
+        els.paneCompress.classList.toggle('active', isCompress);
+        els.paneDecompress.classList.toggle('active', !isCompress);
+
+        els.startBtn.textContent = isCompress ? '开始压缩' : '开始解压';
+      }
+
+      function basename(filePath) {
+        const parts = String(filePath).split(/[/\\]/);
+        return parts[parts.length - 1] || 'archive';
+      }
+
+      function buildDefaultArchiveName() {
+        if (state.sources.length === 1) {
+          const name = basename(state.sources[0]).replace(/\.+$/, '');
+          return `${name || 'archive'}.tar.lz4`;
+        }
+
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        return `archive-${stamp}.tar.lz4`;
+      }
+
+      function ensureLz4Ext(filePath) {
+        if (/\.lz4$/i.test(filePath)) return filePath;
+        return `${filePath}.tar.lz4`;
+      }
+
+      function setupDropzone(el, onDropPaths) {
+        const onEnter = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          el.classList.add('dragover');
+        };
+        const onLeave = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          el.classList.remove('dragover');
+        };
+        const onDrop = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          el.classList.remove('dragover');
+          if (state.running) return;
+          const paths = Array.from(e.dataTransfer?.files || [])
+            .map((f) => f.path)
+            .filter(Boolean);
+          if (paths.length > 0) onDropPaths(paths);
+        };
+
+        el.addEventListener('dragenter', onEnter);
+        el.addEventListener('dragover', onEnter);
+        el.addEventListener('dragleave', onLeave);
+        el.addEventListener('drop', onDrop);
+      }
+
+      async function startCompress() {
+        if (state.sources.length === 0) {
+          setStatus('请先添加文件或目录', 'warn');
+          return;
+        }
+
+        let output = state.outputPath.trim();
+        if (!output) {
+          output = await api.pickSavePath(buildDefaultArchiveName());
+          if (!output) return;
+        }
+
+        output = ensureLz4Ext(output);
+        state.outputPath = output;
+        syncInputs();
+
+        const preset = els.presetSelect.value;
+
+        try {
+          resetProgress();
+          setStatus('正在启动压缩任务...');
+          const result = await api.startJob({
+            operation: 'compress',
+            sources: [...state.sources],
+            outputPath: output,
+            preset
+          });
+          state.jobId = result.jobId;
+          setRunning(true);
+          setStatus('压缩任务已启动');
+        } catch (err) {
+          setStatus(`启动失败：${err.message || err}`, 'error');
+        }
+      }
+
+      async function startDecompress() {
+        let archivePath = state.archivePath.trim();
+        let extractDir = state.extractDir.trim();
+
+        if (!archivePath) {
+          archivePath = await api.pickArchiveFile();
+          if (!archivePath) return;
+          state.archivePath = archivePath;
+        }
+
+        if (!extractDir) {
+          extractDir = await api.pickTargetDirectory();
+          if (!extractDir) return;
+          state.extractDir = extractDir;
+        }
+
+        syncInputs();
+
+        try {
+          resetProgress();
+          setStatus('正在启动解压任务...');
+          const result = await api.startJob({
+            operation: 'decompress',
+            inputPath: archivePath,
+            outputDir: extractDir
+          });
+          state.jobId = result.jobId;
+          setRunning(true);
+          setStatus('解压任务已启动');
+        } catch (err) {
+          setStatus(`启动失败：${err.message || err}`, 'error');
+        }
+      }
+
+      async function cancelCurrentJob() {
+        if (!state.jobId) return;
+        try {
+          await api.cancelJob(state.jobId);
+          setStatus('正在取消任务...', 'warn');
+        } catch (err) {
+          setStatus(`取消失败：${err.message || err}`, 'error');
+        }
+      }
+
+      els.tabCompress.addEventListener('click', () => setTab('compress'));
+      els.tabDecompress.addEventListener('click', () => setTab('decompress'));
+
+      els.addSourceBtn.addEventListener('click', async () => {
+        if (state.running) return;
+        const paths = await api.pickSources();
+        if (paths.length) addSources(paths);
+      });
+
+      els.clearSourceBtn.addEventListener('click', () => {
+        if (state.running) return;
+        state.sources = [];
+        renderSourceList();
+      });
+
+      els.pickOutputBtn.addEventListener('click', async () => {
+        if (state.running) return;
+        const picked = await api.pickSavePath(buildDefaultArchiveName());
+        if (!picked) return;
+        state.outputPath = ensureLz4Ext(picked);
+        syncInputs();
+      });
+
+      els.pickArchiveBtn.addEventListener('click', async () => {
+        if (state.running) return;
+        const picked = await api.pickArchiveFile();
+        if (!picked) return;
+        state.archivePath = picked;
+        syncInputs();
+      });
+
+      els.pickExtractDirBtn.addEventListener('click', async () => {
+        if (state.running) return;
+        const picked = await api.pickTargetDirectory();
+        if (!picked) return;
+        state.extractDir = picked;
+        syncInputs();
+      });
+
+      els.outputPathInput.addEventListener('input', (e) => {
+        state.outputPath = e.target.value || '';
+      });
+
+      els.archivePathInput.addEventListener('input', (e) => {
+        state.archivePath = e.target.value || '';
+      });
+
+      els.extractDirInput.addEventListener('input', (e) => {
+        state.extractDir = e.target.value || '';
+      });
+
+      els.startBtn.addEventListener('click', () => {
+        if (state.running) return;
+        if (state.tab === 'compress') {
+          startCompress();
+        } else {
+          startDecompress();
+        }
+      });
+
+      els.cancelBtn.addEventListener('click', () => {
+        cancelCurrentJob();
+      });
+
+      setupDropzone(els.compressDrop, (paths) => addSources(paths));
+      setupDropzone(els.archiveDrop, (paths) => {
+        const first = paths[0];
+        if (!first) return;
+        state.archivePath = first;
+        syncInputs();
+      });
+
+      window.addEventListener('dragover', (e) => e.preventDefault());
+      window.addEventListener('drop', (e) => e.preventDefault());
+
+      const unsubscribe = api.onJobEvent((evt) => {
+        if (state.jobId && evt.jobId !== state.jobId) return;
+
+        if (evt.type === 'state') {
+          setStatus(evt.message || '处理中...');
+          return;
+        }
+
+        if (evt.type === 'progress') {
+          updateProgress(evt);
+          return;
+        }
+
+        if (evt.type === 'done') {
+          updateProgress({ ...evt, percent: 100 });
+          setStatus(evt.message || '任务完成', 'success');
+          state.jobId = '';
+          setRunning(false);
+          return;
+        }
+
+        if (evt.type === 'canceled') {
+          setStatus(evt.message || '任务已取消', 'warn');
+          state.jobId = '';
+          setRunning(false);
+          return;
+        }
+
+        if (evt.type === 'error') {
+          setStatus(`任务失败：${evt.message || '未知错误'}`, 'error');
+          state.jobId = '';
+          setRunning(false);
+        }
+      });
+
+      window.addEventListener('beforeunload', () => {
+        if (state.jobId) {
+          api.cancelJob(state.jobId);
+        }
+        if (typeof unsubscribe === 'function') {
+          unsubscribe();
+        }
+      });
+
+      renderSourceList();
+      syncInputs();
+      resetProgress();
+      setRunning(false);
+      setStatus('就绪');
+      setTab('compress');
+    })();
+  </script>
+</body>
+</html>

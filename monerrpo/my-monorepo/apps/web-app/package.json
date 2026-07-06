@@ -1,0 +1,11 @@
+{
+  "name": "web-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "echo 'Start web-app here'"
+  },
+  "dependencies": {
+    "@my-monorepo/ui-components": "workspace:1.0.0"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "electron-lz4-compressor",
+  "version": "1.0.0",
+  "description": "Electron + LZ4 desktop compressor",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "lz4js": "^0.2.0",
+    "tar-stream": "^3.1.7"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1"
+  }
+}

@@ -1,0 +1,97 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(to bottom, #1a1a2e, #16213e);
+    color: #e0e0e0;
+}
+
+#container {
+    width: 100vw;
+    height: 100vh;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+#controls {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 20px;
+    border-radius: 10px;
+    width: 300px;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(5px);
+}
+
+h1, h2 {
+    margin-top: 0;
+    color: #f7b731;
+    text-align: center;
+}
+
+.control-group {
+    margin-bottom: 15px;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+input[type="range"] {
+    width: 100%;
+    cursor: pointer;
+}
+
+button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 10px;
+    border: none;
+    border-radius: 5px;
+    background-color: #f7b731;
+    color: #1a1a2e;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.1s;
+}
+
+button:hover {
+    background-color: #ffc947;
+}
+
+button:active {
+    transform: scale(0.98);
+}
+
+#reset-button {
+    background-color: #ff6b6b;
+}
+
+#reset-button:hover {
+    background-color: #ff8787;
+}
+
+#stats {
+    margin-top: 20px;
+    padding-top: 10px;
+    border-top: 1px solid #444;
+}
+
+#dice-results {
+    list-style: none;
+    padding: 0;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+#dice-results li {
+    padding: 5px;
+    background: rgba(255, 255, 255, 0.1);
+    margin-bottom: 5px;
+    border-radius: 3px;
+}

@@ -1,0 +1,9 @@
+{
+  "name": "@my-monorepo/ui-components",
+  "version": "1.0.0",
+  "main": "index.js",
+  "private": false,
+  "scripts": {
+    "build": "echo 'Run build for ui-components'"
+  }
+}

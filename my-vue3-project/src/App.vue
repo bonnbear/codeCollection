@@ -1,0 +1,160 @@
+<!-- LegendFilter.vue -->
+<template>
+  <div class="legend-demo">
+    <!-- 图例区 -->
+    <div class="legend">
+      <label
+        v-for="item in legends"
+        :key="item.key"
+        class="legend-item"
+        :class="{ 'is-disabled': isDimmed(item.key) }"
+      >
+        <input
+          type="checkbox"
+          :value="item.key"
+          v-model="selected"
+        />
+        <span
+          class="dot"
+          :style="{ background: isDimmed(item.key) ? '#ccc' : item.color }"
+        ></span>
+        {{ item.label }}
+      </label>
+
+      <button class="btn" @click="selectAll">全选</button>
+      <button class="btn" @click="clearAll">全不选</button>
+
+      <span class="tip">
+        当前模式：<b>{{ filterMode }}</b>
+        （选中 {{ selected.length }} / {{ legends.length }}）
+      </span>
+    </div>
+
+    <!-- 数据展示区 -->
+    <ul class="list">
+      <li
+        v-for="row in filteredData"
+        :key="row.id"
+        :style="{ borderLeftColor: colorOf(row.type) }"
+      >
+        <span class="tag" :style="{ background: colorOf(row.type) }">
+          {{ labelOf(row.type) }}
+        </span>
+        {{ row.name }} - {{ row.value }}
+      </li>
+      <li v-if="filteredData.length === 0" class="empty">
+        没有数据
+      </li>
+    </ul>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+
+const legends = [
+  { key: 'A', label: '类型 A', color: '#3b82f6' },
+  { key: 'B', label: '类型 B', color: '#10b981' },
+  { key: 'C', label: '类型 C', color: '#f59e0b' },
+  { key: 'D', label: '类型 D', color: '#ef4444' },
+]
+
+const rawData = [
+  { id: 1, name: '订单-001', type: 'A', value: 120 },
+  { id: 2, name: '订单-002', type: 'B', value: 88  },
+  { id: 3, name: '订单-003', type: 'C', value: 56  },
+  { id: 4, name: '订单-004', type: 'D', value: 200 },
+  { id: 5, name: '订单-005', type: 'A', value: 33  },
+  { id: 6, name: '订单-006', type: 'B', value: 77  },
+  { id: 7, name: '订单-007', type: 'C', value: 64  },
+]
+
+const selected = ref([])
+
+// 是否处于"部分选中"状态
+const isPartial = computed(() => {
+  const len = selected.value.length
+  return len > 0 && len < legends.length
+})
+
+// 是否需要置灰：仅在部分选中且当前 key 未被选中时
+function isDimmed(key) {
+  return isPartial.value && !selected.value.includes(key)
+}
+
+const filteredData = computed(() => {
+  const len = selected.value.length
+  if (len === 0 || len === legends.length) {
+    return rawData
+  }
+  return rawData.filter(row => selected.value.includes(row.type))
+})
+
+const filterMode = computed(() => {
+  const len = selected.value.length
+  if (len === 0) return '全不选 → 显示全部'
+  if (len === legends.length) return '全选 → 显示全部'
+  return '部分选中 → 按选中过滤'
+})
+
+function selectAll() {
+  selected.value = legends.map(l => l.key)
+}
+function clearAll() {
+  selected.value = []
+}
+function colorOf(key) {
+  return legends.find(l => l.key === key)?.color
+}
+function labelOf(key) {
+  return legends.find(l => l.key === key)?.label
+}
+</script>
+
+<style scoped>
+.legend-demo { font-family: system-ui, sans-serif; padding: 16px; }
+.legend {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 10px; border: 1px solid #eee; border-radius: 6px;
+  margin-bottom: 12px;
+}
+.legend-item {
+  display: inline-flex; align-items: center; gap: 6px;
+  cursor: pointer; user-select: none;
+  color: #333;
+  transition: color 0.2s, opacity 0.2s;
+}
+
+/* 关键：未选中的项置灰 */
+.legend-item.is-disabled {
+  color: #aaa;
+  opacity: 0.55;
+}
+.legend-item.is-disabled .dot {
+  /* 颜色已经在模板里改成了灰色，这里再加一点视觉弱化 */
+  box-shadow: none;
+  filter: grayscale(1);
+}
+
+.dot {
+  width: 12px; height: 12px; border-radius: 2px; display: inline-block;
+  transition: background 0.2s, filter 0.2s;
+}
+.btn {
+  border: 1px solid #ddd; background: #fafafa; padding: 4px 10px;
+  border-radius: 4px; cursor: pointer;
+}
+.btn:hover { background: #f0f0f0; }
+.tip { color: #666; font-size: 13px; margin-left: auto; }
+
+.list { list-style: none; padding: 0; margin: 0; }
+.list li {
+  padding: 8px 12px; margin-bottom: 6px; background: #fafafa;
+  border-left: 4px solid #ccc; border-radius: 4px;
+  display: flex; align-items: center; gap: 8px;
+}
+.tag {
+  color: #fff; font-size: 12px; padding: 2px 6px; border-radius: 3px;
+}
+.empty { color: #999; text-align: center; }
+</style>
