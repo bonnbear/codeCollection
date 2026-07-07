@@ -1,0 +1,336 @@
+下面是最小改动版本，只改你当前报错相关逻辑，不重构整体结构。
+
+⸻
+
+一、需要改的地方汇总
+
+你只需要改 2 个地方：
+
+位置	改什么
+findParentAtLevel 方法	增加按字段匹配能力，并加空值保护
+changeYear 和 onMounted 里找 parent 的逻辑	改成先判断 item 是否存在，再取 marketSegmentCode
+
+⸻
+
+二、替换 findParentAtLevel
+
+把你原来的：
+
+function findParentAtLevel(tree, childId, level) {
+  // 用于存储找到的父节点路径
+  const path = [];
+  // 递归函数用于遍历树
+  function traverse(node, targetId, currentLevel = 0) {
+    // 如果找到目标节点,返回true
+    if (node.id === targetId) {
+      return true;
+    }
+    // 如果当前节点有子节点,遍历它们
+    if (node.child && node.child.length > 0) {
+      for (let child of node.child) {
+        // 递归调用
+        if (traverse(child, targetId, currentLevel + 1)) {
+          // 如果在子节点中找到目标,将当前节点加入路径
+          path.unshift({ node, level: currentLevel });
+          return true;
+        }
+      }
+    }
+    // 如果没有找到,返回false
+    return false;
+  }
+  // 从树的根节点开始遍历
+  traverse(tree, childId);
+  // 找到指定层级的父节点
+  const parentAtLevel = path.find(item => item.level === level);
+  return parentAtLevel ? parentAtLevel.node : null;
+}
+
+替换成：
+
+/**
+ * 根据指定字段，在树中查找目标节点的指定层级父节点
+ *
+ * @param {Object} tree - 当前年份的细分市场树根节点
+ * @param {String|Number} targetValue - 要查找的目标值，可以是 id，也可以是 marketSegmentCode
+ * @param {Number} level - 要返回的父节点层级
+ * @param {String} matchKey - 用哪个字段匹配，默认用 id
+ * @returns {Object|null} 找到的父节点；找不到返回 null
+ */
+function findParentAtLevel(tree, targetValue, level, matchKey = "id") {
+  const path = []; // 保存从目标节点往上的父级路径
+  /**
+   * 递归遍历树
+   *
+   * @param {Object} node - 当前遍历的节点
+   * @param {Number} currentLevel - 当前节点层级
+   * @returns {Boolean} 是否找到目标节点
+   */
+  function traverse(node, currentLevel = 0) {
+    // 防止 node 为空时报错
+    if (!node) {
+      return false;
+    }
+    // 当前节点命中目标
+    if (String(node[matchKey]) === String(targetValue)) {
+      return true;
+    }
+    // 如果有子节点，继续向下递归查找
+    if (node.child && node.child.length > 0) {
+      for (let child of node.child) {
+        // 如果子节点或子孙节点命中目标
+        if (traverse(child, currentLevel + 1)) {
+          // 把当前节点加入路径
+          path.unshift({
+            node,
+            level: currentLevel,
+          });
+          return true;
+        }
+      }
+    }
+    // 当前分支没有找到
+    return false;
+  }
+  // 从根节点开始查找
+  traverse(tree, 0);
+  // 找指定层级的父节点
+  const parentAtLevel = path.find((item) => item.level === level);
+  // 找到则返回父节点，找不到返回 null
+  return parentAtLevel ? parentAtLevel.node : null;
+}
+
+⸻
+
+三、修改 changeYear 里面这段
+
+你现在的 changeYear 里有这一段：
+
+let parent = [];
+if (levelOther.length) {
+  levelOther.forEach(ele => {
+    let item = findParentAtLevel(res.data.data[0], ele.id, 1)
+    parent.push(item.marketSegmentCode)
+  })
+}
+marketSegmentList.push(...parent)
+procMarketSegmentData(res);
+
+改成：
+
+let parent = [];
+if (levelOther && levelOther.length) {
+  levelOther.forEach((ele) => {
+    // 优先用 marketSegmentCode 匹配，避免切换年份后 id 不一致导致找不到节点
+    const item = findParentAtLevel(
+      res.data.data[0],
+      ele.marketSegmentCode,
+      1,
+      "marketSegmentCode"
+    );
+    // item 可能为 null，必须先判断
+    if (item && item.marketSegmentCode) {
+      parent.push(item.marketSegmentCode);
+    } else {
+      // 当前年份树中找不到该节点时，跳过，不让页面报错
+      console.warn("当前年份未找到该细分市场的一级父节点：", ele);
+    }
+  });
+}
+// 合并并去重，避免重复追加
+marketSegmentList = [...new Set([...marketSegmentList, ...parent])];
+procMarketSegmentData(res);
+
+⸻
+
+四、修改 onMounted 里面同样这段
+
+你 onMounted 里面也有同样的代码：
+
+let parent = [];
+if (levelOther.length) {
+  levelOther.forEach(ele => {
+    let item = findParentAtLevel(res.data.data[0], ele.id, 1)
+    parent.push(item.marketSegmentCode)
+  })
+}
+marketSegmentList.push(...parent)
+procMarketSegmentData(res);
+
+也改成：
+
+let parent = [];
+if (levelOther && levelOther.length) {
+  levelOther.forEach((ele) => {
+    // 优先用 marketSegmentCode 匹配，避免不同年份 id 不一致
+    const item = findParentAtLevel(
+      res.data.data[0],
+      ele.marketSegmentCode,
+      1,
+      "marketSegmentCode"
+    );
+    // 找到父节点才加入
+    if (item && item.marketSegmentCode) {
+      parent.push(item.marketSegmentCode);
+    } else {
+      // 找不到时跳过，避免 item.marketSegmentCode 报错
+      console.warn("当前年份未找到该细分市场的一级父节点：", ele);
+    }
+  });
+}
+// 合并并去重
+marketSegmentList = [...new Set([...marketSegmentList, ...parent])];
+procMarketSegmentData(res);
+
+⸻
+
+五、最终 changeYear 最小改动完整版本
+
+/**
+ * 年份切换
+ *
+ * 主要逻辑：
+ * 1. 更新 targetYear
+ * 2. 重新查询当前用户权限
+ * 3. 查询当前年份细分市场树
+ * 4. 如果用户权限中有二级及以下细分市场，需要找到它所属的一级父级
+ * 5. 最后过滤当前年份可展示的细分市场
+ */
+const changeYear = (year) => {
+  targetYear.value = year + "";
+  selectPageWhiteListApi(() => {
+    // 当前角色有权限的细分市场 code 列表
+    marketSegmentList = curRoleData.value?.marketSegmentList || [];
+    // 如果没有任何权限，清空左右两侧树
+    if (marketSegmentList.length === 0) {
+      dataSource.value.child = [];
+      insightTreeDatas.value.child = [];
+      return;
+    }
+    getMarketSegmentData(targetYear.value).then((res) => {
+      let parent = [];
+      if (levelOther && levelOther.length) {
+        levelOther.forEach((ele) => {
+          // 用 marketSegmentCode 匹配，而不是 id
+          // 因为切换年份后，不同年份的 id 可能不一致
+          const item = findParentAtLevel(
+            res.data.data[0],
+            ele.marketSegmentCode,
+            1,
+            "marketSegmentCode"
+          );
+          // findParentAtLevel 可能返回 null，所以必须判断
+          if (item && item.marketSegmentCode) {
+            parent.push(item.marketSegmentCode);
+          } else {
+            // 当前年份找不到对应父级时，直接跳过
+            console.warn("当前年份未找到该细分市场的一级父节点：", ele);
+          }
+        });
+      }
+      // 合并并去重，避免重复追加
+      marketSegmentList = [...new Set([...marketSegmentList, ...parent])];
+      procMarketSegmentData(res);
+    });
+  });
+};
+
+⸻
+
+六、最终 onMounted 最小改动完整版本
+
+onMounted(() => {
+  selectPageWhiteListApi(() => {
+    // 当前角色有权限的细分市场 code 列表
+    marketSegmentList = curRoleData.value?.marketSegmentList || [];
+    // 如果没有任何权限，清空左右两侧树
+    if (marketSegmentList.length === 0) {
+      dataSource.value.child = [];
+      insightTreeDatas.value.child = [];
+      return;
+    }
+    getMarketSegmentData(targetYear.value).then((res) => {
+      let parent = [];
+      if (levelOther && levelOther.length) {
+        levelOther.forEach((ele) => {
+          // 用 marketSegmentCode 匹配，避免 id 在不同年份不一致
+          const item = findParentAtLevel(
+            res.data.data[0],
+            ele.marketSegmentCode,
+            1,
+            "marketSegmentCode"
+          );
+          // item 可能是 null，必须保护
+          if (item && item.marketSegmentCode) {
+            parent.push(item.marketSegmentCode);
+          } else {
+            console.warn("当前年份未找到该细分市场的一级父节点：", ele);
+          }
+        });
+      }
+      // 合并并去重
+      marketSegmentList = [...new Set([...marketSegmentList, ...parent])];
+      procMarketSegmentData(res);
+    });
+  });
+});
+
+⸻
+
+七、为什么这个改动最小？
+
+没有改你的整体结构：
+
+selectPageWhiteListApi(() => {
+  getMarketSegmentData(...).then(...)
+})
+
+没有改你的接口：
+
+getMarketSegmentData
+procMarketSegmentData
+selectPageWhiteListApi
+
+没有重构你的权限处理。
+
+只是做了三件事：
+
+// 1. 用 marketSegmentCode 查找
+findParentAtLevel(res.data.data[0], ele.marketSegmentCode, 1, "marketSegmentCode")
+// 2. 判断 item 是否为空
+if (item && item.marketSegmentCode) {
+  parent.push(item.marketSegmentCode);
+}
+// 3. 去重
+marketSegmentList = [...new Set([...marketSegmentList, ...parent])];
+
+⸻
+
+八、核心结论
+
+你之前报错的本质是：
+
+let item = findParentAtLevel(...)
+parent.push(item.marketSegmentCode)
+
+其中 item 在切换年份后可能是：
+
+null
+
+所以最小修复就是：
+
+if (item && item.marketSegmentCode) {
+  parent.push(item.marketSegmentCode);
+}
+
+但为了避免不同年份 id 不一致，最好同时把：
+
+ele.id
+
+改成：
+
+ele.marketSegmentCode
+
+也就是：
+
+findParentAtLevel(res.data.data[0], ele.marketSegmentCode, 1, "marketSegmentCode")
