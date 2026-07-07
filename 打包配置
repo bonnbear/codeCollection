@@ -1,0 +1,513 @@
+const { defineConfig } = require("@vue/cli-service");
+const path = require("path");
+
+// 统一兼容 CJS / ESM 两种导出形式
+const AutoImportModule = require("unplugin-auto-import/webpack");
+const ComponentsModule = require("unplugin-vue-components/webpack");
+
+const AutoImport = AutoImportModule.default || AutoImportModule;
+const Components = ComponentsModule.default || ComponentsModule;
+
+const ElementPlus = require("unplugin-element-plus/webpack");
+const { ElementPlusResolver } = require("unplugin-vue-components/resolvers");
+
+// 获取所有 Element Plus 图标的名称列表
+const Icons = require("@element-plus/icons-vue");
+const iconNames = Object.keys(Icons);
+
+// 判断当前环境
+const isProduction = process.env.NODE_ENV === "production"; // npm run build 时一般为 production
+const isDevelopment = process.env.NODE_ENV === "development"; // npm run serve 时一般为 development
+
+// CSS 中用于标记的无用属性
+const MARK_CSS_PROP_RE = /^placeholder-mark-id$/i;
+
+// CSS / JS 注释中的标记内容
+const MARK_COMMENT_RE =
+  /(?:^|[|;\s])(?:random:\d+|range:\d+-\d+|(?:script|style|template):\d+-\d+)(?:$|[|;\s])/;
+
+// template 中需要移除的标记属性
+const MARK_TEMPLATE_ATTR_RE = /^(?:data-mark(?:-[\w-]+)?|placeholder-mark-id)$/i;
+
+/**
+ * PostCSS 插件：
+ * 用于移除 CSS 中的 placeholder-mark-id 标记属性和相关注释
+ *
+ * 注意：
+ * 本配置里只在生产环境启用，避免 npm run serve 时增加 CSS 编译负担
+ */
+const removeMarkCssPlugin = {
+  postcssPlugin: "remove-mark-css-plugin",
+
+  /**
+   * 处理 CSS 声明
+   * 例如：
+   * placeholder-mark-id: 123456;
+   */
+  Declaration(decl) {
+    if (MARK_CSS_PROP_RE.test(String(decl.prop || ""))) {
+      decl.remove();
+    }
+  },
+
+  /**
+   * 处理 CSS 注释
+   * 例如：
+   * random:123456
+   * style:10-20
+   */
+  Comment(comment) {
+    if (MARK_COMMENT_RE.test(comment.text || "")) {
+      comment.remove();
+    }
+  },
+};
+
+/**
+ * Vue template 编译模块：
+ * 用于移除 template 里的 data-mark / placeholder-mark-id 等标记属性
+ *
+ * 注意：
+ * 本配置里只在生产环境启用，避免 serve 阶段每次编译 template 都多跑一遍清理逻辑
+ */
+const removeMarkTemplateCompilerModule = {
+  preTransformNode(el) {
+    removeMarkTemplateAttrs(el);
+    return el;
+  },
+
+  transformNode(el) {
+    removeMarkTemplateAttrs(el);
+    return el;
+  },
+};
+
+/**
+ * 移除 Vue template AST 节点上的标记属性
+ *
+ * Vue2 vue-loader 里常见字段：
+ * - attrsList
+ * - attrsMap
+ * - attrs
+ */
+function removeMarkTemplateAttrs(el) {
+  if (!el) {
+    return;
+  }
+
+  // attrsList 是数组形式
+  if (Array.isArray(el.attrsList)) {
+    el.attrsList = el.attrsList.filter(attr => {
+      return !isMarkTemplateAttr(attr && attr.name);
+    });
+  }
+
+  // attrsMap 是对象形式
+  if (el.attrsMap) {
+    Object.keys(el.attrsMap).forEach(name => {
+      if (isMarkTemplateAttr(name)) {
+        delete el.attrsMap[name];
+      }
+    });
+  }
+
+  // attrs 也是数组形式，部分版本或场景会存在
+  if (Array.isArray(el.attrs)) {
+    el.attrs = el.attrs.filter(attr => {
+      return !isMarkTemplateAttr(attr && attr.name);
+    });
+  }
+}
+
+/**
+ * 判断属性名是否是需要移除的标记属性
+ */
+function isMarkTemplateAttr(name) {
+  return MARK_TEMPLATE_ATTR_RE.test(String(name || ""));
+}
+
+/**
+ * 修改 terser 压缩配置
+ *
+ * 注意：
+ * terser 只会在生产环境执行
+ * npm run serve 不会走这个逻辑
+ */
+function patchTerserOptions(args) {
+  const options = args[0] || {};
+
+  // 开启多进程压缩，生产构建时更快
+  options.parallel = true;
+
+  options.terserOptions = options.terserOptions || {};
+
+  options.terserOptions.compress = {
+    ...(options.terserOptions.compress || {}),
+
+    side_effects: true, // 删除无副作用代码
+    dead_code: true, // 删除不可达代码
+    unused: true, // 删除未使用变量和函数
+    evaluate: true, // 尝试计算常量表达式
+
+    // passes 越大压缩越彻底，但越慢
+    // 这里用 1，生产构建速度和压缩率比较均衡
+    passes: 1,
+
+    // 保留 console
+    drop_console: false,
+  };
+
+  options.terserOptions.format = {
+    ...(options.terserOptions.format || {}),
+
+    // 删除注释
+    comments: false,
+  };
+
+  // 不额外生成 LICENSE 注释文件
+  options.extractComments = false;
+
+  args[0] = options;
+
+  return args;
+}
+
+/**
+ * 路径解析函数
+ */
+const resolve = function (dir) {
+  return path.join(__dirname, dir);
+};
+
+/**
+ * 获取当前时间戳
+ *
+ * 用于生产环境构建文件名：
+ * assets/js/[name].20260707153020.[fullhash:7].js
+ */
+function getCurrDate() {
+  const dateFactory = new Date();
+
+  const year = dateFactory.getFullYear();
+
+  let month = dateFactory.getMonth() + 1;
+  month = month <= 9 ? `0${month}` : month;
+
+  let date = dateFactory.getDate();
+  date = date <= 9 ? `0${date}` : date;
+
+  let hour = dateFactory.getHours();
+  hour = hour <= 9 ? `0${hour}` : hour;
+
+  let minute = dateFactory.getMinutes();
+  minute = minute <= 9 ? `0${minute}` : minute;
+
+  let second = dateFactory.getSeconds();
+  second = second <= 9 ? `0${second}` : second;
+
+  return `${year}${month}${date}${hour}${minute}${second}`;
+}
+
+const timeStamp = getCurrDate();
+
+/**
+ * 适配 ugtm 本地开发的域名
+ *
+ * 如果启动：
+ * npm run serve:ugtm
+ *
+ * 根据 process.env.SERVE_UGTM 的值切换 host
+ */
+let hostName = "localhost.expcloud-sit.huawei.com";
+
+const serveUgtm = process.env.SERVE_UGTM;
+
+if (serveUgtm === "ugtm") {
+  hostName = "localhost.ugtm-sit.huawei.com";
+}
+
+module.exports = defineConfig({
+  /**
+   * 重点优化项：
+   *
+   * 原来是 true：
+   * transpileDependencies: true
+   *
+   * true 会让 node_modules 里的依赖也参与 Babel 转译，
+   * 对 npm run serve 启动速度影响很大。
+   *
+   * 如果你没有明确的低版本浏览器兼容要求，建议 false。
+   */
+  transpileDependencies: false,
+
+  /**
+   * 打包后的资源路径
+   */
+  publicPath: "./",
+
+  /**
+   * 打包输出目录
+   */
+  outputDir: "UgtmPlatformWeb",
+
+  /**
+   * 生产环境关闭 source map
+   */
+  productionSourceMap: false,
+
+  /**
+   * 本地开发服务器配置
+   */
+  devServer: {
+    host: hostName,
+
+    // 启动后自动打开浏览器
+    open: true,
+
+    /**
+     * 如果你本地登录态 / Cookie / 公司域名依赖 HTTPS，就保留 true。
+     * 如果不依赖 HTTPS，改成 false 可以略微减少启动复杂度。
+     */
+    https: true,
+
+    port: 8080,
+
+    historyApiFallback: true,
+
+    proxy: {
+      "/IntelligentQaService/": {
+        target: "http://10.78.54.187:60001",
+        changeOrigin: true,
+        secure: false,
+      },
+
+      "/llm-chat-service/": {
+        // ai 数字人调平台大小模型
+        target: "https://ai.threecloud.huawei.com/",
+        changeOrigin: true,
+        secure: false,
+      },
+
+      "/exp-user-common/": {
+        target: "http://ugtm-sit.huawei.com/",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
+
+  /**
+   * 链式修改 Webpack 配置
+   */
+  chainWebpack: config => {
+    /**
+     * 配置路径别名
+     */
+    config.resolve.alias
+      .set("@P", resolve("./public"))
+      .set("@", resolve("./src"));
+
+    /**
+     * template 标记清理逻辑
+     *
+     * 原来开发和生产都会执行。
+     * 现在只在生产环境执行。
+     *
+     * 好处：
+     * npm run serve 时，Vue template 编译少一层处理，启动和热更新都会更轻。
+     */
+    if (isProduction) {
+      config.module
+        .rule("vue")
+        .use("vue-loader")
+        .tap(options => {
+          const nextOptions = options || {};
+          const compilerOptions = nextOptions.compilerOptions || {};
+          const modules = compilerOptions.modules || [];
+
+          nextOptions.compilerOptions = {
+            ...compilerOptions,
+
+            // 保留原本已有 modules，再追加自己的清理模块
+            modules: [...modules, removeMarkTemplateCompilerModule],
+          };
+
+          return nextOptions;
+        });
+    }
+
+    /**
+     * terser 压缩配置
+     *
+     * serve 开发环境不需要处理 terser。
+     * 只有生产 build 才需要。
+     */
+    if (!isProduction) {
+      return;
+    }
+
+    const minimizers = config.optimization.minimizers;
+
+    if (minimizers && minimizers.has && minimizers.has("terser")) {
+      config.optimization.minimizer("terser").tap(patchTerserOptions);
+    }
+  },
+
+  /**
+   * 普通 Webpack 配置
+   *
+   * 这里用函数写法，方便区分 development / production
+   */
+  configureWebpack: config => {
+    const webpackConfig = {
+      /**
+       * Webpack 5 文件缓存
+       *
+       * 对 npm run serve 的提升：
+       * - 第二次启动更快
+       * - 热更新时可复用一部分缓存
+       */
+      cache: {
+        type: "filesystem",
+
+        buildDependencies: {
+          // 当前 vue.config.js 变化时，让缓存自动失效
+          config: [__filename],
+        },
+      },
+
+      plugins: [
+        /**
+         * 自动导入：
+         * ref / reactive / computed / ElMessage 等
+         */
+        AutoImport({
+          resolvers: [ElementPlusResolver()],
+        }),
+
+        /**
+         * 自动注册组件：
+         * <el-button />
+         * <el-table />
+         * 等 Element Plus 组件可以不用手动 import
+         */
+        Components({
+          resolvers: [
+            ElementPlusResolver(),
+
+            /**
+             * 自定义 Element Plus 图标解析器
+             *
+             * 例如模板里使用：
+             * <Edit />
+             *
+             * 如果 Edit 存在于 @element-plus/icons-vue，
+             * 就自动生成：
+             * import { Edit } from "@element-plus/icons-vue";
+             */
+            componentName => {
+              if (iconNames.includes(componentName)) {
+                return {
+                  name: componentName,
+                  from: "@element-plus/icons-vue",
+                };
+              }
+
+              return undefined;
+            },
+          ],
+        }),
+
+        /**
+         * Element Plus 按需样式处理
+         */
+        ElementPlus({
+          useSource: false,
+        }),
+      ],
+
+      /**
+       * sourcemap 配置
+       *
+       * 原来的 source-map 比较慢。
+       *
+       * 开发环境推荐：
+       * eval-cheap-module-source-map
+       *
+       * 特点：
+       * - 启动更快
+       * - 热更新更快
+       * - 还能定位到源码模块
+       */
+      devtool: isProduction ? false : "eval-cheap-module-source-map",
+    };
+
+    /**
+     * 生产环境专属配置
+     *
+     * npm run serve 不走这里。
+     */
+    if (isProduction) {
+      /**
+       * 生产环境输出文件名
+       *
+       * 开发环境不配置 output hash，
+       * 避免 serve 阶段做无意义处理。
+       */
+      webpackConfig.output = {
+        filename: `assets/js/[name].${timeStamp}.[fullhash:7].js`,
+        chunkFilename: `assets/js/[id].${timeStamp}.[fullhash:7].js`,
+      };
+
+      /**
+       * splitChunks 只在生产环境启用
+       *
+       * 原来的 maxSize: 50000 太小，会拆出很多小包。
+       * 本地 serve 阶段不建议使用这套拆包策略。
+       */
+      webpackConfig.optimization = {
+        splitChunks: {
+          chunks: "all",
+
+          // 最小拆包体积
+          minSize: 30000,
+
+          // 原来是 50000，太小了
+          // 改成 500KB，避免包拆得过碎
+          maxSize: 500 * 1000,
+
+          minChunks: 1,
+
+          maxAsyncRequests: 5,
+
+          maxInitialRequests: 3,
+        },
+      };
+    }
+
+    return webpackConfig;
+  },
+
+  /**
+   * CSS 相关配置
+   */
+  css: {
+    loaderOptions: {
+      postcss: {
+        postcssOptions: {
+          /**
+           * CSS 标记清理插件
+           *
+           * 开发环境不启用：
+           * - serve 更快
+           * - 热更新更轻
+           *
+           * 生产环境启用：
+           * - build 产物里移除 placeholder-mark-id
+           */
+          plugins: isProduction ? [removeMarkCssPlugin] : [],
+        },
+      },
+    },
+  },
+});
