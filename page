@@ -1,0 +1,1717 @@
+<template>
+  <div class="st-container" data-mark-24775053>
+    <div class="position" data-mark-68387919>
+      <public-header
+        process="营销框架定义及细分市场营销规划"
+        child="营销标杆项目规划"
+        data-mark-22859072
+      />
+
+      <div class="content">
+        <!-- 有查看权限时展示页面内容 -->
+        <template v-if="project?.permission?.view">
+          <main class="version-page">
+            <!-- 页面标题区域 -->
+            <div class="card-header" style="cursor: default">
+              <!-- 返回入口 -->
+              <div
+                v-if="hasHistory"
+                class="back-entry"
+                style="margin-right: 8px"
+                @click="goBack"
+              >
+                <img
+                  :src="returnBackIcon"
+                  class="back-icon"
+                  alt="back"
+                />
+
+                <span>{{ t('Back') }}</span>
+              </div>
+
+              <!-- 返回按钮和标题之间的分割线 -->
+              <div
+                v-if="hasHistory"
+                style="
+                  width: 1px;
+                  height: 16px;
+                  margin-right: 8px;
+                  background-color: rgba(240, 240, 240, 1);
+                "
+              />
+
+              <!-- 标题名称 -->
+              <div class="names" data-mark-89743949>
+                <span
+                  class="project item-header"
+                  style="padding: 2px 6px"
+                  :title="project?.lv2HeavyTeamEntity?.typename || ''"
+                  data-mark-92450323
+                >
+                  {{ project?.lv2HeavyTeamEntity?.typename }}
+                </span>
+
+                <span style="padding: 0 5px; font-weight: 400">
+                  /
+                </span>
+
+                <span
+                  class="subproject"
+                  :title="
+                    locale === 'en-US'
+                      ? project?.lv2HeavyTeamEntity?.en || ''
+                      : project?.lv2HeavyTeamEntity?.cn || ''
+                  "
+                  style="font-size: 16px; font-weight: 700"
+                  data-mark-35247615
+                >
+                  {{
+                    locale === 'en-US'
+                      ? project?.lv2HeavyTeamEntity?.en
+                      : project?.lv2HeavyTeamEntity?.cn
+                  }}
+                </span>
+              </div>
+            </div>
+
+            <!-- 时间线主体 -->
+            <section
+              v-loading="loading"
+              class="version-board"
+            >
+              <!--
+                项目行固定在顶部。
+
+                版本区域纵向滚动时，项目行不会跟随滚动；
+                项目步骤会和下方版本步骤保持横向同步。
+              -->
+              <div class="project-board-row">
+                <!-- 左侧项目信息 -->
+                <div class="row-info project-info">
+                  <img
+                    :src="projectBadge"
+                    class="row-badge"
+                    alt="项目"
+                  />
+
+                  <div
+                    class="project-name"
+                    :title="
+                      locale === 'en-US'
+                        ? project?.projectNameEn || ''
+                        : project?.projectNameZh || ''
+                    "
+                  >
+                    {{
+                      locale === 'en-US'
+                        ? project?.projectNameEn
+                        : project?.projectNameZh
+                    }}
+                  </div>
+
+                  <div
+                    class="project-code"
+                    :title="`编码:${project?.code || ''}`"
+                  >
+                    <span class="code-label">编码:</span>
+
+                    <span class="code-value">
+                      {{ project?.code }}
+                    </span>
+                  </div>
+                </div>
+
+                <!--
+                  项目步骤区域隐藏自己的横向滚动条。
+
+                  它仍然具有横向滚动能力，
+                  但主要跟随下方版本步骤区域同步滚动。
+                -->
+                <div
+                  ref="projectStepsScrollRef"
+                  class="steps-scroll project-steps-scroll"
+                  @scroll="handleProjectStepsScroll"
+                >
+                  <div class="steps-scroll-content">
+                    <div class="steps-row">
+                      <Step
+                        class="row-steps"
+                        :steps="projectSteps"
+                        :step-width="240"
+                        :min-gap="240"
+                        :track-height="123"
+                        :layout-count="VERSION_NORMAL_NODE_ORDER.length"
+                        :connector-height="6"
+                        reserve-leading-gap
+                        reserve-trailing-gap
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!--
+                版本可视区域。
+
+                这里本身不产生滚动条，只负责限制高度。
+                右侧 version-steps-scroll 同时负责横向和纵向滚动。
+              -->
+              <div class="versions-scroll-area">
+                <div
+                  v-if="versionRows.length"
+                  class="versions-board"
+                >
+                  <!--
+                    左侧版本信息可视区域。
+
+                    左侧不单独创建原生纵向滚动条，
+                    而是根据右侧 scrollTop 对内容进行 translateY，
+                    从而保证左右版本行始终完全对齐。
+                  -->
+                  <div
+                    class="version-info-viewport"
+                    @wheel.prevent="handleVersionInfoWheel"
+                  >
+                    <div
+                      ref="versionInfoContentRef"
+                      class="version-info-column"
+                    >
+                      <div
+                        v-for="(version, index) in versionRows"
+                        :key="`${version.id}-${index}`"
+                        class="row-info version-info"
+                      >
+                        <img
+                          :src="versionBadge"
+                          class="row-badge"
+                          alt="版本"
+                        />
+
+                        <span
+                          class="version-name"
+                          :title="
+                            locale === 'en-US'
+                              ? version.nameEn ||
+                                version.code ||
+                                version.id
+                              : version.nameCn ||
+                                version.code ||
+                                version.id
+                          "
+                        >
+                          {{
+                            locale === 'en-US'
+                              ? version.nameEn ||
+                                version.code ||
+                                version.id
+                              : version.nameCn ||
+                                version.code ||
+                                version.id
+                          }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!--
+                    右侧版本步骤滚动区域。
+
+                    这个容器同时开启：
+                    1. overflow-x: auto
+                    2. overflow-y: auto
+
+                    因此横向、纵向滚动条可以同时显示；
+                    横向滚动条会固定在当前版本可视区域底部。
+                  -->
+                  <div
+                    ref="versionStepsScrollRef"
+                    class="steps-scroll version-steps-scroll"
+                    @scroll="handleVersionStepsScroll"
+                  >
+                    <div class="steps-scroll-content">
+                      <div
+                        v-for="(version, index) in versionRows"
+                        :key="`${version.id}-${index}`"
+                        class="steps-row"
+                      >
+                        <Step
+                          class="row-steps"
+                          :steps="version.steps"
+                          :step-width="240"
+                          :min-gap="240"
+                          :track-height="123"
+                          :connector-height="2"
+                          reserve-leading-gap
+                          reserve-trailing-gap
+                          @mor-click="openMorDialog(version, $event)"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 版本为空时占满剩余区域 -->
+                <div
+                  v-else-if="!loading"
+                  class="empty-version"
+                >
+                  暂无版本数据
+                </div>
+              </div>
+            </section>
+
+            <!-- MOR评审任务弹窗 -->
+            <BaseDialog
+              v-if="dialogVisible"
+              :header-text="`${
+                locale === 'en-US'
+                  ? activeVersion?.nameEn ||
+                    activeVersion?.code ||
+                    ''
+                  : activeVersion?.nameCn ||
+                    activeVersion?.code ||
+                    ''
+              } MOR评审任务`"
+              :dialog-style="{
+                width: '1382px',
+              }"
+              :dialog-center-style="{
+                padding: '16px 20px',
+                display: 'block',
+              }"
+              :btn-info="{
+                cancel: {
+                  show: true,
+                  text: '关闭',
+                },
+                confirm: {
+                  show: false,
+                  text: '关闭',
+                },
+              }"
+              @confirm="dialogVisible = false"
+              @cancel="dialogVisible = false"
+            >
+              <morTableComp
+                :id="activeVersion?.id"
+                :mor-node="activeMorNode"
+                :spdt-value="
+                  project?.lv2HeavyTeamEntity?.typename
+                "
+                :spdt-label="
+                  project?.lv2HeavyTeamEntity?.typename
+                "
+                :project-value="
+                  locale === 'en-US'
+                    ? project?.projectNameEn
+                    : project?.projectNameZh
+                "
+                :version-value="
+                  locale === 'en-US'
+                    ? activeVersion?.nameEn ||
+                      activeVersion?.code ||
+                      activeVersion?.id
+                    : activeVersion?.nameCn ||
+                      activeVersion?.code ||
+                      activeVersion?.id
+                "
+              />
+            </BaseDialog>
+          </main>
+        </template>
+
+        <!-- 有权限对象，但是没有查看权限 -->
+        <template
+          v-else-if="
+            project?.permission &&
+            !project?.permission?.view
+          "
+        >
+          <div class="no-permission-page">
+            <div class="no-data">
+              <div class="tips">
+                <img
+                  src="@/assets/img/nopermission.png"
+                  alt=""
+                  data-mark-56641730
+                />
+
+                {{ $t('viewSelect.nopermission') }}
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import {
+  computed,
+  getCurrentInstance,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+} from 'vue';
+import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
+
+import Step from '@/components/gridLayout/cards/marketingRepresentative/setpOfMor.vue';
+import BaseDialog from '@/components/common/dialog/BaseDialog.vue';
+import morTableComp from '@/components/gridLayout/cards/marketingRepresentative/morTableComp';
+import PublicHeader from '@/views/PublicHeader.vue';
+
+import projectBadge from '@/assets/img/project-badge.svg';
+import versionBadge from '@/assets/img/version-badge.svg';
+import returnBackIcon from '@/components/gridLayout/cards/marketingRepresentative/img/returnBack.png';
+
+import { getUrlParam } from '@/utils/util';
+
+const { locale, t } = useI18n();
+const router = useRouter();
+const { proxy } = getCurrentInstance();
+
+/**
+ * 获取URL中的项目参数。
+ */
+const projectId = getUrlParam('projectId');
+const type = getUrlParam('type');
+
+/**
+ * MOR节点列表。
+ */
+const MOR_NODES = [
+  'MOR0',
+  'MOR1',
+  'MOR2',
+  'MOR3',
+  'MOR4',
+];
+
+/**
+ * 版本行完整节点顺序。
+ *
+ * 版本行同时展示：
+ * 1. 普通里程碑节点
+ * 2. MOR节点
+ */
+const VERSION_NODE_ORDER = [
+  'MOR0',
+  'Charter',
+  'TR1',
+  'CDCP',
+  'TR2',
+  'MOR1',
+  'TR3',
+  'PDCP',
+  'TR4',
+  'TR4A',
+  'MOR2',
+  'TR5',
+  'EDCP',
+  'MOR3',
+  'TR6',
+  'ADCP',
+  'GA',
+  'MOR4',
+];
+
+/**
+ * 项目行普通节点顺序。
+ *
+ * 项目行不展示MOR节点，
+ * 因此从完整节点中排除所有MOR节点。
+ */
+const VERSION_NORMAL_NODE_ORDER =
+  VERSION_NODE_ORDER.filter(
+    (node) => !MOR_NODES.includes(node)
+  );
+
+/**
+ * 是否存在可以返回的路由历史记录。
+ */
+const hasHistory = computed(() => {
+  return Boolean(window.history?.state?.back);
+});
+
+/**
+ * 返回上一页。
+ *
+ * 如果浏览器存在历史记录，则返回上一页；
+ * 否则跳转到系统首页。
+ */
+const goBack = () => {
+  if (window.history.length > 1) {
+    router.back();
+  } else {
+    router.push('/');
+  }
+};
+
+/**
+ * 页面加载状态。
+ */
+const loading = ref(false);
+
+/**
+ * 当前登录用户。
+ */
+const currentUser = ref({});
+
+/**
+ * 当前项目。
+ */
+const project = ref({});
+
+/**
+ * 项目对应的版本列表。
+ */
+const versions = ref([]);
+
+/**
+ * MOR弹窗是否显示。
+ */
+const dialogVisible = ref(false);
+
+/**
+ * 当前点击的版本。
+ */
+const activeVersion = ref(null);
+
+/**
+ * 当前点击的MOR节点。
+ */
+const activeMorNode = ref('');
+
+/* =========================================================
+ * 滚动容器引用
+ * ======================================================= */
+
+/**
+ * 顶部项目步骤横向滚动容器。
+ */
+const projectStepsScrollRef = ref(null);
+
+/**
+ * 左侧版本信息内容容器。
+ *
+ * 该容器本身不产生滚动条，
+ * 通过 transform 跟随右侧版本区域纵向移动。
+ */
+const versionInfoContentRef = ref(null);
+
+/**
+ * 右侧版本步骤滚动容器。
+ *
+ * 该容器同时负责：
+ * 1. 横向滚动
+ * 2. 纵向滚动
+ */
+const versionStepsScrollRef = ref(null);
+
+/**
+ * 横向滚动同步锁。
+ *
+ * 当代码设置另一个容器的scrollLeft时，
+ * 目标容器也会触发scroll事件。
+ *
+ * 使用这个锁可以避免两个滚动容器反复触发。
+ */
+let isSyncingHorizontalScroll = false;
+
+/**
+ * 左侧版本内容位移使用的动画帧ID。
+ *
+ * 通过requestAnimationFrame合并同一帧中的多次滚动事件，
+ * 减少频繁修改DOM样式带来的性能开销。
+ */
+let versionInfoAnimationFrame = null;
+
+/**
+ * 按照横向滚动比例同步两个容器。
+ *
+ * 项目行没有MOR节点，版本行包含MOR节点，
+ * 因此两边实际内容宽度不同。
+ *
+ * 这里不能直接复制scrollLeft，
+ * 需要使用滚动比例计算目标位置。
+ *
+ * @param {HTMLElement|null} sourceScroll 当前发生滚动的容器
+ * @param {HTMLElement|null} targetScroll 需要同步的目标容器
+ */
+const syncHorizontalScroll = (
+  sourceScroll,
+  targetScroll
+) => {
+  if (
+    !sourceScroll ||
+    !targetScroll ||
+    isSyncingHorizontalScroll
+  ) {
+    return;
+  }
+
+  // 当前容器最大可横向滚动距离
+  const sourceMaxScrollLeft =
+    sourceScroll.scrollWidth -
+    sourceScroll.clientWidth;
+
+  // 目标容器最大可横向滚动距离
+  const targetMaxScrollLeft =
+    targetScroll.scrollWidth -
+    targetScroll.clientWidth;
+
+  // 当前容器没有产生横向溢出时，不需要同步
+  if (sourceMaxScrollLeft <= 0) {
+    return;
+  }
+
+  // 计算当前横向滚动位置占总距离的比例
+  const scrollRatio =
+    sourceScroll.scrollLeft /
+    sourceMaxScrollLeft;
+
+  isSyncingHorizontalScroll = true;
+
+  // 按照相同滚动比例设置目标容器
+  targetScroll.scrollLeft =
+    scrollRatio *
+    Math.max(targetMaxScrollLeft, 0);
+
+  // 等浏览器完成当前帧后解除同步锁
+  requestAnimationFrame(() => {
+    isSyncingHorizontalScroll = false;
+  });
+};
+
+/**
+ * 根据右侧步骤区域的scrollTop，
+ * 更新左侧版本内容的位置。
+ *
+ * 左侧使用transform而不是独立scrollTop，
+ * 可以避免原生横向滚动条占用高度后，
+ * 左右两个容器最大scrollTop不同导致的行错位问题。
+ */
+const syncVersionInfoTransform = () => {
+  const versionStepsScroll =
+    versionStepsScrollRef.value;
+
+  const versionInfoContent =
+    versionInfoContentRef.value;
+
+  if (
+    !versionStepsScroll ||
+    !versionInfoContent
+  ) {
+    return;
+  }
+
+  // 同一帧只安排一次DOM更新
+  if (versionInfoAnimationFrame !== null) {
+    return;
+  }
+
+  versionInfoAnimationFrame =
+    requestAnimationFrame(() => {
+      /*
+       * 将左侧内容向上移动相同距离。
+       *
+       * translate3d可以触发浏览器合成层，
+       * 相比直接修改top属性滚动更加流畅。
+       */
+      versionInfoContent.style.transform =
+        `translate3d(0, -${versionStepsScroll.scrollTop}px, 0)`;
+
+      versionInfoAnimationFrame = null;
+    });
+};
+
+/**
+ * 项目步骤区域横向滚动时，
+ * 同步下方版本步骤区域。
+ */
+const handleProjectStepsScroll = () => {
+  syncHorizontalScroll(
+    projectStepsScrollRef.value,
+    versionStepsScrollRef.value
+  );
+};
+
+/**
+ * 右侧版本步骤区域滚动时：
+ *
+ * 1. 横向位置同步给顶部项目步骤。
+ * 2. 纵向位置同步给左侧版本信息。
+ */
+const handleVersionStepsScroll = () => {
+  syncHorizontalScroll(
+    versionStepsScrollRef.value,
+    projectStepsScrollRef.value
+  );
+
+  syncVersionInfoTransform();
+};
+
+/**
+ * 鼠标位于左侧版本信息上时，
+ * 将滚轮事件转发给右侧版本步骤区域。
+ *
+ * 这样用户在左侧版本名称上滚动鼠标时，
+ * 整个版本区域仍然可以正常上下滚动。
+ *
+ * @param {WheelEvent} event 鼠标滚轮事件
+ */
+const handleVersionInfoWheel = (event) => {
+  const versionStepsScroll =
+    versionStepsScrollRef.value;
+
+  if (!versionStepsScroll) {
+    return;
+  }
+
+  /*
+   * 按住Shift滚动时，
+   * 将纵向滚轮距离转换成横向滚动距离。
+   */
+  if (
+    event.shiftKey &&
+    Math.abs(event.deltaX) <
+      Math.abs(event.deltaY)
+  ) {
+    versionStepsScroll.scrollLeft +=
+      event.deltaY;
+
+    return;
+  }
+
+  // 普通滚轮控制纵向滚动
+  versionStepsScroll.scrollTop +=
+    event.deltaY;
+
+  // 触控板存在deltaX时，同时支持横向滚动
+  versionStepsScroll.scrollLeft +=
+    event.deltaX;
+};
+
+/* =========================================================
+ * 时间线数据处理
+ * ======================================================= */
+
+/**
+ * 当前日期。
+ *
+ * 这里保留原来用于测试的固定时间。
+ * 如果需要使用系统当天时间，可以改成：
+ *
+ * const today = new Date();
+ */
+const today = new Date(
+  '2026-07-01T00:00:00+08:00'
+);
+
+/**
+ * 解析日期字符串。
+ *
+ * @param {string} date 日期字符串
+ * @returns {Date|null} 解析后的Date对象
+ */
+const parseDate = (date) => {
+  if (!date) {
+    return null;
+  }
+
+  const dateText = String(date);
+
+  // 包含T时，一般属于ISO日期格式
+  if (dateText.includes('T')) {
+    return new Date(dateText);
+  }
+
+  // 兼容yyyy-MM-dd HH:mm:ss格式
+  return new Date(
+    dateText.replace(/-/g, '/')
+  );
+};
+
+/**
+ * 判断指定日期是否早于或等于今天。
+ *
+ * @param {string} date 日期字符串
+ * @returns {boolean} 是否已经到达
+ */
+const isPastOrToday = (date) => {
+  if (!date) {
+    return false;
+  }
+
+  const parsedDate = parseDate(date);
+
+  // 将比较时间设置成今天最后一毫秒
+  const endOfToday = new Date(today);
+  endOfToday.setHours(23, 59, 59, 999);
+
+  return (
+    parsedDate instanceof Date &&
+    !Number.isNaN(parsedDate.getTime()) &&
+    parsedDate <= endOfToday
+  );
+};
+
+/**
+ * 获取里程碑对应的标准节点名称。
+ *
+ * @param {Object} milestone 里程碑对象
+ * @returns {string} 标准节点名称
+ */
+const getMilestoneNodeKey = (
+  milestone = {}
+) => {
+  /*
+   * 后端Charter节点可能返回：
+   * milestoneCode: milestoneCharter
+   */
+  if (
+    milestone.milestoneCode ===
+    'milestoneCharter'
+  ) {
+    return 'Charter';
+  }
+
+  return (
+    milestone.milestoneName ||
+    milestone.milestoneCode ||
+    milestone.milestoneNameCn ||
+    milestone.milestoneNameEn ||
+    ''
+  );
+};
+
+/**
+ * 将里程碑数组转换成Map。
+ *
+ * 一个里程碑可能通过以下字段匹配：
+ * 1. milestoneCode
+ * 2. milestoneName
+ * 3. milestoneNameCn
+ * 4. milestoneNameEn
+ *
+ * @param {Array} milestones 里程碑列表
+ * @returns {Map} 里程碑映射
+ */
+const toMilestoneMap = (
+  milestones = []
+) => {
+  return new Map(
+    milestones.flatMap((milestone) => {
+      const nodeKey =
+        getMilestoneNodeKey(milestone);
+
+      const keys = [
+        nodeKey,
+        milestone.milestoneCode,
+        milestone.milestoneName,
+        milestone.milestoneNameCn,
+        milestone.milestoneNameEn,
+      ].filter(Boolean);
+
+      return keys.map((key) => [
+        key,
+        {
+          ...milestone,
+          nodeKey,
+        },
+      ]);
+    })
+  );
+};
+
+/**
+ * 项目行步骤数据。
+ *
+ * 项目行只生成普通节点，不生成MOR节点。
+ */
+const projectSteps = computed(() => {
+  const milestoneMap = toMilestoneMap(
+    project.value?.milestones || []
+  );
+
+  return VERSION_NORMAL_NODE_ORDER.map(
+    (node, index) => {
+      const milestone =
+        milestoneMap.get(node);
+
+      const milestoneName =
+        milestone?.milestoneName || node;
+
+      const planPublishDate =
+        milestone?.planPublishDate || '';
+
+      const arrived =
+        milestone?.arrived ??
+        isPastOrToday(planPublishDate);
+
+      return {
+        ...(milestone || {}),
+
+        id:
+          milestone?.id ||
+          milestone?.milestoneCode ||
+          index,
+
+        nodeKey: node,
+        milestoneName,
+
+        subProcessNameCn:
+          milestone?.subProcessNameCn,
+
+        subProcessNameEn:
+          milestone?.subProcessNameEn,
+
+        planPublishDate,
+        arrived,
+
+        state:
+          milestone?.state ||
+          (arrived
+            ? 'Completed'
+            : 'NotStarted'),
+
+        perform:
+          milestone?.perform ?? false,
+
+        showDivider: Boolean(
+          milestone?.showDivider
+        ),
+      };
+    }
+  );
+});
+
+/**
+ * 版本行数据。
+ *
+ * 每个版本都会按照VERSION_NODE_ORDER生成：
+ * 1. 普通里程碑节点
+ * 2. MOR节点
+ */
+const versionRows = computed(() => {
+  return versions.value.map((version) => {
+    const milestoneMap = toMilestoneMap(
+      version.milestones || []
+    );
+
+    return {
+      ...version,
+
+      steps: VERSION_NODE_ORDER.map(
+        (node) => {
+          const isMor =
+            node.startsWith('MOR');
+
+          const milestone =
+            milestoneMap.get(node);
+
+          const milestoneName =
+            milestone?.milestoneName ||
+            milestone?.milestoneNameCn ||
+            milestone?.milestoneNameEn ||
+            node;
+
+          const planDate =
+            milestone?.planPublishDate || '';
+
+          /*
+           * MOR没有对应数据时使用notData。
+           */
+          const milestoneState = isMor
+            ? milestone?.milestoneState ||
+              'notData'
+            : '';
+
+          /*
+           * MOR状态为pending或canView时，
+           * 允许用户点击并打开详情弹窗。
+           */
+          const canOpenMor = [
+            'pending',
+            'canView',
+          ].includes(milestoneState);
+
+          /*
+           * 普通节点根据计划时间判断是否到达；
+           * MOR节点不使用普通计划时间进行判断。
+           */
+          const arrived =
+            milestone?.arrived ??
+            (!isMor &&
+              isPastOrToday(planDate));
+
+          return {
+            ...(milestone || {}),
+
+            id:
+              milestone?.id ||
+              `${version.id}-${node}`,
+
+            milestoneCode: node,
+            nodeKey: node,
+            milestoneName,
+
+            milestoneNameCn:
+              milestone?.milestoneNameCn ||
+              milestoneName,
+
+            milestoneNameEn:
+              milestone?.milestoneNameEn ||
+              milestoneName,
+
+            subProcessNameCn:
+              milestone?.subProcessNameCn,
+
+            subProcessNameEn:
+              milestone?.subProcessNameEn,
+
+            // MOR节点不显示普通计划时间
+            planPublishDate: isMor
+              ? ''
+              : planDate,
+
+            arrived,
+
+            state:
+              milestone?.state ||
+              (!isMor && arrived
+                ? 'Completed'
+                : 'NotStarted'),
+
+            perform:
+              milestone?.perform ??
+              (!isMor && arrived),
+
+            showDivider: Boolean(
+              milestone?.showDivider
+            ),
+
+            // 是否为MOR节点
+            isMor,
+
+            // MOR节点状态
+            morState: milestoneState,
+
+            // MOR是否允许打开
+            canOpenMor,
+
+            // 兼容Step组件原有字段
+            hasMorData: canOpenMor,
+
+            // MOR是否待当前用户处理
+            pendingByMe:
+              isMor &&
+              milestoneState === 'pending',
+          };
+        }
+      ),
+    };
+  });
+});
+
+/**
+ * 打开MOR详情弹窗。
+ *
+ * @param {Object} version 当前版本
+ * @param {Object} step 当前点击的MOR节点
+ */
+const openMorDialog = (version, step) => {
+  // 当前MOR没有查看权限时直接结束
+  if (!step?.canOpenMor) {
+    return;
+  }
+
+  activeVersion.value = version;
+  activeMorNode.value = step.nodeKey;
+  dialogVisible.value = true;
+};
+
+/* =========================================================
+ * 接口请求
+ * ======================================================= */
+
+/**
+ * 根据项目ID获取项目详情。
+ *
+ * @param {string} id 项目ID
+ * @param {string} projectType 项目类型
+ * @returns {Promise<Object|null>} 项目详情
+ */
+async function fetchProjectByProjectId(
+  id,
+  projectType
+) {
+  try {
+    const resp = await proxy.$axios.get(
+      '/ugtm/api/v1/ipd/project/details',
+      {
+        params: {
+          projectId: id,
+          type: projectType,
+        },
+      }
+    );
+
+    const projectData =
+      resp?.data?.data;
+
+    if (!projectData) {
+      return null;
+    }
+
+    return projectData;
+  } catch (error) {
+    console.error(
+      '获取项目详情失败',
+      error
+    );
+
+    return null;
+  }
+}
+
+/**
+ * 获取项目版本列表。
+ *
+ * @param {string} url 请求地址
+ * @returns {Promise<Object|Array|null>} 版本接口数据
+ */
+const requestVersionListPage = async (
+  url
+) => {
+  try {
+    const resp =
+      await proxy.$axios.get(url);
+
+    const versionListData =
+      resp?.data?.data;
+
+    if (!versionListData) {
+      return null;
+    }
+
+    return versionListData;
+  } catch (error) {
+    console.error(
+      '获取版本列表失败',
+      error
+    );
+
+    return null;
+  }
+};
+
+/**
+ * 页面初始化。
+ */
+onMounted(async () => {
+  loading.value = true;
+
+  try {
+    // URL没有对应参数时使用默认值
+    const currentProjectId =
+      projectId || 'PJT-2026-001';
+
+    const currentType =
+      type || 'Charter';
+
+    // 并行请求项目详情和版本列表
+    const [
+      projectDetails,
+      versionListResp,
+    ] = await Promise.all([
+      fetchProjectByProjectId(
+        currentProjectId,
+        currentType
+      ),
+
+      requestVersionListPage(
+        `/ugtm/api/v1/ipd/getMorEditionList?projectId=${currentProjectId}`
+      ),
+    ]);
+
+    const payload =
+      versionListResp ?? {};
+
+    currentUser.value =
+      payload.currentUser ?? {};
+
+    /*
+     * 优先使用项目详情接口返回的数据，
+     * 确保项目对象包含lv2HeavyTeamEntity等信息。
+     */
+    project.value =
+      projectDetails ||
+      payload.project ||
+      {};
+
+    /*
+     * 兼容不同版本接口数据结构：
+     * 1. data直接是数组
+     * 2. data.result
+     * 3. data.list
+     * 4. data.records
+     */
+    versions.value = Array.isArray(payload)
+      ? payload
+      : payload?.result ||
+        payload?.list ||
+        payload?.records ||
+        [];
+
+    /*
+     * 下面是你原来用于测试纵向滚动的数据复制代码。
+     *
+     * 正式环境不需要复制版本数据时，
+     * 删除或注释下面这一段即可。
+     */
+    versions.value = [
+      ...versions.value,
+      ...versions.value,
+      ...versions.value,
+      ...versions.value,
+    ];
+  } finally {
+    loading.value = false;
+  }
+});
+
+/**
+ * 组件卸载前取消尚未执行的动画帧，
+ * 防止组件销毁后继续操作DOM。
+ */
+onBeforeUnmount(() => {
+  if (versionInfoAnimationFrame !== null) {
+    cancelAnimationFrame(
+      versionInfoAnimationFrame
+    );
+
+    versionInfoAnimationFrame = null;
+  }
+});
+</script>
+
+<style scoped lang="scss">
+/* =========================================================
+ * 页面基础布局
+ * ======================================================= */
+
+.st-container {
+  width: 100%;
+  height: 100vh;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  color: rgb(51, 51, 51);
+  font-size: 14px;
+  font-weight: 400;
+  box-shadow:
+    inset 0 -1px 0 0 rgb(230, 230, 230);
+}
+
+.st-container .position {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  min-height: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  flex-direction: column;
+  overflow: hidden;
+  transform-origin: 0 0;
+}
+
+.content {
+  display: flex;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  flex: 1 1 auto;
+  flex-direction: column;
+  margin: 24px 70px;
+  overflow: hidden;
+  font-family:
+    Microsoft YaHei,
+    sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.version-page {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  color: #1f2937;
+  background: #f4f6fb;
+  border-radius: 8px;
+}
+
+/* =========================================================
+ * 标题区域
+ * ======================================================= */
+
+.card-header {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 16px 20px;
+  cursor: default;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e9ecef;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.back-entry {
+  display: inline-flex;
+  height: 26px;
+  flex-shrink: 0;
+  align-items: center;
+  color: #333333;
+  line-height: 26px;
+  cursor: pointer;
+}
+
+.back-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+}
+
+.names {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 6px;
+  align-items: center;
+  color: #1f2329;
+  font-weight: 500;
+}
+
+.project,
+.subproject {
+  display: inline-block;
+  min-width: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project {
+  color: #ffffff;
+  background: linear-gradient(
+    90deg,
+    rgba(78, 119, 255, 1) 0%,
+    rgba(83, 160, 253, 1) 50%,
+    rgba(124, 152, 254, 1) 100%
+  );
+}
+
+/* =========================================================
+ * 时间线主体
+ * ======================================================= */
+
+.version-board {
+  --timeline-row-height: 123px;
+
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  background: transparent;
+  border-radius: 8px;
+}
+
+/* =========================================================
+ * 项目行
+ * ======================================================= */
+
+.project-board-row {
+  display: grid;
+  grid-template-columns:
+    276px
+    minmax(0, 1fr);
+  width: 100%;
+  height: var(--timeline-row-height);
+  min-width: 0;
+  flex: 0 0 var(--timeline-row-height);
+  position: relative;
+  z-index: 5;
+  background: #ffffff;
+}
+
+/* 项目行底部阴影 */
+.project-board-row::after {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  bottom: -12px;
+  left: 0;
+  height: 12px;
+  pointer-events: none;
+  content: '';
+  opacity: 0.7;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.18) 0%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+/* =========================================================
+ * 左侧项目、版本基础行
+ * ======================================================= */
+
+.row-info {
+  display: flex;
+  width: 276px;
+  height: var(--timeline-row-height);
+  min-width: 0;
+  min-height: var(--timeline-row-height);
+  flex: 0 0 var(--timeline-row-height);
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  justify-content: center;
+  margin: 0;
+  padding: 12px 16px;
+  overflow: hidden;
+  border-right: 1px solid #edf0f6;
+  border-bottom: 1px solid #edf0f6;
+  box-sizing: border-box;
+}
+
+.row-info strong,
+.row-info span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-badge {
+  display: block;
+  width: 46px;
+  height: 26px;
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+.project-info {
+  position: relative;
+  background: linear-gradient(
+    135.87deg,
+    rgba(255, 255, 255, 0.8) 0%,
+    rgba(238, 244, 255, 0.8) 97.352%
+  );
+}
+
+/* 项目信息右侧阴影 */
+.project-info::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  pointer-events: none;
+  content: '';
+  opacity: 0.5;
+  background: linear-gradient(
+    270deg,
+    rgba(0, 0, 0, 0.18) -20.776%,
+    rgba(0, 0, 0, 0) 43.334%
+  );
+}
+
+.project-name {
+  width: 100%;
+  max-width: 200px;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-code {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 22px;
+}
+
+.code-label {
+  flex: 0 0 auto;
+  color: rgba(102, 102, 102, 1);
+}
+
+.code-value {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-name {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =========================================================
+ * 通用步骤滚动区域
+ * ======================================================= */
+
+.steps-scroll {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.steps-scroll-content {
+  width: max-content;
+  min-width: 100%;
+}
+
+.steps-row {
+  height: var(--timeline-row-height);
+  min-height: var(--timeline-row-height);
+  overflow: hidden;
+  border-bottom: 1px solid #edf0f6;
+  box-sizing: border-box;
+}
+
+.row-steps {
+  min-width: max-content;
+  margin-right: 0;
+}
+
+/*
+ * 项目行隐藏自己的横向滚动条。
+ * 它仍然可以通过scrollLeft进行同步。
+ */
+.project-steps-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.project-steps-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* =========================================================
+ * 版本区域：Element Plus表格式双向滚动
+ * ======================================================= */
+
+/**
+ * 版本区域占满项目行下面的全部剩余高度。
+ *
+ * 自身不滚动，只限制内部两个区域的可视范围。
+ */
+.versions-scroll-area {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+/**
+ * 左右两部分保持同一个固定高度：
+ *
+ * 左侧：版本名称
+ * 右侧：版本步骤
+ */
+.versions-board {
+  display: grid;
+  grid-template-columns:
+    276px
+    minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+/**
+ * 左侧版本信息可视窗口。
+ *
+ * 左侧本身不使用原生滚动条，
+ * 通过transform跟随右侧纵向滚动。
+ */
+.version-info-viewport {
+  width: 276px;
+  height: 100%;
+  min-height: 0;
+  position: relative;
+  z-index: 2;
+  overflow: hidden;
+  background: #ffffff;
+  overscroll-behavior: contain;
+}
+
+/**
+ * 左侧版本信息内容。
+ *
+ * transform由script根据右侧scrollTop动态设置。
+ */
+.version-info-column {
+  width: 276px;
+  min-width: 0;
+  position: relative;
+  background: #ffffff;
+  will-change: transform;
+}
+
+/* 左侧版本信息右侧阴影 */
+.version-info-column::after {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  pointer-events: none;
+  content: '';
+  opacity: 0.5;
+  background: linear-gradient(
+    270deg,
+    rgba(0, 0, 0, 0.18) -20.776%,
+    rgba(0, 0, 0, 0) 43.334%
+  );
+}
+
+/**
+ * 右侧版本步骤区域。
+ *
+ * 关键设置：
+ * overflow: auto
+ *
+ * 同一个容器同时产生横向和纵向滚动条，
+ * 横向滚动条会固定在当前可视区域底部。
+ */
+.version-steps-scroll {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+
+  /*
+   * 给纵向滚动条预留稳定空间，
+   * 避免滚动条出现后内容宽度突然变化。
+   */
+  scrollbar-gutter: stable;
+
+  /* Firefox滚动条样式 */
+  scrollbar-color:
+    rgba(206, 206, 206, 1)
+    transparent;
+  scrollbar-width: auto;
+}
+
+/* Chrome、Safari滚动条尺寸 */
+.version-steps-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 10px;
+}
+
+/* 横向和纵向滚动条轨道 */
+.version-steps-scroll::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+/* 横向和纵向滚动条滑块 */
+.version-steps-scroll::-webkit-scrollbar-thumb {
+  min-width: 54px;
+  min-height: 40px;
+  background: rgba(206, 206, 206, 1);
+  border-radius: 4px;
+}
+
+/* 鼠标移入滚动条滑块 */
+.version-steps-scroll::-webkit-scrollbar-thumb:hover,
+.version-steps-scroll::-webkit-scrollbar-thumb:active {
+  background: #bfc3cc;
+}
+
+/* 横向、纵向滚动条交叉位置 */
+.version-steps-scroll::-webkit-scrollbar-corner {
+  background: #ffffff;
+}
+
+/* 最后一行不显示底部边框 */
+.version-info:last-child,
+.version-steps-scroll
+  .steps-row:last-child {
+  border-bottom: 0;
+}
+
+/* =========================================================
+ * 空状态和无权限状态
+ * ======================================================= */
+
+.empty-version {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: var(--timeline-row-height);
+  align-items: center;
+  justify-content: center;
+  color: #909399;
+  background: #ffffff;
+}
+
+.no-permission-page {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+}
+
+.tips {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+}
+</style>
