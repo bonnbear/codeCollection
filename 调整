@@ -1,0 +1,1702 @@
+<template>
+  <div class="st-container" data-mark-24775053>
+    <div class="position" data-mark-68387919>
+      <public-header
+        process="营销框架定义及细分市场营销规划"
+        child="营销标杆项目规划"
+        data-mark-22859072
+      />
+
+      <div class="content">
+        <!-- 有查看权限时展示页面内容 -->
+        <template v-if="project?.permission?.view">
+          <main class="version-page">
+            <div class="card-header" style="cursor: default">
+              <!-- 返回入口 -->
+              <div
+                v-if="hasHistory"
+                class="back-entry"
+                style="margin-right: 8px"
+                @click="goBack"
+              >
+                <img
+                  :src="returnBackIcon"
+                  class="back-icon"
+                  alt="back"
+                />
+
+                <span>{{ t('Back') }}</span>
+              </div>
+
+              <!-- 返回按钮与标题之间的分割线 -->
+              <div
+                v-if="hasHistory"
+                style="
+                  background-color: rgba(240, 240, 240, 1);
+                  width: 1px;
+                  margin-right: 8px;
+                  height: 16px;
+                "
+              />
+
+              <div class="names" data-mark-89743949>
+                <span
+                  class="project item-header"
+                  style="padding: 2px 6px"
+                  :title="project?.lv2HeavyTeamEntity?.typename || ''"
+                  data-mark-92450323
+                >
+                  {{ project?.lv2HeavyTeamEntity?.typename }}
+                </span>
+
+                <span style="font-weight: 400; padding: 0 5px">
+                  /
+                </span>
+
+                <span
+                  class="subproject"
+                  :title="
+                    locale === 'en-US'
+                      ? project?.lv2HeavyTeamEntity?.en || ''
+                      : project?.lv2HeavyTeamEntity?.cn || ''
+                  "
+                  style="
+                    font-weight: 700;
+                    font-size: 16px;
+                  "
+                  data-mark-35247615
+                >
+                  {{
+                    locale === 'en-US'
+                      ? project?.lv2HeavyTeamEntity?.en
+                      : project?.lv2HeavyTeamEntity?.cn
+                  }}
+                </span>
+              </div>
+            </div>
+
+            <section
+              v-loading="loading"
+              class="version-board"
+            >
+              <!--
+                项目行独立固定在上方：
+                版本区域纵向滚动时，项目行不会跟着滚动。
+              -->
+              <div class="project-board-row">
+                <!-- 左侧项目信息 -->
+                <div class="row-info project-info">
+                  <img
+                    :src="projectBadge"
+                    class="row-badge"
+                    alt="项目"
+                  />
+
+                  <div
+                    class="project-name"
+                    :title="
+                      locale === 'en-US'
+                        ? project?.projectNameEn || ''
+                        : project?.projectNameZh || ''
+                    "
+                  >
+                    {{
+                      locale === 'en-US'
+                        ? project?.projectNameEn
+                        : project?.projectNameZh
+                    }}
+                  </div>
+
+                  <div
+                    class="project-code"
+                    :title="`编码:${project?.code || ''}`"
+                  >
+                    <span class="code-label">编码:</span>
+                    <span class="code-value">
+                      {{ project?.code }}
+                    </span>
+                  </div>
+                </div>
+
+                <!--
+                  项目步骤区域不显示独立横向滚动条，
+                  它会跟随下方版本步骤区域同步滚动。
+                -->
+                <div
+                  ref="projectStepsScrollRef"
+                  class="steps-scroll project-steps-scroll"
+                  @scroll="handleProjectStepsScroll"
+                >
+                  <div class="steps-scroll-content">
+                    <div class="steps-row">
+                      <Step
+                        class="row-steps"
+                        :steps="projectSteps"
+                        :step-width="240"
+                        :min-gap="240"
+                        :track-height="123"
+                        :layout-count="
+                          VERSION_NORMAL_NODE_ORDER.length
+                        "
+                        :connector-height="6"
+                        reserve-leading-gap
+                        reserve-trailing-gap
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!--
+                版本区域自动占满屏幕剩余高度：
+                内容未超出时不显示纵向滚动条；
+                内容超出时只在该区域显示纵向滚动条。
+              -->
+              <div class="versions-vertical-scroll">
+                <div
+                  v-if="versionRows.length"
+                  class="versions-board"
+                >
+                  <!-- 左侧版本信息列 -->
+                  <div class="version-info-column">
+                    <div
+                      v-for="version in versionRows"
+                      :key="version.id"
+                      class="row-info version-info"
+                    >
+                      <img
+                        :src="versionBadge"
+                        class="row-badge"
+                        alt="版本"
+                      />
+
+                      <span
+                        class="version-name"
+                        :title="
+                          locale === 'en-US'
+                            ? version.nameEn ||
+                              version.code ||
+                              version.id
+                            : version.nameCn ||
+                              version.code ||
+                              version.id
+                        "
+                      >
+                        {{
+                          locale === 'en-US'
+                            ? version.nameEn ||
+                              version.code ||
+                              version.id
+                            : version.nameCn ||
+                              version.code ||
+                              version.id
+                        }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- 右侧版本步骤区域 -->
+                  <div
+                    ref="versionStepsScrollRef"
+                    class="steps-scroll version-steps-scroll"
+                    @scroll="handleVersionStepsScroll"
+                  >
+                    <div class="steps-scroll-content">
+                      <div
+                        v-for="version in versionRows"
+                        :key="version.id"
+                        class="steps-row"
+                      >
+                        <Step
+                          class="row-steps"
+                          :steps="version.steps"
+                          :step-width="240"
+                          :min-gap="240"
+                          :track-height="123"
+                          :connector-height="
+                            version.connectorHeight
+                          "
+                          reserve-leading-gap
+                          reserve-trailing-gap
+                          @mor-click="
+                            openMorDialog(version, $event)
+                          "
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 版本为空时占满剩余区域展示空状态 -->
+                <div
+                  v-else-if="!loading"
+                  class="empty-version"
+                >
+                  暂无版本数据
+                </div>
+              </div>
+            </section>
+
+            <!-- MOR 评审任务弹窗 -->
+            <BaseDialog
+              v-if="dialogVisible"
+              :header-text="`
+                ${
+                  locale === 'en-US'
+                    ? activeVersion?.nameEn ||
+                      activeVersion?.code ||
+                      ''
+                    : activeVersion?.nameCn ||
+                      activeVersion?.code ||
+                      ''
+                } MOR评审任务
+              `"
+              :dialog-style="{
+                width: '1382px',
+              }"
+              :dialog-center-style="{
+                padding: '16px 20px',
+                display: 'block',
+              }"
+              :btn-info="{
+                cancel: {
+                  show: false,
+                },
+                confirm: {
+                  show: true,
+                  text: '关闭',
+                },
+              }"
+              @confirm="dialogVisible = false"
+              @cancel="dialogVisible = false"
+            >
+              <morTableComp
+                :id="activeVersion?.id"
+                :mor-node="activeMorNode"
+                :spdt-value="
+                  project?.lv2HeavyTeamEntity?.typename
+                "
+                :spdt-label="
+                  project?.lv2HeavyTeamEntity?.typename
+                "
+                :project-value="
+                  locale === 'en-US'
+                    ? project?.projectNameEn
+                    : project?.projectNameZh
+                "
+                :version-value="
+                  locale === 'en-US'
+                    ? activeVersion?.nameEn ||
+                      activeVersion?.code ||
+                      activeVersion?.id
+                    : activeVersion?.nameCn ||
+                      activeVersion?.code ||
+                      activeVersion?.id
+                "
+              />
+            </BaseDialog>
+          </main>
+        </template>
+
+        <!-- 有权限对象，但没有查看权限时展示无权限页面 -->
+        <template
+          v-if="
+            project?.permission &&
+            !project?.permission?.view
+          "
+        >
+          <div
+            style="
+              height: 100%;
+              width: 100%;
+              min-height: 800px;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              background: white;
+            "
+          >
+            <div class="no-data">
+              <div class="tips">
+                <!-- 已删除原来的非法属性：2 -->
+                <div class="tips">
+                  <img
+                    src="@/assets/img/nopermission.png"
+                    alt=""
+                    data-mark-56641730
+                  />
+
+                  {{ $t('viewSelect.nopermission') }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import {
+  computed,
+  getCurrentInstance,
+  onMounted,
+  ref,
+} from 'vue';
+
+import {
+  useI18n,
+} from 'vue-i18n';
+
+import {
+  useRouter,
+} from 'vue-router';
+
+import Step from '@/components/gridLayout/cards/marketingRepresentative/setpOfMor.vue';
+import BaseDialog from '@/components/common/dialog/BaseDialog.vue';
+import morTableComp from '@/components/gridLayout/cards/marketingRepresentative/morTableComp';
+import PublicHeader from '@/views/PublicHeader.vue';
+
+import projectBadge from '@/assets/img/project-badge.svg';
+import versionBadge from '@/assets/img/version-badge.svg';
+import returnBackIcon from '@/components/gridLayout/cards/marketingRepresentative/img/returnBack.png';
+
+import {
+  getUrlParam,
+} from '@/utils/util';
+
+const {
+  locale,
+  t,
+} = useI18n();
+
+const router = useRouter();
+
+const {
+  proxy,
+} = getCurrentInstance();
+
+/**
+ * 获取路由参数
+ */
+const projectId = getUrlParam('projectId');
+const type = getUrlParam('type');
+
+/**
+ * MOR 节点列表
+ */
+const MOR_NODES = [
+  'MOR0',
+  'MOR1',
+  'MOR2',
+  'MOR3',
+  'MOR4',
+];
+
+/**
+ * 版本完整节点顺序
+ *
+ * 版本行需要展示普通节点和 MOR 节点，
+ * 因此这里保留所有节点。
+ */
+const VERSION_NODE_ORDER = [
+  'MOR0',
+  'Charter',
+  'TR1',
+  'CDCP',
+  'TR2',
+  'MOR1',
+  'TR3',
+  'PDCP',
+  'TR4',
+  'TR4A',
+  'MOR2',
+  'TR5',
+  'EDCP',
+  'MOR3',
+  'TR6',
+  'ADCP',
+  'GA',
+  'MOR4',
+];
+
+/**
+ * 普通里程碑节点顺序
+ *
+ * 项目行不展示 MOR，
+ * 所以从完整节点中排除 MOR 节点。
+ */
+const VERSION_NORMAL_NODE_ORDER =
+  VERSION_NODE_ORDER.filter(
+    (node) => !MOR_NODES.includes(node),
+  );
+
+/**
+ * 生成随机连接线高度
+ *
+ * 返回范围为 2～6。
+ */
+const getRandomConnectorHeight = () => {
+  return Math.floor(Math.random() * 5) + 2;
+};
+
+/**
+ * 项目行连接线随机高度
+ *
+ * 当前模板中项目行仍然固定使用 6，
+ * 这里保留原有变量。
+ */
+const projectConnectorHeight =
+  getRandomConnectorHeight();
+
+/**
+ * 保存每个版本对应的连接线高度，
+ * 避免 computed 重算时重复生成不同高度。
+ */
+const versionConnectorHeightMap = new Map();
+
+/**
+ * 是否显示返回按钮
+ *
+ * window.history.state.back 存在时，
+ * 说明当前页面存在可返回的上级历史记录。
+ */
+const hasHistory = computed(() => {
+  return Boolean(window.history?.state?.back);
+});
+
+/**
+ * 返回上一页
+ *
+ * history.length 大于 1 时，
+ * 使用 Vue Router 返回上一条历史记录。
+ *
+ * 如果没有可用历史记录，
+ * 则跳转到首页。
+ */
+const goBack = () => {
+  if (window.history.length > 1) {
+    router.back();
+  } else {
+    router.push('/');
+  }
+};
+
+/**
+ * 页面加载状态
+ */
+const loading = ref(false);
+
+/**
+ * 项目步骤横向滚动容器。
+ */
+const projectStepsScrollRef = ref(null);
+
+/**
+ * 版本步骤横向滚动容器。
+ */
+const versionStepsScrollRef = ref(null);
+
+/**
+ * 横向滚动同步锁。
+ *
+ * 修改目标容器的 scrollLeft 后，目标容器也会触发 scroll 事件，
+ * 使用该标记避免两个容器之间反复触发同步。
+ */
+let isSyncingHorizontalScroll = false;
+
+/**
+ * 按照滚动比例同步两个横向滚动容器。
+ *
+ * 项目行只包含普通节点，版本行还包含 MOR 节点，
+ * 两边内容总宽度可能不同，因此不能简单复制 scrollLeft，
+ * 使用滚动比例可以让两边保持一致的相对位置。
+ *
+ * @param {HTMLElement|null} sourceScroll 当前发生滚动的容器
+ * @param {HTMLElement|null} targetScroll 需要同步的目标容器
+ */
+const syncHorizontalScroll = (
+  sourceScroll,
+  targetScroll,
+) => {
+  if (
+    !sourceScroll ||
+    !targetScroll ||
+    isSyncingHorizontalScroll
+  ) {
+    return;
+  }
+
+  const sourceMaxScrollLeft =
+    sourceScroll.scrollWidth -
+    sourceScroll.clientWidth;
+
+  const targetMaxScrollLeft =
+    targetScroll.scrollWidth -
+    targetScroll.clientWidth;
+
+  if (sourceMaxScrollLeft <= 0) {
+    return;
+  }
+
+  const scrollRatio =
+    sourceScroll.scrollLeft /
+    sourceMaxScrollLeft;
+
+  isSyncingHorizontalScroll = true;
+
+  targetScroll.scrollLeft =
+    scrollRatio *
+    Math.max(targetMaxScrollLeft, 0);
+
+  requestAnimationFrame(() => {
+    isSyncingHorizontalScroll = false;
+  });
+};
+
+/**
+ * 项目步骤区域横向滚动时，同步版本步骤区域。
+ */
+const handleProjectStepsScroll = () => {
+  syncHorizontalScroll(
+    projectStepsScrollRef.value,
+    versionStepsScrollRef.value,
+  );
+};
+
+/**
+ * 版本步骤区域横向滚动时，同步项目步骤区域。
+ */
+const handleVersionStepsScroll = () => {
+  syncHorizontalScroll(
+    versionStepsScrollRef.value,
+    projectStepsScrollRef.value,
+  );
+};
+
+/**
+ * 当前登录用户
+ */
+const currentUser = ref({});
+
+/**
+ * 当前项目
+ */
+const project = ref({});
+
+/**
+ * 版本列表
+ */
+const versions = ref([]);
+
+/**
+ * MOR 弹窗是否显示
+ */
+const dialogVisible = ref(false);
+
+/**
+ * 当前点击的版本
+ */
+const activeVersion = ref(null);
+
+/**
+ * 当前点击的 MOR 节点
+ */
+const activeMorNode = ref('');
+
+/**
+ * 当前日期
+ *
+ * 这里保留原来的固定日期，
+ * 用于 mock 或测试计划日期状态。
+ */
+const today = new Date(
+  '2026-07-01T00:00:00+08:00',
+);
+
+/**
+ * 解析日期
+ *
+ * @param {string} date 日期字符串
+ * @returns {Date|null} 解析后的日期对象
+ */
+const parseDate = (date) => {
+  if (!date) {
+    return null;
+  }
+
+  const dateText = String(date);
+
+  // 包含 T 时，通常是 ISO 日期格式
+  if (dateText.includes('T')) {
+    return new Date(dateText);
+  }
+
+  // 兼容 yyyy-MM-dd HH:mm:ss 格式
+  return new Date(
+    dateText.replace(/-/g, '/'),
+  );
+};
+
+/**
+ * 判断指定日期是否早于或等于今天
+ *
+ * @param {string} date 日期字符串
+ * @returns {boolean} 是否已经到达
+ */
+const isPastOrToday = (date) => {
+  if (!date) {
+    return false;
+  }
+
+  const parsedDate = parseDate(date);
+
+  // 将比较时间设置为今天最后一毫秒
+  const endOfToday = new Date(today);
+
+  endOfToday.setHours(
+    23,
+    59,
+    59,
+    999,
+  );
+
+  return (
+    parsedDate instanceof Date &&
+    !Number.isNaN(parsedDate.getTime()) &&
+    parsedDate <= endOfToday
+  );
+};
+
+/**
+ * 获取里程碑对应的标准节点名称
+ *
+ * @param {Object} milestone 里程碑对象
+ * @returns {string} 节点名称
+ */
+const getMilestoneNodeKey = (
+  milestone = {},
+) => {
+  // 后端 Charter 节点可能返回 milestoneCharter
+  if (
+    milestone.milestoneCode ===
+    'milestoneCharter'
+  ) {
+    return 'Charter';
+  }
+
+  return (
+    milestone.milestoneName ||
+    milestone.milestoneCode ||
+    milestone.milestoneNameCn ||
+    milestone.milestoneNameEn ||
+    ''
+  );
+};
+
+/**
+ * 将里程碑数组转换成 Map
+ *
+ * 一个里程碑可能通过多个字段匹配，
+ * 因此将 code、name、中英文名称都作为 key。
+ *
+ * @param {Array} milestones 里程碑列表
+ * @returns {Map} 里程碑映射
+ */
+const toMilestoneMap = (
+  milestones = [],
+) => {
+  return new Map(
+    milestones.flatMap((milestone) => {
+      const nodeKey =
+        getMilestoneNodeKey(milestone);
+
+      const keys = [
+        nodeKey,
+        milestone.milestoneCode,
+        milestone.milestoneName,
+        milestone.milestoneNameCn,
+        milestone.milestoneNameEn,
+      ].filter(Boolean);
+
+      return keys.map((key) => [
+        key,
+        {
+          ...milestone,
+          nodeKey,
+        },
+      ]);
+    }),
+  );
+};
+
+/**
+ * 项目行步骤数据
+ *
+ * 项目行只展示普通里程碑，
+ * 不展示 MOR 节点。
+ */
+const projectSteps = computed(() => {
+  const milestoneMap = toMilestoneMap(
+    project.value?.milestones || [],
+  );
+
+  return VERSION_NORMAL_NODE_ORDER.map(
+    (node, index) => {
+      const milestone =
+        milestoneMap.get(node);
+
+      const milestoneName =
+        milestone?.milestoneName || node;
+
+      const planPublishDate =
+        milestone?.planPublishDate || '';
+
+      const arrived =
+        milestone?.arrived ??
+        isPastOrToday(planPublishDate);
+
+      return {
+        ...(milestone || {}),
+
+        id:
+          milestone?.id ||
+          milestone?.milestoneCode ||
+          index,
+
+        nodeKey: node,
+        milestoneName,
+
+        subProcessNameCn:
+          milestone?.subProcessNameCn,
+
+        subProcessNameEn:
+          milestone?.subProcessNameEn,
+
+        planPublishDate,
+
+        arrived,
+
+        state:
+          milestone?.state ||
+          (arrived
+            ? 'Completed'
+            : 'NotStarted'),
+
+        perform:
+          milestone?.perform ?? false,
+
+        showDivider:
+          Boolean(milestone?.showDivider),
+      };
+    },
+  );
+});
+
+/**
+ * 版本行数据
+ *
+ * 每个版本展示：
+ * 1. 普通里程碑节点
+ * 2. MOR 节点
+ */
+const versionRows = computed(() => {
+  return versions.value.map((version) => {
+    const milestoneMap = toMilestoneMap(
+      version.milestones || [],
+    );
+
+    // 同一版本只生成一次随机高度
+    const connectorHeight =
+      versionConnectorHeightMap.get(
+        version.id,
+      ) || getRandomConnectorHeight();
+
+    versionConnectorHeightMap.set(
+      version.id,
+      connectorHeight,
+    );
+
+    return {
+      ...version,
+
+      connectorHeight,
+
+      steps: VERSION_NODE_ORDER.map(
+        (node) => {
+          const isMor =
+            node.startsWith('MOR');
+
+          const milestone =
+            milestoneMap.get(node);
+
+          const milestoneName =
+            milestone?.milestoneName ||
+            milestone?.milestoneNameCn ||
+            milestone?.milestoneNameEn ||
+            node;
+
+          const planDate =
+            milestone?.planPublishDate || '';
+
+          const milestoneState = isMor
+            ? milestone?.milestoneState ||
+              'notData'
+            : '';
+
+          // MOR 状态为 pending 或 canView 时允许打开
+          const canOpenMor = [
+            'pending',
+            'canView',
+          ].includes(milestoneState);
+
+          const arrived =
+            milestone?.arrived ??
+            (!isMor &&
+              isPastOrToday(planDate));
+
+          return {
+            ...(milestone || {}),
+
+            id:
+              milestone?.id ||
+              `${version.id}-${node}`,
+
+            milestoneCode: node,
+            nodeKey: node,
+            milestoneName,
+
+            milestoneNameCn:
+              milestone?.milestoneNameCn ||
+              milestoneName,
+
+            milestoneNameEn:
+              milestone?.milestoneNameEn ||
+              milestoneName,
+
+            subProcessNameCn:
+              milestone?.subProcessNameCn,
+
+            subProcessNameEn:
+              milestone?.subProcessNameEn,
+
+            // MOR 节点不显示普通计划时间
+            planPublishDate: isMor
+              ? ''
+              : planDate,
+
+            arrived,
+
+            state:
+              milestone?.state ||
+              (!isMor && arrived
+                ? 'Completed'
+                : 'NotStarted'),
+
+            perform:
+              milestone?.perform ??
+              (!isMor && arrived),
+
+            showDivider:
+              Boolean(
+                milestone?.showDivider,
+              ),
+
+            // 是否为 MOR 节点
+            isMor,
+
+            // MOR 节点状态
+            morState: milestoneState,
+
+            // MOR 是否允许打开
+            canOpenMor,
+
+            // 兼容 Step 组件内部字段
+            hasMorData: canOpenMor,
+
+            // MOR 是否待当前用户处理
+            pendingByMe:
+              isMor &&
+              milestoneState === 'pending',
+          };
+        },
+      ),
+    };
+  });
+});
+
+/**
+ * 打开 MOR 弹窗
+ *
+ * @param {Object} version 当前版本
+ * @param {Object} step 当前点击的步骤节点
+ */
+const openMorDialog = (
+  version,
+  step,
+) => {
+  // 当前 MOR 节点不可打开时结束
+  if (!step?.canOpenMor) {
+    return;
+  }
+
+  /*
+   * project 是 ref，
+   * 因此 script 中需要通过 project.value 获取值。
+   */
+  if (!project.value?.permission?.edit) {
+    return;
+  }
+
+  activeVersion.value = version;
+  activeMorNode.value = step.nodeKey;
+  dialogVisible.value = true;
+};
+
+/**
+ * 根据项目 ID 获取项目详情
+ *
+ * @param {string} id 项目 ID
+ * @param {string} projectType 项目类型
+ * @returns {Promise<Object|null>} 项目详情
+ */
+async function fetchProjectByProjectId(
+  id,
+  projectType,
+) {
+  try {
+    const resp = await proxy.$axios.get(
+      '/ugtm/api/v1/ipd/project/details',
+      {
+        params: {
+          projectId: id,
+          type: projectType,
+        },
+      },
+    );
+
+    const projectData =
+      resp?.data?.data;
+
+    if (!projectData) {
+      return null;
+    }
+
+    return projectData;
+  } catch (error) {
+    console.error(
+      '获取项目详情失败',
+      error,
+    );
+
+    return null;
+  }
+}
+
+/**
+ * 获取版本列表
+ *
+ * @param {string} url 请求地址
+ * @returns {Promise<Object|Array|null>} 接口数据
+ */
+const requestVersionListPage = async (
+  url,
+) => {
+  try {
+    const resp =
+      await proxy.$axios.get(url);
+
+    const versionListData =
+      resp?.data?.data;
+
+    if (!versionListData) {
+      return null;
+    }
+
+    return versionListData;
+  } catch (error) {
+    console.error(
+      '获取版本列表失败',
+      error,
+    );
+
+    return null;
+  }
+};
+
+/**
+ * 页面初始化
+ */
+onMounted(async () => {
+  loading.value = true;
+
+  try {
+    // URL 未提供参数时，使用默认值
+    const currentProjectId =
+      projectId || 'PJT-2026-001';
+
+    const currentType =
+      type || 'Charter';
+
+    // 并行请求项目详情和版本列表
+    const [
+      projectDetails,
+      versionListResp,
+    ] = await Promise.all([
+      fetchProjectByProjectId(
+        currentProjectId,
+        currentType,
+      ),
+
+      requestVersionListPage(
+        `/ugtm/api/v1/ipd/getMorEditionList?projectId=${currentProjectId}`,
+      ),
+    ]);
+
+    const payload =
+      versionListResp ?? {};
+
+    currentUser.value =
+      payload.currentUser ?? {};
+
+    /*
+     * 优先使用项目详情接口返回的数据，
+     * 以确保包含 lv2HeavyTeamEntity 等信息。
+     */
+    project.value =
+      projectDetails ||
+      payload.project ||
+      {};
+
+    /*
+     * 保留原接口赋值逻辑。
+     * 如果接口 data 本身就是数组，可以直接赋值。
+     */
+    versions.value =
+      Array.isArray(payload)
+        ? payload
+        : payload?.result ||
+          payload?.list ||
+          payload?.records ||
+          [];
+  } finally {
+    loading.value = false;
+  }
+});
+</script>
+
+<style scoped lang="scss">
+.card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e9ecef;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  cursor: pointer;
+  transition: background 0.2s;
+  background-color: white;
+  border-radius: 8px;
+}
+
+.back-entry {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  flex-shrink: 0;
+  cursor: pointer;
+  color: #333333;
+  line-height: 26px;
+}
+
+.back-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+}
+
+.names {
+  placeholder-mark-id: 68064330;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  gap: 6px;
+  min-width: 0;
+  color: #1f2329;
+  font-weight: 500;
+}
+
+.project,
+.subproject {
+  display: inline-block;
+  min-width: 0;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project {
+  background: linear-gradient(
+    90deg,
+    rgba(78, 119, 255, 1) 0%,
+    rgba(83, 160, 253, 1) 50%,
+    rgba(124, 152, 254, 1) 100%
+  );
+  color: white;
+}
+
+.sep {
+  color: #8a8f99;
+}
+
+.divider {
+  width: 1px;
+  height: 18px;
+  background: #e5e6eb;
+}
+
+.header-divider {
+  color: black;
+  height: 2px;
+  margin: 2px 8px 0;
+}
+
+.project-divider {
+  margin-top: 4px;
+}
+
+.projectName {
+  color: rgba(51, 51, 51, 1);
+  font-family: Microsoft YaHei, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 26px;
+  letter-spacing: 0;
+  text-align: left;
+  margin-right: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spdt-typeName {
+  height: 24px;
+  color: rgba(255, 255, 255, 1);
+  font-family: Microsoft YaHei, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    rgba(78, 119, 255, 1),
+    rgba(83, 160, 253, 1) 48%,
+    rgba(124, 152, 254, 1) 100%
+  );
+  opacity: 0.7;
+  margin-right: 4px;
+  box-sizing: border-box;
+  line-height: 16px;
+}
+
+.spdt-name {
+  color: rgba(51, 51, 51, 1);
+  font-family: Microsoft YaHei, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 26px;
+  letter-spacing: 0;
+  text-align: left;
+}
+
+.parent-name {
+  margin-right: 8px;
+}
+
+.pe-name {
+  display: inline-block;
+  border: 1.5px solid rgba(2, 9, 16, 0.13);
+  border-radius: 2px;
+  background: rgba(228, 228, 228, 1);
+  padding: 3px 8px;
+  color: rgba(51, 51, 51, 1);
+  font-family: Microsoft YaHei, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 18px;
+  letter-spacing: 0;
+  text-align: left;
+  margin-right: 8px;
+  box-sizing: border-box;
+}
+
+.content {
+  flex: 1;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  display: flex;
+  flex-direction: column;
+  margin: 24px 70px;
+  font-size: 14px;
+  font-family: Microsoft YaHei, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.st-container {
+  placeholder-mark-id: 14477257;
+  width: 100%;
+  min-height: 100vh;
+  position: relative;
+  font-size: 14px;
+  font-weight: 400;
+  color: rgb(51, 51, 51);
+  box-shadow:
+    inset 0 -1px 0 0 rgb(230, 230, 230);
+
+  .position {
+    placeholder-mark-id: 14477257;
+    width: 100%;
+    min-height: 100vh;
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 0 0;
+  }
+}
+
+.version-page {
+  min-height: 100vh;
+  background: #f4f6fb;
+  color: #1f2937;
+  border-radius: 8px;
+}
+
+.back-button {
+  margin-bottom: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  color: #1f2937;
+  cursor: pointer;
+  height: 34px;
+  padding: 0 14px;
+}
+
+.version-board {
+  display: grid;
+  grid-template-columns:
+    276px minmax(0, 1fr);
+  border-radius: 8px;
+  background: #fff;
+  position: relative;
+  overflow: hidden;
+}
+
+.info-column {
+  position: relative;
+  z-index: 2;
+  background: #fff;
+}
+
+.info-column::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 20px;
+  opacity: 0.5;
+  pointer-events: none;
+  content: '';
+  background: linear-gradient(
+    270deg,
+    rgba(0, 0, 0, 0.18) -20.776%,
+    rgba(0, 0, 0, 0) 43.334%
+  );
+}
+
+.row-info {
+  display: flex;
+  width: 276px;
+  height: 123px;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  align-self: stretch;
+  justify-content: center;
+  margin: 0;
+  padding: 12px 16px;
+  border-right: 1px solid #edf0f6;
+  border-bottom: 1px solid #edf0f6;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.row-info:last-child {
+  border-bottom: 0;
+}
+
+.steps-scroll {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  &::-webkit-scrollbar {
+    width: 5px;
+    height: 10px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    width: 54px;
+    background: rgba(206, 206, 206, 1);
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover,
+  &::-webkit-scrollbar-thumb:active {
+    background-color: #dce0e9;
+  }
+}
+
+.steps-scroll-content {
+  width: max-content;
+  min-width: 100%;
+}
+
+.steps-row {
+  height: 123px;
+  border-bottom: 1px solid #edf0f6;
+  box-sizing: border-box;
+}
+
+.steps-row:last-child {
+  border-bottom: 0;
+}
+
+.row-info strong,
+.row-info span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-title,
+.version-name,
+.code-value {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.version-name {
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.project-code {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 22px;
+}
+
+.code-label {
+  flex: 0 0 auto;
+  color: rgba(102, 102, 102, 1);
+}
+
+.code-value {
+  flex: 1 1 auto;
+}
+
+.row-badge {
+  display: block;
+  width: 46px;
+  height: 26px;
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+.project-info strong {
+  font-size: 16px;
+}
+
+.project-info {
+  background: linear-gradient(
+    135.87deg,
+    rgba(255, 255, 255, 0.8) 0%,
+    rgba(238, 244, 255, 0.8) 97.352%
+  );
+}
+
+.row-steps {
+  min-width: max-content;
+  margin-right: 0;
+}
+
+
+/* =========================================================
+ * 项目行 / 版本行拆分后的自适应布局
+ * ======================================================= */
+
+/**
+ * 页面根节点固定为当前视口高度。
+ *
+ * 关键点：不能继续只使用 min-height: 100vh，
+ * 否则内容会把页面继续撑高，内部版本区域无法正确计算剩余高度。
+ */
+.st-container {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/**
+ * position 改成纵向 Flex 容器。
+ * PublicHeader 占用自身实际高度，content 自动获得剩余高度。
+ */
+.st-container .position {
+  display: flex;
+  height: 100vh;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/**
+ * content 自动占满 PublicHeader 下方的剩余高度。
+ *
+ * 上下 margin 各 24px 会由 Flex 布局自动扣除，
+ * 不需要手写 calc(100vh - 某个固定值)。
+ */
+.content {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0 !important;
+  overflow: hidden;
+}
+
+/**
+ * 权限模板本身不会生成 DOM，version-page 直接占满 content。
+ */
+.version-page {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/**
+ * 标题区域保持固定高度，不参与压缩。
+ */
+.card-header {
+  flex: 0 0 auto;
+}
+
+/**
+ * 时间线主体占满标题栏下方全部剩余空间。
+ */
+.version-board {
+  --timeline-row-height: 123px;
+
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+/**
+ * 项目行固定在版本区域上方，不参与纵向滚动。
+ */
+.project-board-row {
+  display: grid;
+  grid-template-columns: 276px minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
+  height: var(--timeline-row-height);
+  flex: 0 0 var(--timeline-row-height);
+  background: #ffffff;
+}
+
+/**
+ * 版本区域获得项目行下方的全部剩余高度。
+ *
+ * overflow-y: auto 的行为：
+ * - 版本总高度小于剩余高度：不显示滚动条；
+ * - 版本总高度大于剩余高度：自动显示纵向滚动条。
+ */
+.versions-vertical-scroll {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  position: relative;
+}
+
+/**
+ * 左侧版本信息和右侧步骤放在同一个纵向内容容器中，
+ * 从而保证二者上下同步滚动，不会发生行错位。
+ */
+.versions-board {
+  display: grid;
+  grid-template-columns: 276px minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
+  background: #ffffff;
+}
+
+.version-info-column {
+  min-width: 0;
+  position: relative;
+  z-index: 2;
+  background: #ffffff;
+}
+
+.version-info-column::after {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  opacity: 0.5;
+  pointer-events: none;
+  content: '';
+  background: linear-gradient(
+    270deg,
+    rgba(0, 0, 0, 0.18) -20.776%,
+    rgba(0, 0, 0, 0) 43.334%
+  );
+}
+
+.row-info {
+  width: 276px;
+  height: var(--timeline-row-height);
+  min-height: var(--timeline-row-height);
+  flex: 0 0 var(--timeline-row-height);
+}
+
+.project-name {
+  width: 100%;
+  max-width: 200px;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-name {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.steps-scroll {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/**
+ * 项目行隐藏独立横向滚动条，
+ * 下方版本区域是主要的横向滚动入口。
+ */
+.project-steps-scroll {
+  scrollbar-width: none;
+}
+
+.project-steps-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.version-steps-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(206, 206, 206, 1) transparent;
+}
+
+.steps-scroll-content {
+  width: max-content;
+  min-width: 100%;
+}
+
+.steps-row {
+  height: var(--timeline-row-height);
+  min-height: var(--timeline-row-height);
+  overflow: hidden;
+  border-bottom: 1px solid #edf0f6;
+  box-sizing: border-box;
+}
+
+.version-info:last-child,
+.version-steps-scroll .steps-row:last-child {
+  border-bottom: 0;
+}
+
+.empty-version {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: var(--timeline-row-height);
+  align-items: center;
+  justify-content: center;
+  color: #909399;
+  background: #ffffff;
+}
+
+/* 版本区域纵向滚动条 */
+.versions-vertical-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.versions-vertical-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.versions-vertical-scroll::-webkit-scrollbar-thumb {
+  min-height: 40px;
+  background: rgba(206, 206, 206, 1);
+  border-radius: 4px;
+}
+
+.versions-vertical-scroll::-webkit-scrollbar-thumb:hover {
+  background: #bfc3cc;
+}
+
+</style>
