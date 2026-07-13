@@ -1,0 +1,852 @@
+对，你给了完整的 template 和 style，但没有业务 script。下面我把完整 template、完整 style 和“横向滚动同步所需的 script”整理好。
+
+script 中其他接口请求、project、versionRows 等业务代码继续保留你原来的，只需要合并我标出的滚动代码。
+
+<template>
+  <div class="st-container" data-mark-24775053>
+    <div class="position" data-mark-68387919>
+      <public-header
+        process="营销框架定义及细分市场营销规划"
+        child="营销标杆项目规划"
+        data-mark-22859072
+      />
+      <div class="content">
+        <!-- 有查看权限时展示页面内容 -->
+        <template v-if="project?.permission?.view">
+          <main class="version-page">
+            <!-- 顶部标题区域 -->
+            <div class="card-header">
+              <!-- 返回入口 -->
+              <div
+                v-if="hasHistory"
+                class="back-entry"
+                @click="goBack"
+              >
+                <img
+                  :src="returnBackIcon"
+                  class="back-icon"
+                  alt="back"
+                />
+                <span>{{ t('Back') }}</span>
+              </div>
+              <!-- 返回按钮与标题之间的分割线 -->
+              <div
+                v-if="hasHistory"
+                class="back-divider"
+              />
+              <!-- SPDT名称 -->
+              <div class="names" data-mark-89743949>
+                <span
+                  class="project item-header"
+                  :title="project?.lv2HeavyTeamEntity?.typename || ''"
+                  data-mark-92450323
+                >
+                  {{ project?.lv2HeavyTeamEntity?.typename }}
+                </span>
+                <span class="title-separator">/</span>
+                <span
+                  class="subproject"
+                  :title="
+                    locale === 'en-US'
+                      ? project?.lv2HeavyTeamEntity?.en || ''
+                      : project?.lv2HeavyTeamEntity?.cn || ''
+                  "
+                  data-mark-35247615
+                >
+                  {{
+                    locale === 'en-US'
+                      ? project?.lv2HeavyTeamEntity?.en
+                      : project?.lv2HeavyTeamEntity?.cn
+                  }}
+                </span>
+              </div>
+            </div>
+            <!-- 时间线主体 -->
+            <section
+              v-loading="loading"
+              class="version-board"
+            >
+              <!--
+                项目行固定在上方。
+                项目行仍然有自己的横向滚动容器，
+                但隐藏原生横向滚动条，并和版本区域同步。
+              -->
+              <div class="project-board-row">
+                <!-- 左侧项目信息 -->
+                <div class="row-info project-info">
+                  <img
+                    :src="projectBadge"
+                    class="row-badge"
+                    alt="项目"
+                  />
+                  <div
+                    class="project-name"
+                    :title="
+                      locale === 'en-US'
+                        ? project?.projectNameEn || ''
+                        : project?.projectNameZh || ''
+                    "
+                  >
+                    {{
+                      locale === 'en-US'
+                        ? project?.projectNameEn
+                        : project?.projectNameZh
+                    }}
+                  </div>
+                  <div
+                    class="project-code"
+                    :title="`编码:${project?.code || ''}`"
+                  >
+                    <span class="code-label">编码:</span>
+                    <span class="code-value">
+                      {{ project?.code }}
+                    </span>
+                  </div>
+                </div>
+                <!-- 项目步骤区域 -->
+                <div
+                  ref="projectStepsScrollRef"
+                  class="steps-scroll project-steps-scroll"
+                  @scroll="handleProjectStepsScroll"
+                >
+                  <div class="steps-scroll-content">
+                    <div class="steps-row">
+                      <Step
+                        class="row-steps"
+                        :steps="projectSteps"
+                        :step-width="240"
+                        :min-gap="240"
+                        :track-height="123"
+                        :layout-count="VERSION_NORMAL_NODE_ORDER.length"
+                        :connector-height="6"
+                        reserve-leading-gap
+                        reserve-trailing-gap
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!--
+                版本区域同时管理横向、纵向滚动。
+                关键修改：
+                versionStepsScrollRef 和 scroll 事件放在这一层。
+                这样横向滚动条属于整个版本可视区域，
+                会一直显示在版本区域底部，不会被纵向滚下去。
+              -->
+              <div
+                ref="versionStepsScrollRef"
+                class="versions-vertical-scroll"
+                @scroll="handleVersionStepsScroll"
+              >
+                <div
+                  v-if="versionRows.length"
+                  class="versions-board"
+                >
+                  <!--
+                    左侧版本信息列。
+                    横向滚动时通过 position: sticky 固定在左边；
+                    纵向滚动时仍然跟随版本行正常滚动。
+                  -->
+                  <div class="version-info-column">
+                    <div
+                      v-for="version in versionRows"
+                      :key="version.id"
+                      class="row-info version-info"
+                    >
+                      <img
+                        :src="versionBadge"
+                        class="row-badge"
+                        alt="版本"
+                      />
+                      <span
+                        class="version-name"
+                        :title="
+                          locale === 'en-US'
+                            ? version.nameEn || version.code || version.id
+                            : version.nameCn || version.code || version.id
+                        "
+                      >
+                        {{
+                          locale === 'en-US'
+                            ? version.nameEn || version.code || version.id
+                            : version.nameCn || version.code || version.id
+                        }}
+                      </span>
+                    </div>
+                  </div>
+                  <!--
+                    右侧版本步骤区域不再自己产生横向滚动条。
+                    它的超宽内容交给外层
+                    versions-vertical-scroll 统一处理。
+                  -->
+                  <div class="steps-scroll version-steps-scroll">
+                    <div class="steps-scroll-content">
+                      <div
+                        v-for="version in versionRows"
+                        :key="version.id"
+                        class="steps-row"
+                      >
+                        <Step
+                          class="row-steps"
+                          :steps="version.steps"
+                          :step-width="240"
+                          :min-gap="240"
+                          :track-height="123"
+                          :connector-height="version.connectorHeight"
+                          reserve-leading-gap
+                          reserve-trailing-gap
+                          @mor-click="openMorDialog(version, $event)"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <!-- 版本为空时展示空状态 -->
+                <div
+                  v-else-if="!loading"
+                  class="empty-version"
+                >
+                  暂无版本数据
+                </div>
+              </div>
+            </section>
+            <!-- MOR评审任务弹窗 -->
+            <BaseDialog
+              v-if="dialogVisible"
+              :header-text="`
+                ${
+                  locale === 'en-US'
+                    ? activeVersion?.nameEn || activeVersion?.code || ''
+                    : activeVersion?.nameCn || activeVersion?.code || ''
+                } MOR评审任务
+              `"
+              :dialog-style="{
+                width: '1382px',
+              }"
+              :dialog-center-style="{
+                padding: '16px 20px',
+                display: 'block',
+              }"
+              :btn-info="{
+                cancel: {
+                  show: false,
+                },
+                confirm: {
+                  show: true,
+                  text: '关闭',
+                },
+              }"
+              @confirm="dialogVisible = false"
+              @cancel="dialogVisible = false"
+            >
+              <morTableComp
+                :id="activeVersion?.id"
+                :mor-node="activeMorNode"
+                :spdt-value="project?.lv2HeavyTeamEntity?.typename"
+                :spdt-label="project?.lv2HeavyTeamEntity?.typename"
+                :project-value="
+                  locale === 'en-US'
+                    ? project?.projectNameEn
+                    : project?.projectNameZh
+                "
+                :version-value="
+                  locale === 'en-US'
+                    ? activeVersion?.nameEn ||
+                      activeVersion?.code ||
+                      activeVersion?.id
+                    : activeVersion?.nameCn ||
+                      activeVersion?.code ||
+                      activeVersion?.id
+                "
+              />
+            </BaseDialog>
+          </main>
+        </template>
+        <!-- 有权限对象，但没有查看权限时展示无权限页面 -->
+        <template v-else-if="project?.permission">
+          <div class="no-permission-page">
+            <div class="no-data">
+              <div class="tips">
+                <img
+                  src="@/assets/img/nopermission.png"
+                  alt=""
+                  data-mark-56641730
+                />
+                {{ $t('viewSelect.nopermission') }}
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+</template>
+<script setup>
+import { ref } from 'vue';
+/**
+ * 注意：
+ *
+ * 这里只列出本次滚动功能需要增加或替换的 script。
+ *
+ * 你原来已有的以下业务代码继续保留：
+ * - project
+ * - projectSteps
+ * - versionRows
+ * - loading
+ * - locale
+ * - VERSION_NORMAL_NODE_ORDER
+ * - dialogVisible
+ * - activeVersion
+ * - activeMorNode
+ * - openMorDialog
+ * - goBack
+ * - 图片、组件和接口导入
+ *
+ * 如果你原来的 script 已经从 vue 导入了 ref，
+ * 就不要重复写 import { ref } from 'vue'。
+ */
+/**
+ * 上方项目步骤滚动容器。
+ *
+ * 该容器本身可以横向滚动，
+ * 但通过 CSS 隐藏了它自己的横向滚动条。
+ */
+const projectStepsScrollRef = ref(null);
+/**
+ * 下方版本区域滚动容器。
+ *
+ * 修改之后，这个元素同时管理：
+ * 1. 版本列表纵向滚动
+ * 2. 时间线横向滚动
+ */
+const versionStepsScrollRef = ref(null);
+/**
+ * 判断两个横向滚动位置是否存在明显差异。
+ *
+ * 浏览器的 scrollLeft 可能存在小数误差，
+ * 因此这里使用大于1像素再同步，避免两个容器反复触发滚动事件。
+ *
+ * @param {number} currentLeft 目标容器当前滚动位置
+ * @param {number} targetLeft 需要同步到的位置
+ * @returns {boolean} 是否需要同步
+ */
+const shouldSyncScrollLeft = (currentLeft, targetLeft) => {
+  return Math.abs(currentLeft - targetLeft) > 1;
+};
+/**
+ * 上方项目步骤区域发生横向滚动时，
+ * 将其横向位置同步给下方版本区域。
+ *
+ * @param {Event} event 项目步骤区域的scroll事件
+ */
+const handleProjectStepsScroll = (event) => {
+  const projectScrollElement = event.currentTarget;
+  const versionScrollElement = versionStepsScrollRef.value;
+  // 下方版本滚动容器还没有挂载时不处理
+  if (!versionScrollElement) return;
+  const targetScrollLeft = projectScrollElement.scrollLeft;
+  // 只有横向位置不一致时才赋值，防止循环触发scroll事件
+  if (
+    shouldSyncScrollLeft(
+      versionScrollElement.scrollLeft,
+      targetScrollLeft,
+    )
+  ) {
+    versionScrollElement.scrollLeft = targetScrollLeft;
+  }
+};
+/**
+ * 下方版本区域发生滚动时，
+ * 将横向位置同步给上方项目步骤区域。
+ *
+ * 纵向滚动版本列表时也会触发这个方法，
+ * 但只要scrollLeft没有变化，就不会执行同步赋值。
+ *
+ * @param {Event} event 版本区域的scroll事件
+ */
+const handleVersionStepsScroll = (event) => {
+  const versionScrollElement = event.currentTarget;
+  const projectScrollElement = projectStepsScrollRef.value;
+  // 上方项目步骤容器还没有挂载时不处理
+  if (!projectScrollElement) return;
+  const targetScrollLeft = versionScrollElement.scrollLeft;
+  // 只有横向位置不一致时才同步
+  if (
+    shouldSyncScrollLeft(
+      projectScrollElement.scrollLeft,
+      targetScrollLeft,
+    )
+  ) {
+    projectScrollElement.scrollLeft = targetScrollLeft;
+  }
+};
+</script>
+<style scoped lang="scss">
+/* =========================================================
+ * 顶部标题区域
+ * ======================================================= */
+.card-header {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  align-items: center;
+  padding: 16px 20px;
+  cursor: default;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e9ecef;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+.back-entry {
+  display: inline-flex;
+  height: 26px;
+  flex-shrink: 0;
+  align-items: center;
+  margin-right: 8px;
+  color: #333333;
+  line-height: 26px;
+  cursor: pointer;
+}
+.back-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+}
+.back-divider {
+  width: 1px;
+  height: 16px;
+  flex: 0 0 auto;
+  margin-right: 8px;
+  background-color: rgba(240, 240, 240, 1);
+}
+.names {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 6px;
+  align-items: center;
+  color: #1f2329;
+  font-weight: 500;
+  placeholder-mark-id: 68064330;
+}
+.project,
+.subproject {
+  display: inline-block;
+  min-width: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project {
+  padding: 2px 6px;
+  color: #ffffff;
+  background: linear-gradient(
+    90deg,
+    rgba(78, 119, 255, 1) 0%,
+    rgba(83, 160, 253, 1) 50%,
+    rgba(124, 152, 254, 1) 100%
+  );
+}
+.subproject {
+  font-size: 16px;
+  font-weight: 700;
+}
+.title-separator {
+  padding: 0 5px;
+  font-weight: 400;
+}
+/* =========================================================
+ * 页面整体高度布局
+ * ======================================================= */
+.st-container {
+  width: 100%;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  color: rgb(51, 51, 51);
+  font-size: 14px;
+  font-weight: 400;
+  box-shadow: inset 0 -1px 0 0 rgb(230, 230, 230);
+  placeholder-mark-id: 14477257;
+}
+.st-container .position {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  position: absolute;
+  top: 0;
+  left: 0;
+  flex-direction: column;
+  transform-origin: 0 0;
+}
+.content {
+  display: flex;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  flex: 1 1 auto;
+  flex-direction: column;
+  margin: 24px 70px;
+  overflow: hidden;
+  font-family: Microsoft YaHei, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.version-page {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  flex-direction: column;
+  color: #1f2937;
+  background: #f4f6fb;
+  border-radius: 8px;
+}
+/* =========================================================
+ * 时间线整体区域
+ * ======================================================= */
+.version-board {
+  --timeline-row-height: 123px;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  position: relative;
+  flex-direction: column;
+  background: transparent;
+  border-radius: 8px;
+}
+/* =========================================================
+ * 固定的项目行
+ * ======================================================= */
+.project-board-row {
+  display: grid;
+  grid-template-columns: 276px minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
+  height: var(--timeline-row-height);
+  flex: 0 0 var(--timeline-row-height);
+  position: relative;
+  z-index: 20;
+  background: #ffffff;
+}
+/**
+ * 项目行底部阴影。
+ *
+ * 用于突出项目行与下方版本列表之间的层级关系。
+ */
+.project-board-row::after {
+  position: absolute;
+  z-index: 21;
+  right: 0;
+  bottom: -12px;
+  left: 0;
+  height: 12px;
+  pointer-events: none;
+  content: '';
+  opacity: 0.7;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.18) 0%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+/* =========================================================
+ * 左侧项目、版本信息
+ * ======================================================= */
+.row-info {
+  display: flex;
+  width: 276px;
+  height: var(--timeline-row-height);
+  min-width: 0;
+  min-height: var(--timeline-row-height);
+  flex: 0 0 var(--timeline-row-height);
+  align-self: stretch;
+  align-items: flex-start;
+  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 16px;
+  overflow: hidden;
+  box-sizing: border-box;
+  border-right: 1px solid #edf0f6;
+  border-bottom: 1px solid #edf0f6;
+}
+.row-info strong,
+.row-info span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-info {
+  position: relative;
+  background: linear-gradient(
+    135.87deg,
+    rgba(255, 255, 255, 0.8) 0%,
+    rgba(238, 244, 255, 0.8) 97.352%
+  );
+}
+/**
+ * 项目信息右侧阴影。
+ */
+.project-info::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  pointer-events: none;
+  content: '';
+  opacity: 0.5;
+  background: linear-gradient(
+    270deg,
+    rgba(0, 0, 0, 0.18) -20.776%,
+    rgba(0, 0, 0, 0) 43.334%
+  );
+}
+.row-badge {
+  display: block;
+  width: 46px;
+  height: 26px;
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+.project-name {
+  width: 100%;
+  max-width: 200px;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-code {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 22px;
+}
+.code-label {
+  flex: 0 0 auto;
+  color: rgba(102, 102, 102, 1);
+}
+.code-value {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.version-name {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* =========================================================
+ * 通用步骤区域
+ * ======================================================= */
+.steps-scroll {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.steps-scroll-content {
+  width: max-content;
+  min-width: 100%;
+}
+.steps-row {
+  height: var(--timeline-row-height);
+  min-height: var(--timeline-row-height);
+  overflow: hidden;
+  box-sizing: border-box;
+  border-bottom: 1px solid #edf0f6;
+}
+.row-steps {
+  min-width: max-content;
+  margin-right: 0;
+}
+/**
+ * 项目行隐藏自己的横向滚动条。
+ *
+ * 用户通过下方固定的横向滚动条操作时，
+ * script会把scrollLeft同步到这里。
+ */
+.project-steps-scroll {
+  scrollbar-width: none;
+}
+.project-steps-scroll::-webkit-scrollbar {
+  display: none;
+}
+/* =========================================================
+ * 版本滚动区域
+ * ======================================================= */
+/**
+ * 关键修改：
+ *
+ * 横向滚动和纵向滚动全部交给这个容器。
+ *
+ * 因为该容器高度就是屏幕剩余高度，
+ * 所以横向滚动条会始终显示在版本可视区域底部，
+ * 不会随着版本行被滚到下面。
+ */
+.versions-vertical-scroll {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  position: relative;
+  overscroll-behavior: contain;
+}
+/**
+ * 版本列表维持两列结构。
+ */
+.versions-board {
+  display: grid;
+  grid-template-columns: 276px minmax(0, 1fr);
+  width: 100%;
+  min-width: 100%;
+  background: #ffffff;
+}
+/**
+ * 左侧版本列横向固定。
+ *
+ * 只设置left，不设置top：
+ * - 横向滚动时固定在左边；
+ * - 纵向滚动时正常跟随版本列表滚动。
+ */
+.version-info-column {
+  min-width: 0;
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background: #ffffff;
+}
+/**
+ * 左侧版本信息右边阴影。
+ */
+.version-info-column::after {
+  position: absolute;
+  z-index: 11;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  pointer-events: none;
+  content: '';
+  opacity: 0.5;
+  background: linear-gradient(
+    270deg,
+    rgba(0, 0, 0, 0.18) -20.776%,
+    rgba(0, 0, 0, 0) 43.334%
+  );
+}
+/**
+ * 版本步骤区域不再自己滚动。
+ *
+ * 通用.steps-scroll设置了overflow-x:auto，
+ * 所以必须在它后面使用overflow:visible覆盖。
+ */
+.version-steps-scroll {
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+}
+/**
+ * 清除最后一行底部边框。
+ */
+.version-info:last-child,
+.version-steps-scroll .steps-row:last-child {
+  border-bottom: 0;
+}
+/* =========================================================
+ * 空状态
+ * ======================================================= */
+.empty-version {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: var(--timeline-row-height);
+  align-items: center;
+  justify-content: center;
+  color: #909399;
+  background: #ffffff;
+}
+/* =========================================================
+ * 版本区域横向、纵向滚动条
+ * ======================================================= */
+.versions-vertical-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 10px;
+}
+.versions-vertical-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.versions-vertical-scroll::-webkit-scrollbar-thumb {
+  min-width: 40px;
+  min-height: 40px;
+  background: rgba(206, 206, 206, 1);
+  border-radius: 4px;
+}
+.versions-vertical-scroll::-webkit-scrollbar-thumb:hover,
+.versions-vertical-scroll::-webkit-scrollbar-thumb:active {
+  background: #bfc3cc;
+}
+/**
+ * Firefox滚动条样式。
+ */
+.versions-vertical-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(206, 206, 206, 1) transparent;
+}
+/* =========================================================
+ * 无权限页面
+ * ======================================================= */
+.no-permission-page {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 800px;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+}
+.no-data {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tips {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+</style>
+
+核心变化只有两个：
+
+* versionStepsScrollRef 从 .version-steps-scroll 移到了 .versions-vertical-scroll。
+* .versions-vertical-scroll 改成 overflow: auto，同时接管横向和纵向滚动。
+
+你原来的业务 script 不需要改，只需要用上面两个 ref 和两个滚动方法替换原有的横向同步代码。
