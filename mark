@@ -1,0 +1,109 @@
+可以给 MOR 节点补上 arrived 判断：
+
+* arrived === true：MOR 圆点为蓝色。
+* arrived === false：MOR 圆点为灰色。
+* pending/canView/notData 仍然只负责点击权限和名称样式。
+
+1. 修改 MOR 节点的 class
+
+把原来的：
+
+<button
+  v-for="marker in morMarkers"
+  :key="marker.step.id"
+  type="button"
+  class="mor-marker"
+  :class="{
+    'is-mor-pending': marker.step.morState === 'pending',
+    'is-mor-can-view': marker.step.morState === 'canView',
+    'is-mor-not-data': marker.step.morState === 'notData',
+    'has-mor-data': marker.step.hasMorData,
+  }"
+  :style="getMorMarkerStyle(marker)"
+  :disabled="!marker.step.canOpenMor"
+  @click="$emit('mor-click', marker.step)"
+>
+
+改成：
+
+<button
+  v-for="marker in morMarkers"
+  :key="marker.step.id"
+  type="button"
+  class="mor-marker"
+  :class="{
+    // MOR 是否已经到达：
+    // arrived=true 时添加 is-completed，圆点显示蓝色
+    'is-completed': isStepCompleted(marker.step),
+    // 以下状态只负责名称样式和交互状态
+    'is-mor-pending': marker.step.morState === 'pending',
+    'is-mor-can-view': marker.step.morState === 'canView',
+    'is-mor-not-data': marker.step.morState === 'notData',
+    'has-mor-data': marker.step.hasMorData,
+  }"
+  :style="getMorMarkerStyle(marker)"
+  :disabled="!marker.step.canOpenMor"
+  @click="$emit('mor-click', marker.step)"
+>
+  <span class="mor-marker-label">
+    {{ marker.step.milestoneName }}
+  </span>
+  <span class="mor-marker-dot"></span>
+</button>
+
+这里直接复用了现有方法：
+
+/**
+ * 判断普通节点或 MOR 节点是否已经到达
+ *
+ * arrived=true：
+ * 节点进入已完成状态，圆点或连接线显示蓝色。
+ *
+ * arrived=false、null、undefined：
+ * 节点保持未完成状态。
+ */
+const isStepCompleted = (step) => !!step?.arrived;
+
+2. 修改 MOR 圆点颜色
+
+把原来的固定蓝色：
+
+.mor-marker-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #4e77ff;
+  transform: translate(-50%, -50%);
+}
+
+修改成：
+
+/* MOR 默认未到达状态：圆点显示灰色 */
+.mor-marker-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: rgba(153, 153, 153, 1);
+  transform: translate(-50%, -50%);
+  /* arrived 变化时让颜色平滑过渡 */
+  transition: background-color 0.3s ease;
+}
+/* MOR 已到达状态：圆点显示蓝色 */
+.mor-marker.is-completed .mor-marker-dot {
+  background-color: #4e77ff;
+}
+
+最终效果：
+
+marker.step.arrived	MOR 圆点
+true	蓝色 #4e77ff
+false	灰色
+null / undefined	灰色
+
+注意：pending 状态的 MOR 名称仍会显示蓝色，因为它表示“待处理”的交互状态；MOR 圆点是否蓝色则完全由 arrived 决定。
