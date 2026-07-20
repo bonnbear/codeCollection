@@ -12,7 +12,7 @@ agent-configs/
 │   └── skills/             # 25 个 skill
 ├── codex/
 │   ├── config.toml         # 脱敏配置（MCP: notion/codegraph）
-│   └── skills/             # 11 个 skill
+│   └── skills/             # 27 个 skill（含 6 个 Codex 系统 skill）
 └── openclaw/
     └── openclaw.json       # 脱敏配置（providers/agents/skills/gateway）
 ```
@@ -27,9 +27,17 @@ vercel-cli-with-tokens · vercel-composition-patterns · vercel-react-best-pract
 vercel-react-native-skills · web-artifacts-builder · web-design-guidelines · webapp-testing · xlsx
 
 ### Codex (`codex/skills/`)
-aspnet-core · doc · element-plus-vue3 · gh-address-comments · gh-fix-ci · image-to-ui-skill ·
+
+系统 Skill：imagegen · openai-docs · plugin-creator · review-agent · skill-creator · skill-installer
+
+用户级 Skill：aspnet-core · code-review · doc · domain-modeling · element-plus-vue3 ·
+gh-address-comments · gh-fix-ci · grill-with-docs · grilling · image-to-ui-skill · implement ·
 notion-knowledge-capture · notion-meeting-intelligence · notion-research-documentation ·
-notion-spec-to-implementation · openclaw-opencode-model-config
+notion-spec-to-implementation · openclaw-opencode-model-config · setup-matt-pocock-skills ·
+tdd · to-spec · to-tickets · triage
+
+`codex-skills.tar.gz` 是上述 Codex Skills 的便携压缩包，`codex-skills.tar.gz.sha256`
+用于下载后的完整性校验。
 
 ## 安装
 
